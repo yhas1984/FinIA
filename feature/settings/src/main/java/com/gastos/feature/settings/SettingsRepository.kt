@@ -15,6 +15,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 data class AppSettings(
     val aiEngine: String = "gemini_api",
     val geminiApiKey: String = "",
+    val hfToken: String = "",
     val defaultCurrency: String = "EUR",
     val defaultCountry: String = "ES",
     val darkMode: String = "system",
@@ -30,6 +31,7 @@ class SettingsRepository @Inject constructor(
     private object Keys {
         val AI_ENGINE = stringPreferencesKey("ai_engine")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
+        val HF_TOKEN = stringPreferencesKey("hf_token")
         val DEFAULT_CURRENCY = stringPreferencesKey("default_currency")
         val DEFAULT_COUNTRY = stringPreferencesKey("default_country")
         val DARK_MODE = stringPreferencesKey("dark_mode")
@@ -41,6 +43,7 @@ class SettingsRepository @Inject constructor(
         AppSettings(
             aiEngine = preferences[Keys.AI_ENGINE] ?: "gemini_api",
             geminiApiKey = preferences[Keys.GEMINI_API_KEY] ?: "",
+            hfToken = preferences[Keys.HF_TOKEN] ?: "",
             defaultCurrency = preferences[Keys.DEFAULT_CURRENCY] ?: "EUR",
             defaultCountry = preferences[Keys.DEFAULT_COUNTRY] ?: "ES",
             darkMode = preferences[Keys.DARK_MODE] ?: "system",
@@ -58,6 +61,12 @@ class SettingsRepository @Inject constructor(
     suspend fun updateGeminiApiKey(apiKey: String) {
         context.dataStore.edit { preferences ->
             preferences[Keys.GEMINI_API_KEY] = apiKey
+        }
+    }
+
+    suspend fun updateHfToken(token: String) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.HF_TOKEN] = token
         }
     }
 

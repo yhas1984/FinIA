@@ -88,7 +88,8 @@ class SettingsViewModel @Inject constructor(
 
     fun downloadGemmaModel() {
         viewModelScope.launch {
-            val result = aiService.downloadGemmaModel()
+            val hfToken = _uiState.value.settings.hfToken
+            val result = aiService.downloadGemmaModel(hfToken)
             if (result.isFailure) {
                 _uiState.update {
                     it.copy(error = result.exceptionOrNull()?.message)
@@ -101,6 +102,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.updateGeminiApiKey(apiKey)
             aiService.setEngine(AIEngine.GEMINI_API, apiKey)
+        }
+    }
+
+    fun updateHfToken(token: String) {
+        viewModelScope.launch {
+            settingsRepository.updateHfToken(token)
         }
     }
 

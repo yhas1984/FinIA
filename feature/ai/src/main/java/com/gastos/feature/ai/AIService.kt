@@ -48,9 +48,9 @@ data class GemmaModelState(
 )
 
 // Model URLs from HuggingFace LiteRT Community
-private const val GEMMA_MODEL_URL = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm"
-private const val MODEL_FILE_NAME = "gemma-4-E4B-it.litertlm"
-private const val MIN_MODEL_SIZE = 1000000000L // ~1GB minimum for 4B model
+private const val GEMMA_MODEL_URL = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"
+private const val MODEL_FILE_NAME = "gemma-4-E2B-it.litertlm"
+private const val MIN_MODEL_SIZE = 500000000L // ~500MB minimum for 2B model
 
 @Singleton
 class AIService @Inject constructor(
@@ -91,13 +91,13 @@ class AIService @Inject constructor(
             if (modelFile.exists() && modelFile.length() > MIN_MODEL_SIZE) {
                 _gemmaModelState.value = GemmaModelState(
                     isAvailable = isGemmaReady,
-                    modelSize = "Gemma 4 E4B IT (${String.format("%.2f", modelFile.length() / 1024.0 / 1024.0 / 1024.0)} GB)"
+                    modelSize = "Gemma 4 E2B IT (${String.format("%.2f", modelFile.length() / 1024.0 / 1024.0 / 1024.0)} GB)"
                 )
                 Result.success("Modelo descargado")
             } else {
                 _gemmaModelState.value = GemmaModelState(
                     isAvailable = false,
-                    modelSize = "Gemma 4 E4B IT (~4.1 GB)"
+                    modelSize = "Gemma 4 E2B IT (~2.4 GB)"
                 )
                 Result.success("Modelo disponible para descargar")
             }
@@ -136,7 +136,7 @@ class AIService @Inject constructor(
                 _gemmaModelState.value = GemmaModelState(
                     isAvailable = false,
                     isDownloading = false,
-                    modelSize = "Gemma 4 E4B IT (${String.format("%.2f", modelFile.length() / 1024.0 / 1024.0 / 1024.0)} GB)"
+                    modelSize = "Gemma 4 E2B IT (${String.format("%.2f", modelFile.length() / 1024.0 / 1024.0 / 1024.0)} GB)"
                 )
                 Result.success("Modelo descargado correctamente")
             } else {

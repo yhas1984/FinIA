@@ -32,6 +32,9 @@ fun SettingsScreen(
     
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var apiKeyInput by remember { mutableStateOf(uiState.settings.geminiApiKey) }
+    
+    var showHfTokenDialog by remember { mutableStateOf(false) }
+    var hfTokenInput by remember { mutableStateOf(uiState.settings.hfToken) }
 
     Scaffold(
         topBar = {
@@ -97,7 +100,7 @@ fun SettingsScreen(
                 // Descripción del motor seleccionado
                 Text(
                     text = when (uiState.settings.aiEngine) {
-                        "gemma_local" -> "Procesamiento local sin internet. Privacidad total. Usa Gemma 4 E4B vía AICore."
+                        "gemma_local" -> "Procesamiento local sin internet. Privacidad total. Usa Gemma 4 E2B vía AICore."
                         "gemini_api" -> "Procesamiento en la nube. Más preciso. Necesita API key gratuita."
                         else -> ""
                     },
@@ -182,17 +185,44 @@ fun SettingsScreen(
                                     )
                                 }
 
-                                // Botones de acción
+                                // HF Token config y botó de descarga
                                 Spacer(modifier = Modifier.height(12.dp))
                                 if (!uiState.gemmaModel.isAvailable && !uiState.gemmaModel.isDownloading) {
-                                    Button(
-                                        onClick = { viewModel.checkGemmaStatus() },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        enabled = true
+                                    OutlinedButton(
+                                        onClick = { 
+                                            hfTokenInput = uiState.settings.hfToken
+                                            showHfTokenDialog = true 
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = null)
+                                        Icon(Icons.Default.VpnKey, contentDescription = null)
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Verificar disponibilidad")
+                                        Text(
+                                            if (uiState.settings.hfToken.isEmpty()) "Conectar Token de Hugging Face"
+                                            else "Token de Hugging Face guardado"
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = { viewModel.checkGemmaStatus() },
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null)
+                                        }
+                                        Button(
+                                            onClick = { viewModel.downloadGemmaModel() },
+                                            modifier = Modifier.weight(3f),
+                                            enabled = uiState.settings.hfToken.isNotBlank()
+                                        ) {
+                                            Icon(Icons.Default.Download, contentDescription = null)
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Descargar Modelo")
+                                        }
                                     }
                                 }
                             }
@@ -474,6 +504,46 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showApiKeyDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    // Diálogo HF Token
+    if (showHfTokenDialog) {
+        AlertDialog(
+            onDismissRequest = { showHfTokenDialog = false },
+            title = { Text("Hugging Face Access Token") },
+            text = {
+                Column {
+                    Text(
+                        text = "Para descargar Gemma 4 necesitas un token de acceso (Read) de Hugging Face y haber aceptado los términos del modelo litert-community/gemma-4-E2B-it-litert-lm.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = hfTokenInput,
+                        onValueChange = { hfTokenInput = it },
+                        label = { Text("Access Token (hf_...)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.updateHfToken(hfTokenInput)
+                        showHfTokenDialog = false
+                    }
+                ) {
+                    Text("Guardar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHfTokenDialog = false }) {
                     Text("Cancelar")
                 }
             }
