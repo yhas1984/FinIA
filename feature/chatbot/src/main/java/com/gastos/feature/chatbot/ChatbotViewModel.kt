@@ -46,7 +46,7 @@ class ChatbotViewModel @Inject constructor(
     val uiState: StateFlow<ChatbotUiState> = _uiState.asStateFlow()
 
     init {
-        addSystemMessage("¡Hola! Soy tu asistente FinAI. Puedo ayudarte a registrar gastos, ingresos y consultar tus finanzas.")
+        addSystemMessage("¡Hola! Soy FinAI, tu asistente financiero personal.")
     }
 
     fun sendMessage(text: String) {
@@ -58,61 +58,13 @@ class ChatbotViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                // Detect financial queries BEFORE sending to AI
-                val lowerText = text.lowercase()
-                Log.d(TAG, "Processing: $text")
-                
-                val isFinancialQuery = lowerText.contains("cuánto") || 
-                                       lowerText.contains("cuanto") ||
-                                       lowerText.contains("gastado") || 
-                                       lowerText.contains("gasté") || 
-                                       lowerText.contains("gasto") || 
-                                       lowerText.contains("ingreso") ||
-                                       lowerText.contains("ingresos") || 
-                                       lowerText.contains("balance") || 
-                                       lowerText.contains("total") || 
-                                       lowerText.contains("dinero") || 
-                                       lowerText.contains("mes") || 
-                                       lowerText.contains("semana") || 
-                                       lowerText.contains("año") || 
-                                       lowerText.contains("anio") || 
-                                       lowerText.contains("hoy") ||
-                                       lowerText.contains("ahorrado") || 
-                                       lowerText.contains("ahorro") || 
-                                       lowerText.contains("debo") || 
-                                       lowerText.contains("tengo") || 
-                                       lowerText.contains("disponible") ||
-                                       lowerText.contains("mi gasto") ||
-                                       lowerText.contains("mis gastos") ||
-                                       lowerText.contains("mis ingresos") ||
-                                       lowerText.contains("mi balance")
+                Log.d(TAG, "Sending to AI: $text")
 
-                Log.d(TAG, "isFinancialQuery: $isFinancialQuery")
+                // ALL messages go through the AI — no hardcoded keyword interception
+                val result = aiService.processCommand(text)
+                Log.d(TAG, "AI result: success=${result.success}, msg=${result.message}, qr=${result.queryResult}")
+                processAIResult(result, text)
 
-                if (isFinancialQuery) {
-                    val periodo = when {
-                        lowerText.contains("hoy") -> "hoy"
-                        lowerText.contains("semana") -> "semana"
-                        lowerText.contains("año") || lowerText.contains("anio") -> "año"
-                        else -> "mes"
-                    }
-                    val queryType = when {
-                        lowerText.contains("ingreso") -> "ingresos"
-                        lowerText.contains("gasto") -> "gastos"
-                        else -> "balance"
-                    }
-                    Log.d(TAG, "Executing query: type=$queryType, period=$periodo")
-                    val response = executeQuery(queryType, periodo, null, null)
-                    _uiState.update {
-                        it.copy(
-                            messages = it.messages + ChatMessage.AI(response),
-                            isProcessing = false
-                        )
-                    }
-                } else {
-                    val result = aiService.processCommand(text)
-                    processAIResult(result, text)
-                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing message", e)
                 _uiState.update {
@@ -181,8 +133,7 @@ class ChatbotViewModel @Inject constructor(
             }
             result.queryResult != null -> {
                 val queryResult = result.queryResult!!
-                
-                // Chat response from AI
+
                 if (queryResult.startsWith("CHAT:")) {
                     val chatResponse = queryResult.substringAfter("CHAT:")
                     _uiState.update {
@@ -208,29 +159,41 @@ class ChatbotViewModel @Inject constructor(
                     try {
                         val json = JSONObject(queryResult)
                         val action = json.optString("action", "")
-                        
-                        if (action == "chat") {
-                            val chatResponse = json.optString("response", result.message)
-                            _uiState.update {
-                                it.copy(
-                                    messages = it.messages + ChatMessage.AI(chatResponse),
-                                    isProcessing = false
-                                )
+
+                        when (action) {
+                            "chat" -> {
+                                val chatResponse = json.optString("response", result.message)
+                                _uiState.update {
+                                    it.copy(
+                                        messages = it.messages + ChatMessage.AI(chatResponse),
+                                        isProcessing = false
+                                    )
+                                }
                             }
-                        } else {
-                            val queryType = json.optString("query_type", "balance")
-                            val periodo = json.optString("periodo", "mes")
-                            val categoria = json.optString("categoria", null).takeIf { it.isNotEmpty() }
-                            val item = json.optString("item", null).takeIf { it.isNotEmpty() }
-                            val response = executeQuery(queryType, periodo, categoria, item)
-                            _uiState.update {
-                                it.copy(
-                                    messages = it.messages + ChatMessage.AI(response),
-                                    isProcessing = false
-                                )
+                            "query" -> {
+                                val queryType = json.optString("query_type", "balance")
+                                val periodo = json.optString("periodo", "mes")
+                                val categoria = json.optString("categoria", "").takeIf { it.isNotEmpty() && it != "null" }
+                                val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
+                                val response = executeQuery(queryType, periodo, categoria, item)
+                                _uiState.update {
+                                    it.copy(
+                                        messages = it.messages + ChatMessage.AI(response),
+                                        isProcessing = false
+                                    )
+                                }
+                            }
+                            else -> {
+                                _uiState.update {
+                                    it.copy(
+                                        messages = it.messages + ChatMessage.AI(result.message),
+                                        isProcessing = false
+                                    )
+                                }
                             }
                         }
                     } catch (e: Exception) {
+                        // If we can't parse JSON, show the raw AI response
                         _uiState.update {
                             it.copy(
                                 messages = it.messages + ChatMessage.AI(result.message),
@@ -262,7 +225,6 @@ class ChatbotViewModel @Inject constructor(
     private suspend fun executeQuery(queryType: String, periodo: String, categoria: String?, item: String?): String {
         val now = System.currentTimeMillis()
 
-        // Use fresh Calendar instances for each range
         val hoyCal = Calendar.getInstance()
         hoyCal.set(Calendar.HOUR_OF_DAY, 0)
         hoyCal.set(Calendar.MINUTE, 0)
@@ -317,7 +279,6 @@ class ChatbotViewModel @Inject constructor(
             else -> mesStart to mesEnd
         }
 
-        // Use first() to get the current value once, not collect() which blocks forever
         val invoices = invoiceRepository.getAllInvoices().first()
         val incomes = incomeRepository.getAllIncomes().first()
 

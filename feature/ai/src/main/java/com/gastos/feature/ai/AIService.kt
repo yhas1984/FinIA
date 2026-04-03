@@ -214,6 +214,7 @@ class AIService @Inject constructor(
             val eng = Engine(engineConfig)
             eng.initialize()
             isGemmaReady = true
+            this.engine = eng
             eng
         } catch (e: Exception) {
             Log.e("AIService", "Error initializing Gemma engine", e)
@@ -311,32 +312,31 @@ class AIService @Inject constructor(
                 message = "Gemini API no configurada."
             )
 
+            val today = java.time.LocalDate.now().toString()
             val prompt = """
-                Eres FinAI, un asistente financiero. Analiza la consulta y devuelve EXACTAMENTE un JSON con "action".
+                Eres FinAI, un asistente financiero inteligente, amable y conversacional. Hoy es $today.
+                Tu personalidad: eres cercano, profesional y útil. Respondes en español.
 
-                PRIORIDAD DE CLASIFICACIÓN (en orden):
+                Analiza el mensaje del usuario y devuelve EXACTAMENTE un JSON según estas reglas:
 
-                1. CONSULTA FINANCIERA (query): Si pregunta sobre gastos, ingresos, balance, totales, cuánto gastó, cuánto tiene, etc.
-                   → {"action":"query","query_type":"gastos|ingresos|balance","periodo":"hoy|semana|mes|año","categoria":null,"item":null}
+                1. CONSULTA FINANCIERA (si pregunta cuánto gastó, sus ingresos, balance, totales, etc.):
+                   {"action":"query","query_type":"gastos|ingresos|balance","periodo":"hoy|semana|mes|año","categoria":null,"item":null}
 
-                2. REGISTRAR GASTO (add_expense): Si dice que gastó, compró, pagó algo.
-                   → {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0,"total":0,"moneda":"EUR","fecha":"hoy","categoria":"texto"}
+                2. REGISTRAR GASTO (si dice que gastó, compró, pagó algo):
+                   {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0,"total":0,"moneda":"EUR","fecha":"$today","categoria":"texto"}
 
-                3. REGISTRAR INGRESO (add_income): Si menciona nómina, salario, cobro, ingreso que recibió.
-                   → {"action":"add_income","concepto":"texto","total_devengado":0,"total_neto":0,"monto":0,"moneda":"EUR","fecha":"hoy","fuente":"texto"}
+                3. REGISTRAR INGRESO (si menciona nómina, salario, cobro, ingreso recibido):
+                   {"action":"add_income","concepto":"texto","total_devengado":0,"total_neto":0,"monto":0,"moneda":"EUR","fecha":"$today","fuente":"texto"}
 
-                4. CONVERSACIÓN GENERAL (chat): Saludos, despedidas, preguntas sobre conceptos financieros, qué puedes hacer.
-                   → {"action":"chat","response":"tu respuesta"}
+                4. CONVERSACIÓN GENERAL (saludos, preguntas, consejos financieros, cualquier otra cosa):
+                   {"action":"chat","response":"tu respuesta natural y útil aquí"}
+                   En este caso, responde de forma conversacional, amable y personalizada. NO respondas con frases genéricas.
+                   Si te saludan, saluda de vuelta con calidez. Si preguntan qué puedes hacer, explica tus capacidades.
+                   Si preguntan sobre conceptos financieros (IVA, IRPF, amortización, etc.), explica de forma clara y concisa.
 
-                EJEMPLOS CLAVE:
-                "¿cuánto he gastado este mes?" → query
-                "¿cuál es mi balance?" → query
-                "gasté 50 en comida" → add_expense
-                "nómina de 2500" → add_income
-                "¿qué es el IVA?" → chat
-                "hola" → chat
+                Mensaje del usuario: "$command"
 
-                Solo JSON.
+                Responde SOLO con el JSON, sin texto adicional ni markdown.
             """.trimIndent()
 
             val response = model.generateContent(content { text(prompt) })
@@ -395,7 +395,7 @@ class AIService @Inject constructor(
             if (!isGemmaReady) {
                 val modelDir = File(context.filesDir, "models")
                 val modelFile = File(modelDir, MODEL_FILE_NAME)
-                if (!modelFile.exists() || modelFile.length() < 100000000) {
+                if (!modelFile.exists() || modelFile.length() < MIN_MODEL_SIZE) {
                     return AIResult(success = false, message = "Gemma 4 no descargado. Ve a Configuración > IA para descargarlo.")
                 }
 
@@ -409,24 +409,27 @@ class AIService @Inject constructor(
 
             val today = java.time.LocalDate.now().toString()
             val prompt = """
-                Eres FinAI, un asistente financiero. Hoy es $today.
+                Eres FinAI, un asistente financiero inteligente que funciona en local con Gemma 4. Hoy es $today.
+                Tu personalidad: eres cercano, profesional, útil y conversacional. Respondes en español.
 
-                Analiza la consulta y devuelve EXACTAMENTE un JSON con "action".
+                Analiza el mensaje y devuelve SOLO un JSON válido:
 
-                PRIORIDAD:
-                1. Si pregunta sobre gastos/ingresos/balance → query
-                2. Si quiere registrar un gasto → add_expense
-                3. Si quiere registrar un ingreso → add_income
-                4. Si es conversación general → chat
+                Si pregunta sobre gastos/ingresos/balance/cuánto gastó:
+                {"action":"query","query_type":"gastos|ingresos|balance","periodo":"hoy|semana|mes|año","categoria":null,"item":null}
 
-                Comando: "$command"
+                Si quiere registrar un gasto (compró/pagó/gastó algo):
+                {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0,"total":0,"moneda":"EUR","fecha":"$today","categoria":"texto"}
 
-                Si es consulta: {"action":"query","query_type":"gastos|ingresos|balance","periodo":"hoy|semana|mes|año","categoria":null,"item":null}
-                Si es gasto: {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0,"total":0,"moneda":"EUR","fecha":"$today","categoria":"texto"}
-                Si es ingreso: {"action":"add_income","concepto":"texto","total_devengado":0,"total_neto":0,"monto":0,"moneda":"EUR","fecha":"$today","fuente":"texto"}
-                Si es chat: {"action":"chat","response":"tu respuesta"}
+                Si quiere registrar un ingreso (nómina/salario/cobro):
+                {"action":"add_income","concepto":"texto","total_devengado":0,"total_neto":0,"monto":0,"moneda":"EUR","fecha":"$today","fuente":"texto"}
 
-                Solo JSON, sin texto adicional.
+                Para saludos, preguntas, conversación o cualquier otra cosa:
+                {"action":"chat","response":"tu respuesta amable y natural aquí"}
+                Responde de forma conversacional. Si te saludan, saluda con calidez. Si preguntan qué haces, explica.
+                Si preguntan sobre finanzas (IVA, ahorro, inversión), da una respuesta útil y concisa.
+
+                Mensaje: "$command"
+                Solo JSON.
             """.trimIndent()
 
             val conversation = eng.createConversation()
@@ -459,7 +462,7 @@ class AIService @Inject constructor(
             if (!isGemmaReady) {
                 val modelDir = File(context.filesDir, "models")
                 val modelFile = File(modelDir, MODEL_FILE_NAME)
-                if (!modelFile.exists() || modelFile.length() < 100000000) {
+                if (!modelFile.exists() || modelFile.length() < MIN_MODEL_SIZE) {
                     return AIResult(success = false, message = "Gemma 4 no descargado. Ve a Configuración > IA.")
                 }
                 val eng = initGemmaEngine()
