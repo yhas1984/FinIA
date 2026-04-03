@@ -48,8 +48,9 @@ data class GemmaModelState(
 )
 
 // Model URLs from HuggingFace LiteRT Community
-private const val GEMMA_MODEL_URL = "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/Gemma3-1B-IT.litertlm"
-private const val MODEL_FILE_NAME = "Gemma3-1B-IT.litertlm"
+private const val GEMMA_MODEL_URL = "https://huggingface.co/litert-community/Gemma3-4B-IT/resolve/main/Gemma3-4B-IT.litertlm"
+private const val MODEL_FILE_NAME = "Gemma3-4B-IT.litertlm"
+private const val MIN_MODEL_SIZE = 1000000000L // ~1GB minimum for 4B model
 
 @Singleton
 class AIService @Inject constructor(
@@ -87,16 +88,16 @@ class AIService @Inject constructor(
             if (!modelDir.exists()) modelDir.mkdirs()
             val modelFile = File(modelDir, MODEL_FILE_NAME)
 
-            if (modelFile.exists() && modelFile.length() > 100000000) {
+            if (modelFile.exists() && modelFile.length() > MIN_MODEL_SIZE) {
                 _gemmaModelState.value = GemmaModelState(
                     isAvailable = isGemmaReady,
-                    modelSize = "Gemma 3 1B IT (${String.format("%.0f", modelFile.length() / 1024.0 / 1024.0)} MB)"
+                    modelSize = "Gemma 3 4B IT (${String.format("%.2f", modelFile.length() / 1024.0 / 1024.0 / 1024.0)} GB)"
                 )
                 Result.success("Modelo descargado")
             } else {
                 _gemmaModelState.value = GemmaModelState(
                     isAvailable = false,
-                    modelSize = "Gemma 3 1B IT (~1.2 GB)"
+                    modelSize = "Gemma 3 4B IT (~4.1 GB)"
                 )
                 Result.success("Modelo disponible para descargar")
             }
@@ -109,32 +110,38 @@ class AIService @Inject constructor(
         }
     }
 
-    suspend fun downloadGemmaModel(): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun downloadGemmaModel(hfToken: String? = null): Result<String> = withContext(Dispatchers.IO) {
         try {
             val modelDir = File(context.filesDir, "models")
             if (!modelDir.exists()) modelDir.mkdirs()
             val modelFile = File(modelDir, MODEL_FILE_NAME)
 
-            if (modelFile.exists() && modelFile.length() > 100000000) {
+            if (modelFile.exists() && modelFile.length() > MIN_MODEL_SIZE) {
                 return@withContext Result.success("Modelo ya descargado")
+            }
+
+            if (hfToken.isNullOrBlank()) {
+                return@withContext Result.failure(Exception("Se requiere un token de HuggingFace (HF_TOKEN) para descargar Gemma 3."))
             }
 
             _gemmaModelState.value = _gemmaModelState.value.copy(
                 isDownloading = true,
-                downloadProgress = 0f
+                downloadProgress = 0f,
+                error = null
             )
 
-            downloadModel(modelFile)
+            downloadModel(modelFile, hfToken)
 
-            if (modelFile.exists() && modelFile.length() > 100000000) {
+            if (modelFile.exists() && modelFile.length() > MIN_MODEL_SIZE) {
                 _gemmaModelState.value = GemmaModelState(
                     isAvailable = false,
                     isDownloading = false,
-                    modelSize = "Gemma 3 1B IT (${String.format("%.0f", modelFile.length() / 1024.0 / 1024.0)} MB)"
+                    modelSize = "Gemma 3 4B IT (${String.format("%.2f", modelFile.length() / 1024.0 / 1024.0 / 1024.0)} GB)"
                 )
                 Result.success("Modelo descargado correctamente")
             } else {
-                Result.failure(Exception("Descarga incompleta"))
+                modelFile.delete()
+                Result.failure(Exception("Descarga incompleta o token inválido"))
             }
         } catch (e: Exception) {
             Log.e("AIService", "Error downloading model", e)
@@ -146,7 +153,7 @@ class AIService @Inject constructor(
         }
     }
 
-    private fun downloadModel(destFile: File) {
+    private fun downloadModel(destFile: File, hfToken: String) {
         try {
             val url = URL(GEMMA_MODEL_URL)
             val connection = url.openConnection() as java.net.HttpURLConnection
@@ -154,7 +161,15 @@ class AIService @Inject constructor(
             connection.readTimeout = 600000
             connection.setRequestProperty("User-Agent", "Mozilla/5.0")
             connection.setRequestProperty("Accept", "*/*")
+            connection.setRequestProperty("Authorization", "Bearer $hfToken")
             connection.instanceFollowRedirects = true
+            
+            val responseCode = connection.responseCode
+            if (responseCode == 401 || responseCode == 403) {
+                throw Exception("Error $responseCode: No autorizado. Verifica tu Token de HuggingFace y acepta la licencia de Gemma 3.")
+            } else if (responseCode != 200 && responseCode != 302) {
+                throw Exception("Error de red: $responseCode")
+            }
 
             val totalSize = connection.contentLengthLong
             var downloadedBytes = 0L
@@ -188,7 +203,7 @@ class AIService @Inject constructor(
         return try {
             val modelDir = File(context.filesDir, "models")
             val modelFile = File(modelDir, MODEL_FILE_NAME)
-            if (!modelFile.exists() || modelFile.length() < 100000000) return null
+            if (!modelFile.exists() || modelFile.length() < MIN_MODEL_SIZE) return null
 
             val engineConfig = EngineConfig(
                 modelPath = modelFile.absolutePath,
