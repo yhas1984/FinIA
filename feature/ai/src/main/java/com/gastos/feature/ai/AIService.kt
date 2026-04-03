@@ -351,7 +351,7 @@ class AIService @Inject constructor(
                 errorMsg.contains("API key", ignoreCase = true) || errorMsg.contains("api_key", ignoreCase = true) ->
                     "API key de Gemini no válida. Ve a Configuración > IA para configurarla correctamente."
                 errorMsg.contains("quota", ignoreCase = true) || errorMsg.contains("rate limit", ignoreCase = true) ->
-                    "Límite de uso de Gemini API alcanzado. Intenta más tarde o cambia a Gemma 3 Local."
+                    "Límite de uso de Gemini API alcanzado. Intenta más tarde o cambia a Gemma 4 Local."
                 else -> "Error al procesar el comando: ${e.message}"
             }
             AIResult(success = false, message = friendlyMsg)
@@ -396,16 +396,16 @@ class AIService @Inject constructor(
                 val modelDir = File(context.filesDir, "models")
                 val modelFile = File(modelDir, MODEL_FILE_NAME)
                 if (!modelFile.exists() || modelFile.length() < 100000000) {
-                    return AIResult(success = false, message = "Gemma 3 no descargado. Ve a Configuración > IA para descargarlo.")
+                    return AIResult(success = false, message = "Gemma 4 no descargado. Ve a Configuración > IA para descargarlo.")
                 }
 
                 val eng = initGemmaEngine()
                 if (eng == null) {
-                    return AIResult(success = false, message = "Error al cargar Gemma 3. Verifica que el modelo esté descargado correctamente.")
+                    return AIResult(success = false, message = "Error al cargar Gemma 4. Verifica que el modelo esté descargado correctamente.")
                 }
             }
 
-            val eng = engine ?: return AIResult(success = false, message = "Gemma 3 no disponible")
+            val eng = engine ?: return AIResult(success = false, message = "Gemma 4 no disponible")
 
             val today = java.time.LocalDate.now().toString()
             val prompt = """
@@ -443,14 +443,14 @@ class AIService @Inject constructor(
             conversation.close()
 
             if (fullResponse.isBlank()) {
-                return AIResult(success = false, message = "Gemma 3 no respondió")
+                return AIResult(success = false, message = "Gemma 4 no respondió")
             }
 
             parseCommandResponse(fullResponse)
 
         } catch (e: Exception) {
             Log.e("AIService", "Error with Gemma", e)
-            AIResult(success = false, message = "Error con Gemma 3: ${e.message}")
+            AIResult(success = false, message = "Error con Gemma 4: ${e.message}")
         }
     }
 
@@ -460,15 +460,15 @@ class AIService @Inject constructor(
                 val modelDir = File(context.filesDir, "models")
                 val modelFile = File(modelDir, MODEL_FILE_NAME)
                 if (!modelFile.exists() || modelFile.length() < 100000000) {
-                    return AIResult(success = false, message = "Gemma 3 no descargado. Ve a Configuración > IA.")
+                    return AIResult(success = false, message = "Gemma 4 no descargado. Ve a Configuración > IA.")
                 }
                 val eng = initGemmaEngine()
                 if (eng == null) {
-                    return AIResult(success = false, message = "Error al cargar Gemma 3.")
+                    return AIResult(success = false, message = "Error al cargar Gemma 4.")
                 }
             }
 
-            val eng = engine ?: return AIResult(success = false, message = "Gemma 3 no disponible")
+            val eng = engine ?: return AIResult(success = false, message = "Gemma 4 no disponible")
 
             val prompt = """
                 Procesa esta consulta y extrae en JSON: {"query_type":"gastos|ingresos|balance","periodo":"hoy|semana|mes","categoria":"texto","item":"texto"}
@@ -490,14 +490,14 @@ class AIService @Inject constructor(
             conversation.close()
 
             if (fullResponse.isBlank()) {
-                return AIResult(success = false, message = "Gemma 3 no respondió")
+                return AIResult(success = false, message = "Gemma 4 no respondió")
             }
 
             AIResult(success = true, message = "Consulta procesada", queryResult = fullResponse)
 
         } catch (e: Exception) {
             Log.e("AIService", "Error with Gemma", e)
-            AIResult(success = false, message = "Error con Gemma 3: ${e.message}")
+            AIResult(success = false, message = "Error con Gemma 4: ${e.message}")
         }
     }
 
