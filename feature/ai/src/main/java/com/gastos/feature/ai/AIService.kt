@@ -48,8 +48,8 @@ data class GemmaModelState(
 )
 
 // Model URLs from HuggingFace LiteRT Community
-private const val GEMMA_MODEL_URL = "https://huggingface.co/litert-community/Gemma3-4B-IT/resolve/main/Gemma3-4B-IT.litertlm"
-private const val MODEL_FILE_NAME = "Gemma3-4B-IT.litertlm"
+private const val GEMMA_MODEL_URL = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm"
+private const val MODEL_FILE_NAME = "gemma-4-E4B-it.litertlm"
 private const val MIN_MODEL_SIZE = 1000000000L // ~1GB minimum for 4B model
 
 @Singleton
@@ -91,13 +91,13 @@ class AIService @Inject constructor(
             if (modelFile.exists() && modelFile.length() > MIN_MODEL_SIZE) {
                 _gemmaModelState.value = GemmaModelState(
                     isAvailable = isGemmaReady,
-                    modelSize = "Gemma 3 4B IT (${String.format("%.2f", modelFile.length() / 1024.0 / 1024.0 / 1024.0)} GB)"
+                    modelSize = "Gemma 4 E4B IT (${String.format("%.2f", modelFile.length() / 1024.0 / 1024.0 / 1024.0)} GB)"
                 )
                 Result.success("Modelo descargado")
             } else {
                 _gemmaModelState.value = GemmaModelState(
                     isAvailable = false,
-                    modelSize = "Gemma 3 4B IT (~4.1 GB)"
+                    modelSize = "Gemma 4 E4B IT (~4.1 GB)"
                 )
                 Result.success("Modelo disponible para descargar")
             }
@@ -121,7 +121,7 @@ class AIService @Inject constructor(
             }
 
             if (hfToken.isNullOrBlank()) {
-                return@withContext Result.failure(Exception("Se requiere un token de HuggingFace (HF_TOKEN) para descargar Gemma 3."))
+                return@withContext Result.failure(Exception("Se requiere un token de HuggingFace (HF_TOKEN) para descargar Gemma 4."))
             }
 
             _gemmaModelState.value = _gemmaModelState.value.copy(
@@ -136,7 +136,7 @@ class AIService @Inject constructor(
                 _gemmaModelState.value = GemmaModelState(
                     isAvailable = false,
                     isDownloading = false,
-                    modelSize = "Gemma 3 4B IT (${String.format("%.2f", modelFile.length() / 1024.0 / 1024.0 / 1024.0)} GB)"
+                    modelSize = "Gemma 4 E4B IT (${String.format("%.2f", modelFile.length() / 1024.0 / 1024.0 / 1024.0)} GB)"
                 )
                 Result.success("Modelo descargado correctamente")
             } else {
@@ -166,7 +166,7 @@ class AIService @Inject constructor(
             
             val responseCode = connection.responseCode
             if (responseCode == 401 || responseCode == 403) {
-                throw Exception("Error $responseCode: No autorizado. Verifica tu Token de HuggingFace y acepta la licencia de Gemma 3.")
+                throw Exception("Error $responseCode: No autorizado. Verifica tu Token de HuggingFace y acepta la licencia de Gemma 4.")
             } else if (responseCode != 200 && responseCode != 302) {
                 throw Exception("Error de red: $responseCode")
             }
@@ -228,7 +228,7 @@ class AIService @Inject constructor(
             AIEngine.GEMINI_API -> processInvoiceWithGemini(imageUri)
             AIEngine.GEMMA_LOCAL -> AIResult(
                 success = false,
-                message = "Gemma 3 no soporta OCR de imágenes. Usa Gemini API para escanear facturas."
+                message = "Gemma 4 no soporta OCR de imágenes. Usa Gemini API para escanear facturas."
             )
         }
     }
