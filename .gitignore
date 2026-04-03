@@ -1,0 +1,22 @@
+# Android
+build/
+*.iml
+.gradle
+gradlew
+gradlew.bat
+local.properties
+.idea
+.navigation
+capture/
+.externalNativeBuild
+.cxx
+google-services.json
+
+# Kotlin
+.kotlin/
+
+# IDEs
+.vscode/
+
+# OS
+.DS_Store

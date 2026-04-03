@@ -1,0 +1,53 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Dollar sign symbol - stylized FinAI logo -->
+    <path
+        android:pathData="M54,28 L54,80"
+        android:strokeWidth="4"
+        android:strokeColor="#50FA7B"
+        android:strokeLineCap="round"/>
+
+    <path
+        android:pathData="M42,38 C42,33 47,28 54,28 C61,28 66,33 66,38 C66,43 61,48 54,48 C47,48 42,53 42,58 C42,63 47,68 54,68 C61,68 66,63 66,58"
+        android:strokeWidth="5"
+        android:fillColor="#00000000">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="42"
+                android:startY="28"
+                android:endX="66"
+                android:endY="68"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFBD93F9"/>
+                <item android:offset="1" android:color="#FF50FA7B"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Small decorative dots -->
+    <path
+        android:pathData="M34,44 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0"
+        android:fillColor="#BD93F9"
+        android:fillAlpha="0.6"/>
+
+    <path
+        android:pathData="M74,52 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0"
+        android:fillColor="#50FA7B"
+        android:fillAlpha="0.6"/>
+
+    <path
+        android:pathData="M38,62 m-1.5,0 a1.5,1.5 0,1 1,3 0 a1.5,1.5 0,1 1,-3 0"
+        android:fillColor="#BD93F9"
+        android:fillAlpha="0.4"/>
+
+    <path
+        android:pathData="M70,36 m-1.5,0 a1.5,1.5 0,1 1,3 0 a1.5,1.5 0,1 1,-3 0"
+        android:fillColor="#50FA7B"
+        android:fillAlpha="0.4"/>
+
+</vector>
