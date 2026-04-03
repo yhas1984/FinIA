@@ -222,7 +222,7 @@ class ChatbotViewModel @Inject constructor(
         }
     }
 
-    private suspend fun executeQuery(queryType: String, periodo: String, categoria: String?, item: String?): String {
+    private fun getDateRange(periodo: String): Pair<Long, Long> {
         val now = System.currentTimeMillis()
 
         val hoyCal = Calendar.getInstance()
@@ -271,50 +271,124 @@ class ChatbotViewModel @Inject constructor(
         anoCal.set(Calendar.SECOND, 59)
         val anoEnd = anoCal.timeInMillis
 
-        val (start, end) = when (periodo.lowercase()) {
+        return when (periodo.lowercase()) {
             "hoy" -> hoyStart to hoyEnd
             "semana" -> semanaStart to now
             "mes" -> mesStart to mesEnd
             "año" -> anoStart to anoEnd
             else -> mesStart to mesEnd
         }
+    }
+
+    private suspend fun executeQuery(queryType: String, periodo: String, categoria: String?, item: String?): String {
+        val (start, end) = getDateRange(periodo)
+        val fmt = java.text.NumberFormat.getCurrencyInstance(Locale("es", "ES"))
 
         val invoices = invoiceRepository.getAllInvoices().first()
         val incomes = incomeRepository.getAllIncomes().first()
+        val allProducts = productRepository.getAllProducts().first()
 
-        var totalGastos = 0.0
-        var totalIngresos = 0.0
-        var countGastos = 0
-        var countIngresos = 0
+        // Filter by date range
+        val periodInvoices = invoices.filter { it.fecha in start..end }
+        val periodIncomes = incomes.filter { it.fecha in start..end }
+        val periodInvoiceIds = periodInvoices.map { it.id }.toSet()
+        val periodProducts = allProducts.filter { it.invoiceId in periodInvoiceIds }
 
-        invoices.forEach { inv ->
-            if (inv.fecha >= start && inv.fecha <= end) {
-                if (inv.tipo == InvoiceType.GASTO) {
-                    totalGastos += inv.total
-                    countGastos++
-                } else {
-                    totalIngresos += inv.total
-                    countIngresos++
-                }
-            }
-        }
+        val totalGastos = periodInvoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { it.total }
+        val totalIngresos = periodInvoices.filter { it.tipo == InvoiceType.INGRESO }.sumOf { it.total } +
+                periodIncomes.sumOf { it.monto }
+        val countGastos = periodInvoices.count { it.tipo == InvoiceType.GASTO }
+        val countIngresos = periodInvoices.count { it.tipo == InvoiceType.INGRESO } + periodIncomes.size
 
-        incomes.forEach { inc ->
-            if (inc.fecha >= start && inc.fecha <= end) {
-                totalIngresos += inc.monto
-                countIngresos++
-            }
-        }
-
-        Log.d(TAG, "Query result: type=$queryType, period=$periodo, gastos=$totalGastos, ingresos=$totalIngresos")
-
-        val fmt = java.text.NumberFormat.getCurrencyInstance(Locale("es", "ES"))
+        Log.d(TAG, "Query: type=$queryType, period=$periodo, gastos=$totalGastos, ingresos=$totalIngresos, products=${periodProducts.size}")
 
         return when (queryType.lowercase()) {
-            "gastos" -> "💰 Gastos del $periodo:\n• Total: ${fmt.format(totalGastos)}\n• Cantidad: $countGastos transacciones"
-            "ingresos" -> "💵 Ingresos del $periodo:\n• Total: ${fmt.format(totalIngresos)}\n• Cantidad: $countIngresos transacciones"
-            "balance" -> "📊 Balance del $periodo:\n• Ingresos: ${fmt.format(totalIngresos)}\n• Gastos: ${fmt.format(totalGastos)}\n• Balance: ${fmt.format(totalIngresos - totalGastos)}"
-            else -> "📊 Resumen del $periodo:\n• Ingresos: ${fmt.format(totalIngresos)}\n• Gastos: ${fmt.format(totalGastos)}\n• Balance: ${fmt.format(totalIngresos - totalGastos)}"
+            "gastos" -> {
+                val sb = StringBuilder("💰 Gastos del $periodo:\n")
+                sb.append("• Total: ${fmt.format(totalGastos)}\n")
+                sb.append("• Cantidad: $countGastos transacciones\n")
+                if (periodInvoices.isNotEmpty()) {
+                    val byProvider = periodInvoices.filter { it.tipo == InvoiceType.GASTO }
+                        .groupBy { it.proveedor }
+                        .mapValues { it.value.sumOf { inv -> inv.total } }
+                        .toList().sortedByDescending { it.second }.take(5)
+                    if (byProvider.isNotEmpty()) {
+                        sb.append("\n📋 Top proveedores:\n")
+                        byProvider.forEach { (name, total) ->
+                            sb.append("  • $name: ${fmt.format(total)}\n")
+                        }
+                    }
+                }
+                sb.toString().trimEnd()
+            }
+            "ingresos" -> {
+                val sb = StringBuilder("💵 Ingresos del $periodo:\n")
+                sb.append("• Total: ${fmt.format(totalIngresos)}\n")
+                sb.append("• Cantidad: $countIngresos transacciones\n")
+                if (periodIncomes.isNotEmpty()) {
+                    val bySource = periodIncomes.groupBy { it.fuente ?: it.concepto }
+                        .mapValues { it.value.sumOf { inc -> inc.monto } }
+                        .toList().sortedByDescending { it.second }.take(5)
+                    if (bySource.isNotEmpty()) {
+                        sb.append("\n📋 Fuentes principales:\n")
+                        bySource.forEach { (name, total) ->
+                            sb.append("  • $name: ${fmt.format(total)}\n")
+                        }
+                    }
+                }
+                sb.toString().trimEnd()
+            }
+            "balance" -> {
+                val balance = totalIngresos - totalGastos
+                val emoji = if (balance >= 0) "✅" else "⚠️"
+                "📊 Balance del $periodo:\n• Ingresos: ${fmt.format(totalIngresos)} ($countIngresos)\n• Gastos: ${fmt.format(totalGastos)} ($countGastos)\n• Balance: $emoji ${fmt.format(balance)}"
+            }
+            "productos", "producto" -> {
+                if (periodProducts.isEmpty()) {
+                    return "📦 No hay productos registrados en el periodo: $periodo"
+                }
+                val sb = StringBuilder("📦 Productos del $periodo:\n")
+                // Most bought by frequency
+                val byFrequency = periodProducts.groupBy { it.descripcion.lowercase().trim() }
+                    .mapValues { it.value.sumOf { p -> p.cantidad }.toInt() to it.value.sumOf { p -> p.subtotal } }
+                    .toList().sortedByDescending { it.second.first }.take(5)
+
+                sb.append("\n🏆 Más comprados (por frecuencia):\n")
+                byFrequency.forEachIndexed { i, (name, pair) ->
+                    sb.append("  ${i + 1}. ${name.replaceFirstChar { it.uppercase() }}: ${pair.first} uds - ${fmt.format(pair.second)}\n")
+                }
+
+                // Most expensive
+                val byAmount = periodProducts.groupBy { it.descripcion.lowercase().trim() }
+                    .mapValues { it.value.sumOf { p -> p.subtotal } }
+                    .toList().sortedByDescending { it.second }.take(5)
+
+                sb.append("\n💸 Mayor gasto por producto:\n")
+                byAmount.forEachIndexed { i, (name, total) ->
+                    sb.append("  ${i + 1}. ${name.replaceFirstChar { it.uppercase() }}: ${fmt.format(total)}\n")
+                }
+
+                sb.append("\n📊 Total productos: ${periodProducts.size} items - ${fmt.format(periodProducts.sumOf { it.subtotal })}")
+                sb.toString().trimEnd()
+            }
+            else -> {
+                // Full summary for unknown query types
+                val balance = totalIngresos - totalGastos
+                val sb = StringBuilder("📊 Resumen completo del $periodo:\n")
+                sb.append("• Ingresos: ${fmt.format(totalIngresos)} ($countIngresos)\n")
+                sb.append("• Gastos: ${fmt.format(totalGastos)} ($countGastos)\n")
+                sb.append("• Balance: ${fmt.format(balance)}\n")
+                if (periodProducts.isNotEmpty()) {
+                    sb.append("• Productos registrados: ${periodProducts.size}\n")
+                    val topProduct = periodProducts.groupBy { it.descripcion.lowercase().trim() }
+                        .mapValues { it.value.sumOf { p -> p.cantidad }.toInt() }
+                        .toList().sortedByDescending { it.second }.firstOrNull()
+                    if (topProduct != null) {
+                        sb.append("• Producto más comprado: ${topProduct.first.replaceFirstChar { it.uppercase() }} (${topProduct.second} uds)")
+                    }
+                }
+                sb.toString().trimEnd()
+            }
         }
     }
 

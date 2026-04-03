@@ -319,8 +319,9 @@ class AIService @Inject constructor(
 
                 Analiza el mensaje del usuario y devuelve EXACTAMENTE un JSON según estas reglas:
 
-                1. CONSULTA FINANCIERA (si pregunta cuánto gastó, sus ingresos, balance, totales, etc.):
-                   {"action":"query","query_type":"gastos|ingresos|balance","periodo":"hoy|semana|mes|año","categoria":null,"item":null}
+                1. CONSULTA FINANCIERA (si pregunta cuánto gastó, sus ingresos, balance, totales, productos, etc.):
+                   {"action":"query","query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":null,"item":null}
+                   Usa query_type "productos" si pregunta por productos, artículos comprados, qué compró más, etc.
 
                 2. REGISTRAR GASTO (si dice que gastó, compró, pagó algo):
                    {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0,"total":0,"moneda":"EUR","fecha":"$today","categoria":"texto"}
@@ -414,8 +415,9 @@ class AIService @Inject constructor(
 
                 Analiza el mensaje y devuelve SOLO un JSON válido:
 
-                Si pregunta sobre gastos/ingresos/balance/cuánto gastó:
-                {"action":"query","query_type":"gastos|ingresos|balance","periodo":"hoy|semana|mes|año","categoria":null,"item":null}
+                Si pregunta sobre gastos/ingresos/balance/cuánto gastó/productos:
+                {"action":"query","query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":null,"item":null}
+                Usa "productos" si pregunta por productos, artículos, qué compró más, etc.
 
                 Si quiere registrar un gasto (compró/pagó/gastó algo):
                 {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0,"total":0,"moneda":"EUR","fecha":"$today","categoria":"texto"}
@@ -647,7 +649,7 @@ class AIService @Inject constructor(
                     AIResult(success = true, message = "Ingreso agregado: $concepto - $displayMonto", queryResult = "INCOME:${income.concepto}:${income.monto}:${income.moneda}:${income.fecha}:${income.fuente}")
                 }
                 "query" -> {
-                    AIResult(success = true, message = "Consulta procesada", queryResult = responseText)
+                    AIResult(success = true, message = "Consulta procesada", queryResult = json.toString())
                 }
                 "chat" -> {
                     val chatResponse = json.optString("response", "")
