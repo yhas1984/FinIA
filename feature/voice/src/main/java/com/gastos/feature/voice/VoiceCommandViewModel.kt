@@ -8,6 +8,8 @@ import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import com.gastos.feature.ai.AIService
 import com.gastos.feature.ai.AIResult
+import com.gastos.feature.ai.FinanceChatReplyBuilder
+import com.gastos.feature.ai.IncomeQueryResultParser
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.ProductRepository
@@ -24,6 +26,8 @@ data class VoiceCommandUiState(
     val isListening: Boolean = false,
     val recognizedText: String = "",
     val aiResult: AIResult? = null,
+    /** Misma redacción que en el chat (consultas incluidas); coherencia con memoria de sesión. */
+    val assistantReply: String? = null,
     val isSaving: Boolean = false,
     val saveResult: String? = null,
     val error: String? = null
@@ -33,6 +37,7 @@ data class VoiceCommandUiState(
 class VoiceCommandViewModel @Inject constructor(
     private val voiceRecognitionService: VoiceRecognitionService,
     private val aiService: AIService,
+    private val financeChatReplyBuilder: FinanceChatReplyBuilder,
     private val invoiceRepository: InvoiceRepository,
     private val productRepository: ProductRepository,
     private val incomeRepository: IncomeRepository
@@ -48,6 +53,7 @@ class VoiceCommandViewModel @Inject constructor(
                     isListening = true,
                     recognizedText = "",
                     aiResult = null,
+                    assistantReply = null,
                     error = null,
                     saveResult = null
                 )
@@ -90,6 +96,7 @@ class VoiceCommandViewModel @Inject constructor(
             it.copy(
                 recognizedText = text,
                 aiResult = null,
+                assistantReply = null,
                 error = null,
                 saveResult = null
             )
@@ -99,14 +106,18 @@ class VoiceCommandViewModel @Inject constructor(
 
     private fun processWithAI(text: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(error = null) }
+            _uiState.update { it.copy(error = null, assistantReply = null) }
 
             try {
                 val result = aiService.processCommand(text)
-                _uiState.update { it.copy(aiResult = result) }
+                val reply = financeChatReplyBuilder.buildAssistantReply(result)
+                if (text.isNotBlank()) {
+                    aiService.recordSessionTurn(text.trim(), reply)
+                }
+                _uiState.update { it.copy(aiResult = result, assistantReply = reply) }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(error = e.message ?: "Error al procesar con IA")
+                    it.copy(error = e.message ?: "Error al procesar con IA", assistantReply = null)
                 }
             }
         }
@@ -117,6 +128,7 @@ class VoiceCommandViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true, saveResult = null) }
 
             try {
+                val incomePayload = result.queryResult?.let { IncomeQueryResultParser.parse(it) }
                 when {
                     result.invoice != null -> {
                         val invoice = result.invoice!!
@@ -137,30 +149,13 @@ class VoiceCommandViewModel @Inject constructor(
                             )
                         }
                     }
-                    result.queryResult != null && result.queryResult?.startsWith("INCOME:") == true -> {
-                        val parts = result.queryResult?.split(":") ?: emptyList()
-                        if (parts.size >= 4) {
-                            val income = Income(
-                                concepto = parts[1],
-                                monto = parts[2].toDoubleOrNull() ?: 0.0,
-                                moneda = parts.getOrNull(3) ?: "EUR",
-                                fecha = parts.getOrNull(4)?.toLongOrNull() ?: System.currentTimeMillis(),
-                                fuente = parts.getOrNull(5)
+                    incomePayload != null -> {
+                        incomeRepository.insertIncome(incomePayload)
+                        _uiState.update {
+                            it.copy(
+                                isSaving = false,
+                                saveResult = "Ingreso guardado correctamente"
                             )
-                            incomeRepository.insertIncome(income)
-                            _uiState.update {
-                                it.copy(
-                                    isSaving = false,
-                                    saveResult = "Ingreso guardado correctamente"
-                                )
-                            }
-                        } else {
-                            _uiState.update {
-                                it.copy(
-                                    isSaving = false,
-                                    saveResult = "Error: datos de ingreso incompletos"
-                                )
-                            }
                         }
                     }
                     else -> {

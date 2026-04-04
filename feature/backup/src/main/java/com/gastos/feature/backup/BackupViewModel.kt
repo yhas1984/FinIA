@@ -112,6 +112,73 @@ class BackupViewModel @Inject constructor(
         return Triple(invoices, incomes, products)
     }
 
+    private fun buildStructuredCsv(invoices: List<Invoice>, incomes: List<Income>, products: List<Product>): String {
+        val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val invoiceById = invoices.associateBy { it.id }
+        return buildString {
+            append("GASTOS\n")
+            append("Fecha,Proveedor,CIF,Base Imponible,IVA importe,Total,Categoria,ID\n")
+            invoices.filter { it.tipo == InvoiceType.GASTO }.forEach { inv ->
+                append(inv.fecha.let { df.format(Date(it)) })
+                append(",")
+                append("\"${inv.proveedor.replace("\"", "\"\"")}\"")
+                append(",")
+                append("\"${(inv.nifEmisor ?: "").replace("\"", "\"\"")}\"")
+                append(",")
+                append(inv.baseImponible)
+                append(",")
+                append(inv.ivaImporte)
+                append(",")
+                append(inv.total)
+                append(",")
+                append("\"${(inv.categoria ?: "").replace("\"", "\"\"")}\"")
+                append(",")
+                append(inv.id)
+                append("\n")
+            }
+            append("\nPRODUCTOS\n")
+            append("Fecha,Comercio,Producto,Cantidad,Precio unitario,Total,ID producto,ID factura\n")
+            products.forEach { p ->
+                val inv = invoiceById[p.invoiceId]
+                val f = p.fechaCompra ?: inv?.fecha ?: p.createdAt
+                append(df.format(Date(f)))
+                append(",")
+                append("\"${(p.comercio ?: inv?.proveedor ?: "").replace("\"", "\"\"")}\"")
+                append(",")
+                append("\"${p.descripcion.replace("\"", "\"\"")}\"")
+                append(",")
+                append(p.cantidad)
+                append(",")
+                append(p.precioUnitario)
+                append(",")
+                append(p.subtotal)
+                append(",")
+                append(p.id)
+                append(",")
+                append(p.invoiceId)
+                append("\n")
+            }
+            append("\nINGRESOS\n")
+            append("Fecha,Concepto,Tipo,Total devengado,Total deducciones,Total líquido,ID\n")
+            incomes.forEach { income ->
+                append(df.format(Date(income.fecha)))
+                append(",")
+                append("\"${income.concepto.replace("\"", "\"\"")}\"")
+                append(",")
+                append("\"${(income.tipoIngreso ?: "").replace("\"", "\"\"")}\"")
+                append(",")
+                append(income.totalDevengado)
+                append(",")
+                append(income.totalDeducciones)
+                append(",")
+                append(income.totalNeto.takeIf { it > 0 } ?: income.monto)
+                append(",")
+                append(income.id)
+                append("\n")
+            }
+        }
+    }
+
     fun exportToCsv(context: Context, uri: Uri) {
         viewModelScope.launch {
             _uiState.update { it.copy(isExporting = true, exportResult = null) }
@@ -121,95 +188,7 @@ class BackupViewModel @Inject constructor(
 
                 context.contentResolver.openOutputStream(uri)?.use { outputStream ->
                     val csvContent = buildString {
-                        append("Tipo,ID,Fecha,Concepto,Monto,Moneda,IVA%,IRPF%,Devengado,Neto,Notas\n")
-
-                        invoices.forEach { invoice ->
-                            append(
-                                buildString {
-                                    append(if (invoice.tipo == InvoiceType.GASTO) "Gasto" else "Ingreso")
-                                    append(",")
-                                    append(invoice.id)
-                                    append(",")
-                                    append(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(invoice.fecha)))
-                                    append(",")
-                                    append("\"${invoice.proveedor.replace("\"", "\"\"")}\"")
-                                    append(",")
-                                    append(invoice.total)
-                                    append(",")
-                                    append(invoice.moneda)
-                                    append(",")
-                                    append(invoice.ivaPercent)
-                                    append(",")
-                                    append(invoice.irpfPercent)
-                                    append(",")
-                                    append("")
-                                    append(",")
-                                    append("")
-                                    append(",")
-                                    append("\"${(invoice.notas ?: "").replace("\"", "\"\"")}\"")
-                                    append("\n")
-                                }
-                            )
-                        }
-
-                        products.forEach { product ->
-                            append(
-                                buildString {
-                                    append("Producto")
-                                    append(",")
-                                    append(product.id)
-                                    append(",")
-                                    append(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(product.createdAt)))
-                                    append(",")
-                                    append("\"${product.descripcion.replace("\"", "\"\"")}\"")
-                                    append(",")
-                                    append(product.subtotal)
-                                    append(",")
-                                    append("EUR")
-                                    append(",")
-                                    append(product.ivaPercent)
-                                    append(",")
-                                    append("0")
-                                    append(",")
-                                    append("")
-                                    append(",")
-                                    append("")
-                                    append(",")
-                                    append("\"\"")
-                                    append("\n")
-                                }
-                            )
-                        }
-
-                        incomes.forEach { income ->
-                            append(
-                                buildString {
-                                    append("Ingreso")
-                                    append(",")
-                                    append(income.id)
-                                    append(",")
-                                    append(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(income.fecha)))
-                                    append(",")
-                                    append("\"${income.concepto.replace("\"", "\"\"")}\"")
-                                    append(",")
-                                    append(income.monto)
-                                    append(",")
-                                    append(income.moneda)
-                                    append(",")
-                                    append(income.ivaPercent)
-                                    append(",")
-                                    append(income.irpfPercent)
-                                    append(",")
-                                    append(income.totalDevengado)
-                                    append(",")
-                                    append(income.totalNeto)
-                                    append(",")
-                                    append("\"${(income.notas ?: "").replace("\"", "\"\"")}\"")
-                                    append("\n")
-                                }
-                            )
-                        }
-
+                        append(buildStructuredCsv(invoices, incomes, products))
                         append("\n")
                         append("RESUMEN\n")
                         val totalGastos = invoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { it.total }
@@ -365,96 +344,7 @@ class BackupViewModel @Inject constructor(
                 if (!exportDir.exists()) exportDir.mkdirs()
                 val csvFile = File(exportDir, "finai_backup_$timestamp.csv")
 
-                csvFile.writeText(buildString {
-                    append("Tipo,ID,Fecha,Concepto,Monto,Moneda,IVA%,IRPF%,Devengado,Neto,Notas\n")
-
-                    invoices.forEach { invoice ->
-                        append(
-                            buildString {
-                                append(if (invoice.tipo == InvoiceType.GASTO) "Gasto" else "Ingreso")
-                                append(",")
-                                append(invoice.id)
-                                append(",")
-                                append(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(invoice.fecha)))
-                                append(",")
-                                append("\"${invoice.proveedor.replace("\"", "\"\"")}\"")
-                                append(",")
-                                append(invoice.total)
-                                append(",")
-                                append(invoice.moneda)
-                                append(",")
-                                append(invoice.ivaPercent)
-                                append(",")
-                                append(invoice.irpfPercent)
-                                append(",")
-                                append("")
-                                append(",")
-                                append("")
-                                append(",")
-                                append("\"${(invoice.notas ?: "").replace("\"", "\"\"")}\"")
-                                append("\n")
-                            }
-                        )
-                    }
-
-                    products.forEach { product ->
-                        append(
-                            buildString {
-                                append("Producto")
-                                append(",")
-                                append(product.id)
-                                append(",")
-                                append(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(product.createdAt)))
-                                append(",")
-                                append("\"${product.descripcion.replace("\"", "\"\"")}\"")
-                                append(",")
-                                append(product.subtotal)
-                                append(",")
-                                append("EUR")
-                                append(",")
-                                append(product.ivaPercent)
-                                append(",")
-                                append("0")
-                                append(",")
-                                append("")
-                                append(",")
-                                append("")
-                                append(",")
-                                append("\"\"")
-                                append("\n")
-                            }
-                        )
-                    }
-
-                    incomes.forEach { income ->
-                        append(
-                            buildString {
-                                append("Ingreso")
-                                append(",")
-                                append(income.id)
-                                append(",")
-                                append(SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(income.fecha)))
-                                append(",")
-                                append("\"${income.concepto.replace("\"", "\"\"")}\"")
-                                append(",")
-                                append(income.monto)
-                                append(",")
-                                append(income.moneda)
-                                append(",")
-                                append(income.ivaPercent)
-                                append(",")
-                                append(income.irpfPercent)
-                                append(",")
-                                append(income.totalDevengado)
-                                append(",")
-                                append(income.totalNeto)
-                                append(",")
-                                append("\"${(income.notas ?: "").replace("\"", "\"\"")}\"")
-                                append("\n")
-                            }
-                        )
-                    }
-                })
+                csvFile.writeText(buildStructuredCsv(invoices, incomes, products))
 
                 val fileUri = androidx.core.content.FileProvider.getUriForFile(
                     context,

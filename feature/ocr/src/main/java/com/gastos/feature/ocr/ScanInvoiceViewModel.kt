@@ -9,6 +9,7 @@ import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import com.gastos.feature.ai.AIService
 import com.gastos.feature.ai.AIResult
+import com.gastos.feature.ai.IncomeQueryResultParser
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.ProductRepository
@@ -78,21 +79,31 @@ class ScanInvoiceViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true, saveResult = null) }
 
             try {
+                val incomePayload = result.queryResult?.let { IncomeQueryResultParser.parse(it) }
                 when {
                     result.invoice != null -> {
                         val invoice = result.invoice!!
                         
                         if (invoice.tipo == InvoiceType.INGRESO) {
+                            val liquido = invoice.total
+                            val devengado = invoice.ingresoDevengado.takeIf { it > 0.01 } ?: liquido
+                            val ded = invoice.ingresoDeducciones.takeIf { it > 0.01 }
+                                ?: (devengado - liquido).takeIf { it > 0.01 } ?: 0.0
                             val income = Income(
                                 fecha = invoice.fecha,
-                                concepto = invoice.proveedor,
-                                monto = invoice.total,
+                                concepto = invoice.conceptoIngreso?.takeIf { it.isNotBlank() } ?: invoice.proveedor,
+                                monto = liquido,
+                                totalDevengado = devengado,
+                                totalDeducciones = ded,
+                                totalNeto = liquido,
                                 moneda = invoice.moneda,
+                                tipoIngreso = invoice.ingresoTipo,
                                 fuente = invoice.nifEmisor,
                                 ivaPercent = invoice.ivaPercent,
                                 irpfPercent = invoice.irpfPercent,
                                 imagenUri = invoice.imagenUri,
-                                notas = invoice.notas
+                                notas = invoice.notas,
+                                categoria = invoice.categoria
                             )
                             incomeRepository.insertIncome(income)
                             _uiState.update {
@@ -105,8 +116,14 @@ class ScanInvoiceViewModel @Inject constructor(
                             val savedInvoiceId = invoiceRepository.insertInvoice(invoice)
 
                             if (result.products.isNotEmpty()) {
+                                val fe = invoice.fecha
+                                val prov = invoice.proveedor
                                 val productsWithInvoiceId = result.products.map {
-                                    it.copy(invoiceId = savedInvoiceId)
+                                    it.copy(
+                                        invoiceId = savedInvoiceId,
+                                        comercio = it.comercio ?: prov,
+                                        fechaCompra = it.fechaCompra ?: fe
+                                    )
                                 }
                                 productRepository.insertProducts(productsWithInvoiceId)
                             }
@@ -119,30 +136,13 @@ class ScanInvoiceViewModel @Inject constructor(
                             }
                         }
                     }
-                    result.queryResult != null && result.queryResult?.startsWith("INCOME:") == true -> {
-                        val parts = result.queryResult?.split(":") ?: emptyList()
-                        if (parts.size >= 4) {
-                            val income = Income(
-                                concepto = parts[1],
-                                monto = parts[2].toDoubleOrNull() ?: 0.0,
-                                moneda = parts.getOrNull(3) ?: "EUR",
-                                fecha = parts.getOrNull(4)?.toLongOrNull() ?: System.currentTimeMillis(),
-                                fuente = parts.getOrNull(5)
+                    incomePayload != null -> {
+                        incomeRepository.insertIncome(incomePayload)
+                        _uiState.update {
+                            it.copy(
+                                isSaving = false,
+                                saveResult = "Ingreso guardado correctamente"
                             )
-                            incomeRepository.insertIncome(income)
-                            _uiState.update {
-                                it.copy(
-                                    isSaving = false,
-                                    saveResult = "Ingreso guardado correctamente"
-                                )
-                            }
-                        } else {
-                            _uiState.update {
-                                it.copy(
-                                    isSaving = false,
-                                    saveResult = "Error: datos de ingreso incompletos"
-                                )
-                            }
                         }
                     }
                     else -> {

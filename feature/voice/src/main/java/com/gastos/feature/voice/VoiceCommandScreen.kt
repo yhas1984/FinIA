@@ -276,7 +276,7 @@ fun VoiceCommandScreen(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(text = result.message)
+                        Text(text = uiState.assistantReply ?: result.message)
                         
                         if (result.success) {
                             Spacer(modifier = Modifier.height(16.dp))

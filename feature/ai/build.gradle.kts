@@ -54,8 +54,14 @@ dependencies {
     // LiteRT-LM (Gemma 4 on-device)
     implementation(libs.litert.lm)
 
+    // Local OCR
+    implementation(libs.mlkit.text.recognition)
+
     // Project modules
     implementation(project(":core:domain"))
     implementation(project(":core:data"))
     implementation(project(":core:common"))
+
+    testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
 }

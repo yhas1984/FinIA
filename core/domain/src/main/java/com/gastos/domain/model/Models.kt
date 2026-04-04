@@ -9,6 +9,10 @@ data class Invoice(
     val tipo: InvoiceType,
     val moneda: String = "EUR",
     val total: Double,
+    /** Base imponible (facturas de gasto). */
+    val baseImponible: Double = 0.0,
+    /** Cuota de IVA en importe (no el porcentaje). */
+    val ivaImporte: Double = 0.0,
     val ivaPercent: Double = 21.0,
     val irpfPercent: Double = 0.0,
     val paisCodigo: String = "ES",
@@ -17,6 +21,15 @@ data class Invoice(
     val imagenUri: String? = null,
     val ocrRawText: String? = null,
     val notas: String? = null,
+    val categoria: String? = null,
+    /** Solo INGRESO: total devengado / bruto de la nómina. */
+    val ingresoDevengado: Double = 0.0,
+    /** Solo INGRESO: suma de deducciones (SS + IRPF + otras). */
+    val ingresoDeducciones: Double = 0.0,
+    /** Solo INGRESO: tipo descriptivo (ej. nómina, complemento). */
+    val ingresoTipo: String? = null,
+    /** Solo INGRESO: concepto visible (ej. «Nómina marzo 2025»). Si null, se usa proveedor. */
+    val conceptoIngreso: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -31,6 +44,11 @@ data class Product(
     val ivaPercent: Double = 21.0,
     val ivaAmount: Double = subtotal * ivaPercent / 100.0,
     val categoriaId: Long? = null,
+    val categoria: String? = null,
+    /** Comercio / proveedor de la línea (exportación). */
+    val comercio: String? = null,
+    /** Fecha de la compra en ms (misma que la factura si no se indica). */
+    val fechaCompra: Long? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -40,13 +58,17 @@ data class Income(
     val concepto: String,
     val monto: Double,
     val totalDevengado: Double = 0.0,
+    val totalDeducciones: Double = 0.0,
     val totalNeto: Double = 0.0,
     val moneda: String = "EUR",
+    /** Tipo de ingreso (ej. nómina, venta, otros). */
+    val tipoIngreso: String? = null,
     val fuente: String? = null,
     val ivaPercent: Double = 0.0,
     val irpfPercent: Double = 0.0,
     val imagenUri: String? = null,
     val notas: String? = null,
+    val categoria: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

@@ -20,6 +20,29 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE invoices ADD COLUMN categoria TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE products ADD COLUMN categoria TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE incomes ADD COLUMN categoria TEXT DEFAULT NULL")
+    }
+}
+
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE invoices ADD COLUMN baseImponible REAL NOT NULL DEFAULT 0.0")
+        db.execSQL("ALTER TABLE invoices ADD COLUMN ivaImporte REAL NOT NULL DEFAULT 0.0")
+        db.execSQL("ALTER TABLE invoices ADD COLUMN ingresoDevengado REAL NOT NULL DEFAULT 0.0")
+        db.execSQL("ALTER TABLE invoices ADD COLUMN ingresoDeducciones REAL NOT NULL DEFAULT 0.0")
+        db.execSQL("ALTER TABLE invoices ADD COLUMN ingresoTipo TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE invoices ADD COLUMN conceptoIngreso TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE products ADD COLUMN comercio TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE products ADD COLUMN fechaCompra INTEGER DEFAULT NULL")
+        db.execSQL("ALTER TABLE incomes ADD COLUMN totalDeducciones REAL NOT NULL DEFAULT 0.0")
+        db.execSQL("ALTER TABLE incomes ADD COLUMN tipoIngreso TEXT DEFAULT NULL")
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
@@ -32,7 +55,7 @@ object AppModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()
     }

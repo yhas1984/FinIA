@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -47,11 +48,34 @@ fun ChatbotScreen(
         android.speech.SpeechRecognizer.isRecognitionAvailable(context)
     }
 
-    // Image picker launcher
-    val imagePickerLauncher = rememberLauncherForActivityResult(
+    // Attachment options state
+    var showAttachMenu by remember { mutableStateOf(false) }
+    var tempCameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    // Launchers
+    val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { viewModel.processImage(it) }
+    ) { uri: Uri? -> uri?.let { viewModel.processImage(it) } }
+
+    val documentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? -> uri?.let { viewModel.processImage(it) } }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            tempCameraUri?.let { viewModel.processImage(it) }
+        }
+    }
+
+    val createTempImageUri = {
+        val tempFile = java.io.File.createTempFile("scan_", ".jpg", context.cacheDir)
+        androidx.core.content.FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            tempFile
+        )
     }
 
     // Permission launcher for voice
@@ -152,13 +176,67 @@ fun ChatbotScreen(
                             Text(if (uiState.isListening) "Detener" else "Voz", style = MaterialTheme.typography.labelMedium)
                         }
                         OutlinedButton(
-                            onClick = { imagePickerLauncher.launch("image/*") },
+                            onClick = { showAttachMenu = true },
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Escanear", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+
+                    if (showAttachMenu) {
+                        ModalBottomSheet(onDismissRequest = { showAttachMenu = false }) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    "Adjuntar archivo",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(bottom = 16.dp)
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            val uri = createTempImageUri()
+                                            tempCameraUri = uri
+                                            cameraLauncher.launch(uri)
+                                            showAttachMenu = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.padding(end = 16.dp))
+                                    Text("Tomar foto", style = MaterialTheme.typography.bodyLarge)
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            galleryLauncher.launch("image/*")
+                                            showAttachMenu = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.padding(end = 16.dp))
+                                    Text("Elegir de galería", style = MaterialTheme.typography.bodyLarge)
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            documentLauncher.launch(arrayOf("application/pdf", "image/*"))
+                                            showAttachMenu = false
+                                        }
+                                        .padding(vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, modifier = Modifier.padding(end = 16.dp))
+                                    Text("Elegir documento (PDF/Imagen)", style = MaterialTheme.typography.bodyLarge)
+                                }
+                                Spacer(modifier = Modifier.height(32.dp))
+                            }
                         }
                     }
 

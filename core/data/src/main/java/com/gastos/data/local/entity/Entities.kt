@@ -12,6 +12,8 @@ data class InvoiceEntity(
     val tipo: InvoiceType,
     val moneda: String = "EUR",
     val total: Double,
+    val baseImponible: Double = 0.0,
+    val ivaImporte: Double = 0.0,
     val ivaPercent: Double = 21.0,
     val irpfPercent: Double = 0.0,
     val paisCodigo: String = "ES",
@@ -20,6 +22,11 @@ data class InvoiceEntity(
     val imagenUri: String? = null,
     val ocrRawText: String? = null,
     val notas: String? = null,
+    val categoria: String? = null,
+    val ingresoDevengado: Double = 0.0,
+    val ingresoDeducciones: Double = 0.0,
+    val ingresoTipo: String? = null,
+    val conceptoIngreso: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -35,6 +42,9 @@ data class ProductEntity(
     val ivaPercent: Double = 21.0,
     val ivaAmount: Double = subtotal * ivaPercent / 100.0,
     val categoriaId: Long? = null,
+    val categoria: String? = null,
+    val comercio: String? = null,
+    val fechaCompra: Long? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -45,13 +55,16 @@ data class IncomeEntity(
     val concepto: String,
     val monto: Double,
     val totalDevengado: Double = 0.0,
+    val totalDeducciones: Double = 0.0,
     val totalNeto: Double = 0.0,
     val moneda: String = "EUR",
+    val tipoIngreso: String? = null,
     val fuente: String? = null,
     val ivaPercent: Double = 0.0,
     val irpfPercent: Double = 0.0,
     val imagenUri: String? = null,
     val notas: String? = null,
+    val categoria: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

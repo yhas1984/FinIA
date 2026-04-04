@@ -15,7 +15,7 @@ import com.gastos.local.dao.*
         ExchangeRateEntity::class,
         CountryFiscalConfigEntity::class
     ],
-    version = 2,
+    version = 4,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
