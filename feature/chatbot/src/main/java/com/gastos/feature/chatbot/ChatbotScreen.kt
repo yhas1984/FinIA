@@ -275,7 +275,12 @@ fun ChatbotScreen(
                         }
                     }
 
-                    if (uiState.isProcessing) {
+                    // Indicador de "escribiendo..." solo si aún no hay un mensaje
+                    // AI en streaming rellenándose (placeholder vacío o ausente).
+                    val lastMessage = uiState.messages.lastOrNull()
+                    val showTyping = uiState.isProcessing &&
+                        (lastMessage !is ChatMessage.AI || lastMessage.text.isEmpty())
+                    if (showTyping) {
                         item {
                             AIMessageBubble("...")
                         }

@@ -7,6 +7,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -44,6 +46,7 @@ class SettingsViewModel @Inject constructor(
 
     private fun loadSettings() {
         viewModelScope.launch {
+            // Refresca el UI con cada cambio de settings...
             settingsRepository.settings.collect { settings ->
                 _uiState.update {
                     it.copy(
@@ -51,8 +54,19 @@ class SettingsViewModel @Inject constructor(
                         isLoading = false
                     )
                 }
-                aiService.configureGemini(settings.geminiApiKey, settings.systemInstructions)
             }
+        }
+
+        // ...pero solo reconfigura el modelo cuando cambian la API key o las
+        // instrucciones (no al tocar moneda, tema, etc.), evitando reiniciar
+        // la memoria conversacional innecesariamente.
+        viewModelScope.launch {
+            settingsRepository.settings
+                .map { it.geminiApiKey to it.systemInstructions }
+                .distinctUntilChanged()
+                .collect { (apiKey, instructions) ->
+                    aiService.configureGemini(apiKey, instructions)
+                }
         }
     }
 
@@ -68,8 +82,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val result = aiService.validateApiKey(apiKey)
             if (result.isSuccess) {
+                // Al persistir, el collect con distinctUntilChanged reconfigurará el modelo.
                 settingsRepository.updateGeminiApiKey(apiKey)
-                aiService.configureGemini(apiKey, _uiState.value.settings.systemInstructions)
                 _uiState.update {
                     it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.Valid)
                 }
@@ -84,13 +98,15 @@ class SettingsViewModel @Inject constructor(
 
     /** Limpia el estado de validación (al cerrar el diálogo, por ejemplo). */
     fun resetApiKeyValidation() {
-        _uiState.update { it.copy(apiKeyValidation = ApiKeyValidation.None) }
+        _uiState.update {
+            it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.None)
+        }
     }
 
     fun updateSystemInstructions(instructions: String) {
         viewModelScope.launch {
+            // Al persistir, el collect con distinctUntilChanged reconfigurará el modelo.
             settingsRepository.updateSystemInstructions(instructions)
-            aiService.configureGemini(_uiState.value.settings.geminiApiKey, instructions)
         }
     }
 

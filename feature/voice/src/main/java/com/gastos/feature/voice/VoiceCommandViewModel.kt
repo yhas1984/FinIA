@@ -3,9 +3,7 @@ package com.gastos.feature.voice
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
-import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
-import com.gastos.domain.model.Product
 import com.gastos.feature.ai.AIService
 import com.gastos.feature.ai.AIResult
 import com.gastos.repository.IncomeRepository
@@ -17,7 +15,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import javax.inject.Inject
 
 data class VoiceCommandUiState(
@@ -118,7 +115,8 @@ class VoiceCommandViewModel @Inject constructor(
 
             try {
                 when {
-                    result.invoice != null -> {
+                    // Gasto (factura)
+                    result.invoice != null && result.invoice!!.tipo != InvoiceType.INGRESO -> {
                         val invoice = result.invoice!!
                         val savedInvoiceId = invoiceRepository.insertInvoice(invoice)
 
@@ -129,46 +127,38 @@ class VoiceCommandViewModel @Inject constructor(
                             productRepository.insertProducts(productsWithInvoiceId)
                         }
 
-                        val tipoLabel = if (invoice.tipo == com.gastos.domain.model.InvoiceType.GASTO) "Gasto" else "Ingreso"
                         _uiState.update {
-                            it.copy(
-                                isSaving = false,
-                                saveResult = "$tipoLabel guardado correctamente"
-                            )
+                            it.copy(isSaving = false, saveResult = "Gasto guardado correctamente")
                         }
                     }
-                    result.queryResult != null && result.queryResult?.startsWith("INCOME:") == true -> {
-                        val parts = result.queryResult?.split(":") ?: emptyList()
-                        if (parts.size >= 4) {
-                            val income = Income(
-                                concepto = parts[1],
-                                monto = parts[2].toDoubleOrNull() ?: 0.0,
-                                moneda = parts.getOrNull(3) ?: "EUR",
-                                fecha = parts.getOrNull(4)?.toLongOrNull() ?: System.currentTimeMillis(),
-                                fuente = parts.getOrNull(5)
-                            )
-                            incomeRepository.insertIncome(income)
-                            _uiState.update {
-                                it.copy(
-                                    isSaving = false,
-                                    saveResult = "Ingreso guardado correctamente"
-                                )
-                            }
-                        } else {
-                            _uiState.update {
-                                it.copy(
-                                    isSaving = false,
-                                    saveResult = "Error: datos de ingreso incompletos"
-                                )
-                            }
+                    // Ingreso detectado por OCR (factura marcada como ingreso)
+                    result.invoice != null && result.invoice!!.tipo == InvoiceType.INGRESO -> {
+                        val invoice = result.invoice!!
+                        val income = Income(
+                            fecha = invoice.fecha,
+                            concepto = invoice.proveedor,
+                            monto = invoice.total,
+                            moneda = invoice.moneda,
+                            fuente = invoice.nifEmisor,
+                            ivaPercent = invoice.ivaPercent,
+                            irpfPercent = invoice.irpfPercent,
+                            notas = invoice.notas
+                        )
+                        incomeRepository.insertIncome(income)
+                        _uiState.update {
+                            it.copy(isSaving = false, saveResult = "Ingreso guardado correctamente")
+                        }
+                    }
+                    // Ingreso detectado por texto
+                    result.income != null -> {
+                        incomeRepository.insertIncome(result.income!!)
+                        _uiState.update {
+                            it.copy(isSaving = false, saveResult = "Ingreso guardado correctamente")
                         }
                     }
                     else -> {
                         _uiState.update {
-                            it.copy(
-                                isSaving = false,
-                                saveResult = "No hay datos para guardar"
-                            )
+                            it.copy(isSaving = false, saveResult = "No hay datos para guardar")
                         }
                     }
                 }

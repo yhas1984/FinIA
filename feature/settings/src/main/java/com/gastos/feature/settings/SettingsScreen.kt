@@ -33,7 +33,11 @@ fun SettingsScreen(
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var apiKeyInput by remember { mutableStateOf(uiState.settings.geminiApiKey) }
 
-    var instructionsInput by remember { mutableStateOf(uiState.settings.systemInstructions) }
+    // El campo de instrucciones se sincroniza con el estado persistido en cada
+    // carga (evita que quede vacío si las settings llegan asíncronamente).
+    var instructionsInput by remember(uiState.settings.systemInstructions) {
+        mutableStateOf(uiState.settings.systemInstructions)
+    }
 
     Scaffold(
         topBar = {

@@ -28,6 +28,7 @@ data class AIResult(
     val success: Boolean,
     val message: String,
     val invoice: Invoice? = null,
+    val income: Income? = null,
     val products: List<Product> = emptyList(),
     val queryResult: String? = null
 )
@@ -41,21 +42,24 @@ class AIService @Inject constructor(
     private var currentApiKey: String = ""
     private var systemInstructions: String = ""
 
+    /** Número máximo de turnos (usuario+modelo) que se conservan en la memoria. */
+    private val chatHistory = mutableListOf<com.google.ai.client.generativeai.type.Content>()
+    private val maxHistoryTurns = 10
+
     /**
      * Configura el modelo de Gemini 3.5 Flash con la API key del usuario y las
      * instrucciones del sistema (prompt base + personalizadas). Reinicia la
      * sesión de chat para aplicar las nuevas instrucciones.
      */
     fun configureGemini(apiKey: String, systemInstructions: String) {
-        if (apiKey.isBlank()) {
-            generativeModel = null
-            chatSession = null
-            currentApiKey = ""
-            this.systemInstructions = systemInstructions
-            return
-        }
         currentApiKey = apiKey
         this.systemInstructions = systemInstructions
+
+        if (apiKey.isBlank()) {
+            generativeModel = null
+            resetChat()
+            return
+        }
 
         val sysContent = content { text(buildSystemPrompt(systemInstructions)) }
         generativeModel = GenerativeModel(
@@ -63,11 +67,34 @@ class AIService @Inject constructor(
             apiKey = apiKey,
             systemInstruction = sysContent
         )
-        chatSession = generativeModel?.startChat(history = emptyList())
+        // Conserva la historia existente salvo que las instrucciones cambien
+        // sustancialmente; aquí simplemente reconstruimos la sesión con la
+        // historia truncada acumulada.
+        rebuildSession()
+    }
+
+    /** Reinicia la memoria conversacional (historial) y la sesión de chat. */
+    fun resetChat() {
+        chatHistory.clear()
+        rebuildSession()
+    }
+
+    private fun rebuildSession() {
+        chatSession = generativeModel?.startChat(history = chatHistory.toList())
+    }
+
+    /**
+     * Trunca el historial cuando supera el máximo de turnos, conservando los
+     * mensajes más recientes. Se llama tras cada intercambio.
+     */
+    private fun trimHistory() {
+        while (chatHistory.size > maxHistoryTurns * 2) {
+            chatHistory.removeAt(0)
+        }
     }
 
     /** Indica si hay una API key válida configurada. */
-    fun isConfigured(): Boolean = generativeModel != null
+    fun isConfigured(): Boolean = currentApiKey.isNotBlank() && generativeModel != null
 
     /**
      * Valida una API key haciendo una petición mínima. Se usa al guardarla desde
@@ -97,6 +124,7 @@ class AIService @Inject constructor(
         return try {
             val response = chat.sendMessage(command)
             val responseText = response.text ?: ""
+            recordTurn(command, responseText)
             parseCommandResponse(responseText)
         } catch (e: Exception) {
             Log.e(TAG, "Error en processCommand", e)
@@ -107,21 +135,39 @@ class AIService @Inject constructor(
     /**
      * Versión en streaming de processCommand. Emite los fragmentos de texto a
      * medida que el modelo los genera, para que la UI los muestre en vivo.
-     * El llamador debe parsear el texto final con [parseStreamingResult].
+     * El llamador debe parsear el texto final con [parseCommandResponse].
      */
     fun processCommandStreaming(command: String): Flow<String> {
         val chat = chatSession
+        val userMsg = command
         return flow {
             if (chat == null) {
                 throw IllegalStateException(NO_API_KEY_MESSAGE)
             }
-            chat.sendMessageStream(command).collect { resp: GenerateContentResponse ->
-                resp.text?.takeIf { it.isNotEmpty() }?.let { emit(it) }
+            val collected = StringBuilder()
+            chat.sendMessageStream(userMsg).collect { resp: GenerateContentResponse ->
+                resp.text?.takeIf { it.isNotEmpty() }?.let {
+                    collected.append(it)
+                    emit(it)
+                }
             }
+            // Registramos el turno completo tras terminar el stream.
+            recordTurn(userMsg, collected.toString())
         }.catch { e ->
             Log.e(TAG, "Error en streaming", e)
             throw e
         }
+    }
+
+    /** Registra un turno (usuario + respuesta) en la memoria conversacional. */
+    private fun recordTurn(user: String, model: String) {
+        if (user.isNotBlank()) {
+            chatHistory.add(content(role = "user") { text(user) })
+        }
+        if (model.isNotBlank()) {
+            chatHistory.add(content(role = "model") { text(model) })
+        }
+        trimHistory()
     }
 
     /** Convierte el texto crudo del modelo (recogido del stream) en un AIResult. */
@@ -180,7 +226,7 @@ class AIService @Inject constructor(
             msg.contains("API key", ignoreCase = true) ||
                     msg.contains("api_key", ignoreCase = true) ||
                     msg.contains("permission", ignoreCase = true) ->
-                "Tu API key de Gemini no es válida. Revísala en Configuración > IA."
+                "Tu API key de Gemini no es válida. Revísala en $SETTINGS_PATH."
             msg.contains("quota", ignoreCase = true) ||
                     msg.contains("rate limit", ignoreCase = true) ||
                     msg.contains("429", ignoreCase = true) ->
@@ -217,11 +263,6 @@ class AIService @Inject constructor(
                sobre conceptos (IVA, IRPF, ahorro, inversión), o cualquier otra cosa.
                EN ESTE CASO NO DEVUELVAS JSON: responde directamente con texto natural,
                conversacional y personalizado, evitando frases genéricas. Sin prefijos.
-
-            Notas:
-            - Usa siempre el formato de fecha YYYY-MM-DD.
-            - La moneda por defecto es EUR salvo que el usuario indique otra.
-            - Si el mensaje es ambiguo, usa la acción "chat" para pedir aclaración.
             $extraBlock
         """.trimIndent()
     }
@@ -293,7 +334,6 @@ class AIService @Inject constructor(
         }
     }
 
-    @Suppress("unused")
     private fun extractJsonFromResponse(responseText: String): JSONObject {
         val jsonMatch = Regex("""\{[\s\S]*\}""").find(responseText)
         val jsonString = jsonMatch?.value ?: responseText
@@ -304,28 +344,11 @@ class AIService @Inject constructor(
         val trimmed = responseText.trim()
         // Si la respuesta no es un JSON, el modelo habló en modo conversacional (chat).
         if (!trimmed.startsWith("{")) {
-            return AIResult(
-                success = true,
-                message = trimmed,
-                queryResult = "CHAT:$trimmed"
-            )
+            return AIResult(success = true, message = trimmed)
         }
         return try {
             val json = extractJsonFromResponse(responseText)
-            var action = json.optString("action", "unknown")
-            val rawText = responseText.lowercase()
-
-            val incomeKeywords = listOf("nómina", "nomina", "salario", "sueldo", "cobré", "cobre", "recibí", "recibi", "ingreso", "venta", "cobro", "paga", "devolución", "devolucion", "dividendo", "comisión", "comision", "bono", "prima", "aguinaldo")
-            val expenseKeywords = listOf("gasté", "gaste", "compré", "compre", "pagué", "pague", "gasto", "compra", "multa", "suscripción", "suscripcion")
-
-            val isIncomeKeyword = incomeKeywords.any { rawText.contains(it) }
-            val isExpenseKeyword = expenseKeywords.any { rawText.contains(it) }
-
-            if (action == "add_expense" && isIncomeKeyword && !isExpenseKeyword) {
-                action = "add_income"
-            } else if (action == "add_income" && isExpenseKeyword && !isIncomeKeyword) {
-                action = "add_expense"
-            }
+            val action = json.optString("action", "chat")
 
             when (action) {
                 "add_expense" -> {
@@ -381,17 +404,19 @@ class AIService @Inject constructor(
                         "$monto $moneda"
                     }
 
-                    AIResult(success = true, message = "Ingreso agregado: $concepto - $displayMonto", queryResult = "INCOME:${income.concepto}:${income.monto}:${income.moneda}:${income.fecha}:${income.fuente}")
+                    AIResult(success = true, message = "Ingreso agregado: $concepto - $displayMonto", income = income)
                 }
                 "query" -> {
                     AIResult(success = true, message = "Consulta procesada", queryResult = json.toString())
                 }
                 "chat" -> {
+                    // El modelo respondió con JSON de chat; tratamos "response" como texto.
                     val chatResponse = json.optString("response", "")
-                    AIResult(success = true, message = chatResponse, queryResult = "CHAT:$chatResponse")
+                    AIResult(success = true, message = chatResponse)
                 }
                 else -> {
-                    AIResult(success = false, message = "Comando no reconocido: $action")
+                    // Acción desconocida: caemos en respuesta conversacional con el texto bruto.
+                    AIResult(success = true, message = trimmed)
                 }
             }
         } catch (e: Exception) {
@@ -411,8 +436,9 @@ class AIService @Inject constructor(
 
     private fun uriToBitmap(uri: Uri): Bitmap? {
         return try {
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            BitmapFactory.decodeStream(inputStream)
+            context.contentResolver.openInputStream(uri)?.use { input: InputStream ->
+                BitmapFactory.decodeStream(input)
+            }
         } catch (e: Exception) {
             null
         }
@@ -421,8 +447,9 @@ class AIService @Inject constructor(
     companion object {
         private const val TAG = "AIService"
         private const val MODEL_NAME = "gemini-3.5-flash"
+        const val SETTINGS_PATH = "Configuración > IA"
         const val NO_API_KEY_MESSAGE =
-            "Aún no has configurado tu API key de Gemini. Ve a Configuración > IA para añadir la tuya (es gratis en Google AI Studio)."
+            "Aún no has configurado tu API key de Gemini. Ve a $SETTINGS_PATH para añadir la tuya (es gratis en Google AI Studio)."
 
         private val INVOICE_PROMPT = """
             Analiza esta factura/recibo y extrae la siguiente información en formato JSON:
