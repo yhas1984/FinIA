@@ -74,9 +74,6 @@ coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp"
 # Google AI
 google-generative-ai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "google-generative-ai" }
 
-# LiteRT-LM (Gemma 4 on-device via LiteRT-LM)
-litert-lm = { group = "com.google.ai.edge.litertlm", name = "litertlm-android", version = "0.10.0" }
-
 # Google Play Billing
 billing = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 

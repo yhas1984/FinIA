@@ -56,24 +56,160 @@ class ChatbotViewModel @Inject constructor(
             it.copy(messages = it.messages + ChatMessage.User(text), isProcessing = true)
         }
 
+        // Sin API key: mensaje guía en lugar de llamar al servicio.
+        if (!aiService.isConfigured()) {
+            _uiState.update {
+                it.copy(
+                    messages = it.messages + ChatMessage.AI(com.gastos.feature.ai.AIService.NO_API_KEY_MESSAGE),
+                    isProcessing = false
+                )
+            }
+            return
+        }
+
+        // Añadimos un mensaje AI vacío que iremos rellenando en streaming.
+        val placeholderIndex = _uiState.value.messages.size
+        _uiState.update {
+            it.copy(messages = it.messages + ChatMessage.AI(""))
+        }
+
         viewModelScope.launch {
             try {
-                Log.d(TAG, "Sending to AI: $text")
+                val collected = StringBuilder()
+                aiService.processCommandStreaming(text).collect { chunk ->
+                    collected.append(chunk)
+                    _uiState.update { state ->
+                        state.copy(
+                            messages = state.messages.toMutableList().apply {
+                                if (placeholderIndex < size) {
+                                    this[placeholderIndex] = ChatMessage.AI(collected.toString())
+                                }
+                            }
+                        )
+                    }
+                }
 
-                // ALL messages go through the AI — no hardcoded keyword interception
-                val result = aiService.processCommand(text)
-                Log.d(TAG, "AI result: success=${result.success}, msg=${result.message}, qr=${result.queryResult}")
-                processAIResult(result, text)
-
+                val raw = collected.toString()
+                // Si hay texto, parseamos el resultado final para ejecutar acciones
+                // (registrar gasto/ingreso/consulta) o, si era chat, ya se mostró en vivo.
+                if (raw.isNotBlank()) {
+                    handleStreamingResult(raw, placeholderIndex)
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            messages = it.messages.toMutableList().apply {
+                                if (placeholderIndex < size) {
+                                    this[placeholderIndex] = ChatMessage.AI("No recibí respuesta. Inténtalo de nuevo.")
+                                }
+                            },
+                            isProcessing = false
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing message", e)
                 _uiState.update {
                     it.copy(
-                        messages = it.messages + ChatMessage.AI("Error al procesar: ${e.message}"),
+                        messages = it.messages.toMutableList().apply {
+                            if (placeholderIndex < size) {
+                                this[placeholderIndex] = ChatMessage.AI("Error al procesar: ${e.message}")
+                            }
+                        },
                         isProcessing = false
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Reemplaza el mensaje placeholder con el resultado final procesado.
+     * - Si el modelo respondió en texto plano (chat), lo deja tal cual (ya mostrado).
+     * - Si respondió con JSON de acción, ejecuta la acción y reemplaza el mensaje.
+     */
+    private suspend fun handleStreamingResult(raw: String, placeholderIndex: Int) {
+        val result = aiService.parseStreamingResult(raw)
+
+        // Reemplaza el placeholder por defecto con el mensaje del resultado.
+        val replacePlaceholder: (String) -> Unit = { text ->
+            _uiState.update { state ->
+                state.copy(
+                    messages = state.messages.toMutableList().apply {
+                        if (placeholderIndex < size) {
+                            this[placeholderIndex] = ChatMessage.AI(text)
+                        }
+                    },
+                    isProcessing = false
+                )
+            }
+        }
+
+        // Acciones que requieren side-effects además del texto.
+        when {
+            result.invoice != null -> {
+                val invoice = result.invoice!!
+                if (invoice.tipo == InvoiceType.INGRESO) {
+                    val income = Income(
+                        fecha = invoice.fecha,
+                        concepto = invoice.proveedor,
+                        monto = invoice.total,
+                        moneda = invoice.moneda,
+                        fuente = invoice.nifEmisor,
+                        ivaPercent = invoice.ivaPercent,
+                        irpfPercent = invoice.irpfPercent,
+                        notas = invoice.notas
+                    )
+                    incomeRepository.insertIncome(income)
+                    replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
+                } else {
+                    val savedId = invoiceRepository.insertInvoice(invoice)
+                    if (result.products.isNotEmpty()) {
+                        productRepository.insertProducts(result.products.map { it.copy(invoiceId = savedId) })
+                    }
+                    replacePlaceholder("✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}")
+                }
+            }
+            result.queryResult != null && result.queryResult!!.startsWith("INCOME:") -> {
+                val parts = result.queryResult!!.split(":")
+                if (parts.size >= 4) {
+                    val income = Income(
+                        concepto = parts[1],
+                        monto = parts[2].toDoubleOrNull() ?: 0.0,
+                        moneda = parts.getOrNull(3) ?: "EUR",
+                        fecha = parts.getOrNull(4)?.toLongOrNull() ?: System.currentTimeMillis(),
+                        fuente = parts.getOrNull(5)
+                    )
+                    incomeRepository.insertIncome(income)
+                    replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
+                } else {
+                    replacePlaceholder(result.message)
+                }
+            }
+            result.queryResult != null && result.queryResult!!.startsWith("CHAT:") -> {
+                // Ya mostrado en streaming; dejar el texto plano tal cual.
+                val chatResponse = result.queryResult!!.substringAfter("CHAT:")
+                replacePlaceholder(chatResponse)
+            }
+            result.queryResult != null -> {
+                // query en JSON
+                try {
+                    val json = JSONObject(result.queryResult!!)
+                    val action = json.optString("action", "")
+                    if (action == "query") {
+                        val queryType = json.optString("query_type", "balance")
+                        val periodo = json.optString("periodo", "mes")
+                        val categoria = json.optString("categoria", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
+                        replacePlaceholder(executeQuery(queryType, periodo, categoria, item))
+                    } else {
+                        replacePlaceholder(result.message)
+                    }
+                } catch (e: Exception) {
+                    replacePlaceholder(result.message)
+                }
+            }
+            result.success -> replacePlaceholder(result.message)
+            else -> replacePlaceholder("❌ ${result.message}")
         }
     }
 

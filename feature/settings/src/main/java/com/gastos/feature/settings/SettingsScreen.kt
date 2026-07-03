@@ -29,12 +29,11 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val scrollState = rememberScrollState()
-    
+
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var apiKeyInput by remember { mutableStateOf(uiState.settings.geminiApiKey) }
-    
-    var showHfTokenDialog by remember { mutableStateOf(false) }
-    var hfTokenInput by remember { mutableStateOf(uiState.settings.hfToken) }
+
+    var instructionsInput by remember { mutableStateOf(uiState.settings.systemInstructions) }
 
     Scaffold(
         topBar = {
@@ -63,191 +62,113 @@ fun SettingsScreen(
                 title = "Inteligencia Artificial",
                 icon = Icons.Outlined.SmartToy
             ) {
-                // Motor de IA
                 Text(
-                    text = "Motor de IA",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = uiState.settings.aiEngine == "gemma_local",
-                        onClick = { viewModel.updateAiEngine("gemma_local") },
-                        label = { Text("Gemma 4") },
-                        leadingIcon = {
-                            Icon(Icons.Default.PhoneAndroid, contentDescription = null, modifier = Modifier.size(18.dp))
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    FilterChip(
-                        selected = uiState.settings.aiEngine == "gemini_api",
-                        onClick = { viewModel.updateAiEngine("gemini_api") },
-                        label = { Text("Gemini API") },
-                        leadingIcon = {
-                            Icon(Icons.Default.Cloud, contentDescription = null, modifier = Modifier.size(18.dp))
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                // Descripción del motor seleccionado
-                Text(
-                    text = when (uiState.settings.aiEngine) {
-                        "gemma_local" -> "Procesamiento local sin internet. Privacidad total. Usa Gemma 4 E2B vía AICore."
-                        "gemini_api" -> "Procesamiento en la nube. Más preciso. Necesita API key gratuita."
-                        else -> ""
-                    },
+                    text = "FinAI usa Gemini 3.5 Flash a través de la API gratuita de Google AI Studio.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                // Estado de Gemma 4
-                AnimatedVisibility(visible = uiState.settings.aiEngine == "gemma_local") {
-                    Column {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (uiState.gemmaModel.isAvailable) 
-                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                                else 
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            )
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            if (uiState.gemmaModel.isAvailable) Icons.Default.CheckCircle
-                                            else if (uiState.gemmaModel.isDownloading) Icons.Default.Download
-                                            else Icons.Default.ErrorOutline,
-                                            contentDescription = null,
-                                            tint = if (uiState.gemmaModel.isAvailable) MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Column {
-                                            Text(
-                                                text = when {
-                                                    uiState.gemmaModel.isAvailable -> "Gemma 4 listo"
-                                                    uiState.gemmaModel.isDownloading -> "Descargando..."
-                                                    else -> "Gemma 4 no disponible"
-                                                },
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                            if (uiState.gemmaModel.modelSize.isNotBlank()) {
-                                                Text(
-                                                    text = uiState.gemmaModel.modelSize,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                Spacer(modifier = Modifier.height(12.dp))
 
-                                // Barra de progreso de descarga
-                                if (uiState.gemmaModel.isDownloading) {
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    LinearProgressIndicator(
-                                        progress = { uiState.gemmaModel.downloadProgress },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "${(uiState.gemmaModel.downloadProgress * 100).toInt()}%",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                // Mensaje de error
-                                uiState.gemmaModel.error?.let { error ->
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = error,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                }
-
-                                // HF Token config y botó de descarga
-                                Spacer(modifier = Modifier.height(12.dp))
-                                if (!uiState.gemmaModel.isAvailable && !uiState.gemmaModel.isDownloading) {
-                                    OutlinedButton(
-                                        onClick = { 
-                                            hfTokenInput = uiState.settings.hfToken
-                                            showHfTokenDialog = true 
-                                        },
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Icon(Icons.Default.VpnKey, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            if (uiState.settings.hfToken.isEmpty()) "Conectar Token de Hugging Face"
-                                            else "Token de Hugging Face guardado"
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        OutlinedButton(
-                                            onClick = { viewModel.checkGemmaStatus() },
-                                            modifier = Modifier.weight(1f),
-                                            contentPadding = PaddingValues(0.dp)
-                                        ) {
-                                            Icon(Icons.Default.Refresh, contentDescription = null)
-                                        }
-                                        Button(
-                                            onClick = { viewModel.downloadGemmaModel() },
-                                            modifier = Modifier.weight(3f),
-                                            enabled = uiState.settings.hfToken.isNotBlank()
-                                        ) {
-                                            Icon(Icons.Default.Download, contentDescription = null)
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Descargar Modelo")
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                // Estado de la API key
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (uiState.settings.geminiApiKey.isNotEmpty())
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                        else
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            when {
+                                uiState.isApiKeyValidating -> Icons.Default.CloudSync
+                                uiState.settings.geminiApiKey.isNotEmpty() -> Icons.Default.CheckCircle
+                                else -> Icons.Default.ErrorOutline
+                            },
+                            contentDescription = null,
+                            tint = if (uiState.settings.geminiApiKey.isNotEmpty())
+                                MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = when {
+                                uiState.isApiKeyValidating -> "Validando API key..."
+                                uiState.settings.geminiApiKey.isEmpty() -> "API key no configurada"
+                                else -> "API key configurada (Gemini 3.5 Flash)"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
 
-                // Configuración de Gemini API
-                AnimatedVisibility(visible = uiState.settings.aiEngine == "gemini_api") {
-                    Column {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        OutlinedButton(
-                            onClick = { 
-                                apiKeyInput = uiState.settings.geminiApiKey
-                                showApiKeyDialog = true 
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Key, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                if (uiState.settings.geminiApiKey.isEmpty()) "Configurar API Key"
-                                else "API Key configurada"
-                            )
-                        }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        apiKeyInput = uiState.settings.geminiApiKey
+                        viewModel.resetApiKeyValidation()
+                        showApiKeyDialog = true
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Key, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (uiState.settings.geminiApiKey.isEmpty()) "Configurar API Key"
+                        else "Cambiar API Key"
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Instrucciones del asistente
+                Text(
+                    text = "Instrucciones del asistente",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Personaliza cómo se comporta FinAI. Por ejemplo: el tono, en qué moneda responder, qué evitar, etc.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = instructionsInput,
+                    onValueChange = { instructionsInput = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 6,
+                    placeholder = {
+                        Text("Ej. Responde de forma breve. Usa siempre MXN como moneda.")
+                    }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = {
+                        instructionsInput = uiState.settings.systemInstructions
+                    }) {
+                        Text("Descartar")
+                    }
+                    Button(
+                        onClick = { viewModel.updateSystemInstructions(instructionsInput) },
+                        enabled = instructionsInput != uiState.settings.systemInstructions
+                    ) {
+                        Text("Guardar instrucciones")
                     }
                 }
             }
@@ -473,81 +394,94 @@ fun SettingsScreen(
     // Diálogo API Key
     if (showApiKeyDialog) {
         AlertDialog(
-            onDismissRequest = { showApiKeyDialog = false },
+            onDismissRequest = {
+                showApiKeyDialog = false
+                viewModel.resetApiKeyValidation()
+            },
             title = { Text("Gemini API Key") },
             text = {
                 Column {
                     Text(
-                        text = "Obtén tu API key gratuita en https://aistudio.google.com/apikey",
+                        text = "Obtén tu API key gratuita en https://aistudio.google.com/apikey. Se usa con el modelo Gemini 3.5 Flash.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = apiKeyInput,
-                        onValueChange = { apiKeyInput = it },
+                        onValueChange = {
+                            apiKeyInput = it
+                            viewModel.resetApiKeyValidation()
+                        },
                         label = { Text("API Key") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.updateGeminiApiKey(apiKeyInput)
-                        showApiKeyDialog = false
-                    }
-                ) {
-                    Text("Guardar")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showApiKeyDialog = false }) {
-                    Text("Cancelar")
-                }
-            }
-        )
-    }
+                    Spacer(modifier = Modifier.height(8.dp))
 
-    // Diálogo HF Token
-    if (showHfTokenDialog) {
-        AlertDialog(
-            onDismissRequest = { showHfTokenDialog = false },
-            title = { Text("Hugging Face Access Token") },
-            text = {
-                Column {
-                    Text(
-                        text = "Para descargar Gemma 4 necesitas un token de acceso (Read) de Hugging Face y haber aceptado los términos del modelo litert-community/gemma-4-E2B-it-litert-lm.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = hfTokenInput,
-                        onValueChange = { hfTokenInput = it },
-                        label = { Text("Access Token (hf_...)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    // Feedback de validación
+                    when (val v = uiState.apiKeyValidation) {
+                        ApiKeyValidation.None -> {}
+                        ApiKeyValidation.Valid -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "API key válida",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        is ApiKeyValidation.Invalid -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    v.message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
                 TextButton(
-                    onClick = {
-                        viewModel.updateHfToken(hfTokenInput)
-                        showHfTokenDialog = false
-                    }
+                    enabled = !uiState.isApiKeyValidating,
+                    onClick = { viewModel.updateGeminiApiKey(apiKeyInput) }
                 ) {
-                    Text("Guardar")
+                    Text(if (uiState.isApiKeyValidating) "Validando..." else "Guardar")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showHfTokenDialog = false }) {
+                TextButton(onClick = {
+                    showApiKeyDialog = false
+                    viewModel.resetApiKeyValidation()
+                }) {
                     Text("Cancelar")
                 }
             }
         )
+
+        // Cerrar automáticamente cuando la validación es exitosa
+        LaunchedEffect(uiState.apiKeyValidation) {
+            if (uiState.apiKeyValidation is ApiKeyValidation.Valid) {
+                showApiKeyDialog = false
+                viewModel.resetApiKeyValidation()
+            }
+        }
     }
 }
 

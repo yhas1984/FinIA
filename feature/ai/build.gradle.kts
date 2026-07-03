@@ -51,9 +51,6 @@ dependencies {
     // Google AI (Gemini API - cloud)
     implementation(libs.google.generative.ai)
 
-    // LiteRT-LM (Gemma 4 on-device)
-    implementation(libs.litert.lm)
-
     // Project modules
     implementation(project(":core:domain"))
     implementation(project(":core:data"))
