@@ -13,9 +13,8 @@ import javax.inject.Singleton
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "finai_settings")
 
 data class AppSettings(
-    val aiEngine: String = "gemini_api",
     val geminiApiKey: String = "",
-    val hfToken: String = "",
+    val systemInstructions: String = "",
     val defaultCurrency: String = "EUR",
     val defaultCountry: String = "ES",
     val darkMode: String = "system",
@@ -29,9 +28,8 @@ class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private object Keys {
-        val AI_ENGINE = stringPreferencesKey("ai_engine")
         val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
-        val HF_TOKEN = stringPreferencesKey("hf_token")
+        val SYSTEM_INSTRUCTIONS = stringPreferencesKey("system_instructions")
         val DEFAULT_CURRENCY = stringPreferencesKey("default_currency")
         val DEFAULT_COUNTRY = stringPreferencesKey("default_country")
         val DARK_MODE = stringPreferencesKey("dark_mode")
@@ -41,9 +39,8 @@ class SettingsRepository @Inject constructor(
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { preferences ->
         AppSettings(
-            aiEngine = preferences[Keys.AI_ENGINE] ?: "gemini_api",
             geminiApiKey = preferences[Keys.GEMINI_API_KEY] ?: "",
-            hfToken = preferences[Keys.HF_TOKEN] ?: "",
+            systemInstructions = preferences[Keys.SYSTEM_INSTRUCTIONS] ?: "",
             defaultCurrency = preferences[Keys.DEFAULT_CURRENCY] ?: "EUR",
             defaultCountry = preferences[Keys.DEFAULT_COUNTRY] ?: "ES",
             darkMode = preferences[Keys.DARK_MODE] ?: "system",
@@ -52,21 +49,15 @@ class SettingsRepository @Inject constructor(
         )
     }
 
-    suspend fun updateAiEngine(engine: String) {
-        context.dataStore.edit { preferences ->
-            preferences[Keys.AI_ENGINE] = engine
-        }
-    }
-
     suspend fun updateGeminiApiKey(apiKey: String) {
         context.dataStore.edit { preferences ->
             preferences[Keys.GEMINI_API_KEY] = apiKey
         }
     }
 
-    suspend fun updateHfToken(token: String) {
+    suspend fun updateSystemInstructions(instructions: String) {
         context.dataStore.edit { preferences ->
-            preferences[Keys.HF_TOKEN] = token
+            preferences[Keys.SYSTEM_INSTRUCTIONS] = instructions
         }
     }
 

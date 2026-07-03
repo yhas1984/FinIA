@@ -2,9 +2,7 @@ package com.gastos.feature.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gastos.feature.ai.AIEngine
 import com.gastos.feature.ai.AIService
-import com.gastos.feature.ai.GemmaModelState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,13 +11,21 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Resultado de validar la API key. */
+sealed class ApiKeyValidation {
+    data object None : ApiKeyValidation()
+    data object Valid : ApiKeyValidation()
+    data class Invalid(val message: String) : ApiKeyValidation()
+}
+
 data class SettingsUiState(
     val settings: AppSettings = AppSettings(),
     val isLoading: Boolean = true,
     val error: String? = null,
     val licenseInput: String = "",
     val licenseError: String? = null,
-    val gemmaModel: GemmaModelState = GemmaModelState()
+    val isApiKeyValidating: Boolean = false,
+    val apiKeyValidation: ApiKeyValidation = ApiKeyValidation.None
 )
 
 @HiltViewModel
@@ -34,7 +40,6 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadSettings()
-        observeGemmaState()
     }
 
     private fun loadSettings() {
@@ -46,68 +51,46 @@ class SettingsViewModel @Inject constructor(
                         isLoading = false
                     )
                 }
-                when (settings.aiEngine) {
-                    "gemini_api" -> aiService.setEngine(AIEngine.GEMINI_API, settings.geminiApiKey)
-                    "gemma_local" -> aiService.setEngine(AIEngine.GEMMA_LOCAL)
-                }
+                aiService.configureGemini(settings.geminiApiKey, settings.systemInstructions)
             }
         }
     }
 
-    private fun observeGemmaState() {
-        viewModelScope.launch {
-            aiService.gemmaModelState.collect { gemmaState ->
-                _uiState.update { it.copy(gemmaModel = gemmaState) }
-            }
-        }
-    }
-
-    fun updateAiEngine(engine: String) {
-        viewModelScope.launch {
-            settingsRepository.updateAiEngine(engine)
-            when (engine) {
-                "gemini_api" -> aiService.setEngine(AIEngine.GEMINI_API, _uiState.value.settings.geminiApiKey)
-                "gemma_local" -> {
-                    aiService.setEngine(AIEngine.GEMMA_LOCAL)
-                    checkGemmaStatus()
-                }
-            }
-        }
-    }
-
-    fun checkGemmaStatus() {
-        viewModelScope.launch {
-            val result = aiService.checkGemmaStatus()
-            if (result.isFailure) {
-                _uiState.update {
-                    it.copy(error = result.exceptionOrNull()?.message)
-                }
-            }
-        }
-    }
-
-    fun downloadGemmaModel() {
-        viewModelScope.launch {
-            val hfToken = _uiState.value.settings.hfToken
-            val result = aiService.downloadGemmaModel(hfToken)
-            if (result.isFailure) {
-                _uiState.update {
-                    it.copy(error = result.exceptionOrNull()?.message)
-                }
-            }
-        }
-    }
-
+    /**
+     * Valida la API key con una petición de prueba antes de guardarla.
+     * Si es válida, la persiste y reconfigura el modelo; si no, marca el estado
+     * como inválido sin guardar.
+     */
     fun updateGeminiApiKey(apiKey: String) {
+        _uiState.update {
+            it.copy(isApiKeyValidating = true, apiKeyValidation = ApiKeyValidation.None)
+        }
         viewModelScope.launch {
-            settingsRepository.updateGeminiApiKey(apiKey)
-            aiService.setEngine(AIEngine.GEMINI_API, apiKey)
+            val result = aiService.validateApiKey(apiKey)
+            if (result.isSuccess) {
+                settingsRepository.updateGeminiApiKey(apiKey)
+                aiService.configureGemini(apiKey, _uiState.value.settings.systemInstructions)
+                _uiState.update {
+                    it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.Valid)
+                }
+            } else {
+                val msg = result.exceptionOrNull()?.message ?: "API key no válida"
+                _uiState.update {
+                    it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.Invalid(msg))
+                }
+            }
         }
     }
 
-    fun updateHfToken(token: String) {
+    /** Limpia el estado de validación (al cerrar el diálogo, por ejemplo). */
+    fun resetApiKeyValidation() {
+        _uiState.update { it.copy(apiKeyValidation = ApiKeyValidation.None) }
+    }
+
+    fun updateSystemInstructions(instructions: String) {
         viewModelScope.launch {
-            settingsRepository.updateHfToken(token)
+            settingsRepository.updateSystemInstructions(instructions)
+            aiService.configureGemini(_uiState.value.settings.geminiApiKey, instructions)
         }
     }
 

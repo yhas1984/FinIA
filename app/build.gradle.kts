@@ -106,9 +106,6 @@ dependencies {
     // Google AI (Gemini API - cloud)
     implementation(libs.google.generative.ai)
 
-    // LiteRT-LM (Gemma 4 on-device)
-    implementation(libs.litert.lm)
-
     // DataStore
     implementation(libs.datastore.preferences)
 
