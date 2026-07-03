@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
-import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
 
@@ -67,9 +66,11 @@ class ChatbotViewModel @Inject constructor(
             return
         }
 
-        // Añadimos un mensaje AI vacío que iremos rellenando en streaming.
-        val placeholderIndex = _uiState.value.messages.size
+        // Añadimos un mensaje AI vacío (placeholder) que iremos rellenando en
+        // streaming. El índice se captura DENTRO del update para evitar races.
+        var placeholderIndex = -1
         _uiState.update {
+            placeholderIndex = it.messages.size
             it.copy(messages = it.messages + ChatMessage.AI(""))
         }
 
@@ -81,7 +82,7 @@ class ChatbotViewModel @Inject constructor(
                     _uiState.update { state ->
                         state.copy(
                             messages = state.messages.toMutableList().apply {
-                                if (placeholderIndex < size) {
+                                if (placeholderIndex in indices) {
                                     this[placeholderIndex] = ChatMessage.AI(collected.toString())
                                 }
                             }
@@ -98,7 +99,7 @@ class ChatbotViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             messages = it.messages.toMutableList().apply {
-                                if (placeholderIndex < size) {
+                                if (placeholderIndex in indices) {
                                     this[placeholderIndex] = ChatMessage.AI("No recibí respuesta. Inténtalo de nuevo.")
                                 }
                             },
@@ -111,7 +112,7 @@ class ChatbotViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         messages = it.messages.toMutableList().apply {
-                            if (placeholderIndex < size) {
+                            if (placeholderIndex in indices) {
                                 this[placeholderIndex] = ChatMessage.AI("Error al procesar: ${e.message}")
                             }
                         },
@@ -129,13 +130,19 @@ class ChatbotViewModel @Inject constructor(
      */
     private suspend fun handleStreamingResult(raw: String, placeholderIndex: Int) {
         val result = aiService.parseStreamingResult(raw)
+        applyAIResult(result, placeholderIndex)
+    }
 
-        // Reemplaza el placeholder por defecto con el mensaje del resultado.
+    /**
+     * Aplica un AIResult reemplazando el mensaje placeholder. Lógica unificada
+     * para streaming (chat) y para resultados síncronos (imagen escaneada).
+     */
+    private suspend fun applyAIResult(result: AIResult, placeholderIndex: Int) {
         val replacePlaceholder: (String) -> Unit = { text ->
             _uiState.update { state ->
                 state.copy(
                     messages = state.messages.toMutableList().apply {
-                        if (placeholderIndex < size) {
+                        if (placeholderIndex in indices) {
                             this[placeholderIndex] = ChatMessage.AI(text)
                         }
                     },
@@ -144,58 +151,48 @@ class ChatbotViewModel @Inject constructor(
             }
         }
 
-        // Acciones que requieren side-effects además del texto.
         when {
-            result.invoice != null -> {
+            // Gasto (factura)
+            result.invoice != null && result.invoice!!.tipo != InvoiceType.INGRESO -> {
                 val invoice = result.invoice!!
-                if (invoice.tipo == InvoiceType.INGRESO) {
-                    val income = Income(
-                        fecha = invoice.fecha,
-                        concepto = invoice.proveedor,
-                        monto = invoice.total,
-                        moneda = invoice.moneda,
-                        fuente = invoice.nifEmisor,
-                        ivaPercent = invoice.ivaPercent,
-                        irpfPercent = invoice.irpfPercent,
-                        notas = invoice.notas
-                    )
-                    incomeRepository.insertIncome(income)
-                    replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
-                } else {
-                    val savedId = invoiceRepository.insertInvoice(invoice)
-                    if (result.products.isNotEmpty()) {
-                        productRepository.insertProducts(result.products.map { it.copy(invoiceId = savedId) })
-                    }
-                    replacePlaceholder("✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}")
+                val savedId = invoiceRepository.insertInvoice(invoice)
+                if (result.products.isNotEmpty()) {
+                    productRepository.insertProducts(result.products.map { it.copy(invoiceId = savedId) })
                 }
+                replacePlaceholder("✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}")
             }
-            result.queryResult != null && result.queryResult!!.startsWith("INCOME:") -> {
-                val parts = result.queryResult!!.split(":")
-                if (parts.size >= 4) {
-                    val income = Income(
-                        concepto = parts[1],
-                        monto = parts[2].toDoubleOrNull() ?: 0.0,
-                        moneda = parts.getOrNull(3) ?: "EUR",
-                        fecha = parts.getOrNull(4)?.toLongOrNull() ?: System.currentTimeMillis(),
-                        fuente = parts.getOrNull(5)
-                    )
-                    incomeRepository.insertIncome(income)
-                    replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
+            // Ingreso detectado por OCR (factura marcada como ingreso)
+            result.invoice != null && result.invoice!!.tipo == InvoiceType.INGRESO -> {
+                val invoice = result.invoice!!
+                val income = Income(
+                    fecha = invoice.fecha,
+                    concepto = invoice.proveedor,
+                    monto = invoice.total,
+                    moneda = invoice.moneda,
+                    fuente = invoice.nifEmisor,
+                    ivaPercent = invoice.ivaPercent,
+                    irpfPercent = invoice.irpfPercent,
+                    notas = invoice.notas
+                )
+                incomeRepository.insertIncome(income)
+                replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
+            }
+            // Ingreso detectado por texto
+            result.income != null -> {
+                val income = result.income!!
+                incomeRepository.insertIncome(income)
+                val display = if (income.totalDevengado > 0 && income.totalNeto > 0) {
+                    "Devengado: ${income.totalDevengado} ${income.moneda} / Neto: ${income.totalNeto} ${income.moneda}"
                 } else {
-                    replacePlaceholder(result.message)
+                    "${income.monto} ${income.moneda}"
                 }
+                replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - $display")
             }
-            result.queryResult != null && result.queryResult!!.startsWith("CHAT:") -> {
-                // Ya mostrado en streaming; dejar el texto plano tal cual.
-                val chatResponse = result.queryResult!!.substringAfter("CHAT:")
-                replacePlaceholder(chatResponse)
-            }
+            // Consulta de datos (JSON con action=query)
             result.queryResult != null -> {
-                // query en JSON
                 try {
                     val json = JSONObject(result.queryResult!!)
-                    val action = json.optString("action", "")
-                    if (action == "query") {
+                    if (json.optString("action") == "query") {
                         val queryType = json.optString("query_type", "balance")
                         val periodo = json.optString("periodo", "mes")
                         val categoria = json.optString("categoria", "").takeIf { it.isNotEmpty() && it != "null" }
@@ -213,154 +210,7 @@ class ChatbotViewModel @Inject constructor(
         }
     }
 
-    private suspend fun processAIResult(result: AIResult, originalText: String) {
-        when {
-            result.invoice != null -> {
-                val invoice = result.invoice!!
-                if (invoice.tipo == InvoiceType.INGRESO) {
-                    val income = Income(
-                        fecha = invoice.fecha,
-                        concepto = invoice.proveedor,
-                        monto = invoice.total,
-                        moneda = invoice.moneda,
-                        fuente = invoice.nifEmisor,
-                        ivaPercent = invoice.ivaPercent,
-                        irpfPercent = invoice.irpfPercent,
-                        notas = invoice.notas
-                    )
-                    incomeRepository.insertIncome(income)
-                    _uiState.update {
-                        it.copy(
-                            messages = it.messages + ChatMessage.AI("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}"),
-                            isProcessing = false
-                        )
-                    }
-                } else {
-                    val savedId = invoiceRepository.insertInvoice(invoice)
-                    if (result.products.isNotEmpty()) {
-                        productRepository.insertProducts(result.products.map { it.copy(invoiceId = savedId) })
-                    }
-                    _uiState.update {
-                        it.copy(
-                            messages = it.messages + ChatMessage.AI("✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}"),
-                            isProcessing = false
-                        )
-                    }
-                }
-            }
-            result.queryResult != null && result.queryResult?.startsWith("INCOME:") == true -> {
-                val parts = result.queryResult?.split(":") ?: emptyList()
-                if (parts.size >= 4) {
-                    val income = Income(
-                        concepto = parts[1],
-                        monto = parts[2].toDoubleOrNull() ?: 0.0,
-                        moneda = parts.getOrNull(3) ?: "EUR",
-                        fecha = parts.getOrNull(4)?.toLongOrNull() ?: System.currentTimeMillis(),
-                        fuente = parts.getOrNull(5)
-                    )
-                    incomeRepository.insertIncome(income)
-                    _uiState.update {
-                        it.copy(
-                            messages = it.messages + ChatMessage.AI("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}"),
-                            isProcessing = false
-                        )
-                    }
-                }
-            }
-            result.queryResult != null -> {
-                val queryResult = result.queryResult!!
-
-                if (queryResult.startsWith("CHAT:")) {
-                    val chatResponse = queryResult.substringAfter("CHAT:")
-                    _uiState.update {
-                        it.copy(
-                            messages = it.messages + ChatMessage.AI(chatResponse),
-                            isProcessing = false
-                        )
-                    }
-                } else if (queryResult.startsWith("QUERY:")) {
-                    val parts = queryResult.split(":")
-                    val queryType = parts.getOrNull(1) ?: "balance"
-                    val periodo = parts.getOrNull(2) ?: "mes"
-                    val categoria = parts.getOrNull(3)
-                    val item = parts.getOrNull(4)
-                    val response = executeQuery(queryType, periodo, categoria, item)
-                    _uiState.update {
-                        it.copy(
-                            messages = it.messages + ChatMessage.AI(response),
-                            isProcessing = false
-                        )
-                    }
-                } else {
-                    try {
-                        val json = JSONObject(queryResult)
-                        val action = json.optString("action", "")
-
-                        when (action) {
-                            "chat" -> {
-                                val chatResponse = json.optString("response", result.message)
-                                _uiState.update {
-                                    it.copy(
-                                        messages = it.messages + ChatMessage.AI(chatResponse),
-                                        isProcessing = false
-                                    )
-                                }
-                            }
-                            "query" -> {
-                                val queryType = json.optString("query_type", "balance")
-                                val periodo = json.optString("periodo", "mes")
-                                val categoria = json.optString("categoria", "").takeIf { it.isNotEmpty() && it != "null" }
-                                val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
-                                val response = executeQuery(queryType, periodo, categoria, item)
-                                _uiState.update {
-                                    it.copy(
-                                        messages = it.messages + ChatMessage.AI(response),
-                                        isProcessing = false
-                                    )
-                                }
-                            }
-                            else -> {
-                                _uiState.update {
-                                    it.copy(
-                                        messages = it.messages + ChatMessage.AI(result.message),
-                                        isProcessing = false
-                                    )
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        // If we can't parse JSON, show the raw AI response
-                        _uiState.update {
-                            it.copy(
-                                messages = it.messages + ChatMessage.AI(result.message),
-                                isProcessing = false
-                            )
-                        }
-                    }
-                }
-            }
-            result.success -> {
-                _uiState.update {
-                    it.copy(
-                        messages = it.messages + ChatMessage.AI(result.message),
-                        isProcessing = false
-                    )
-                }
-            }
-            else -> {
-                _uiState.update {
-                    it.copy(
-                        messages = it.messages + ChatMessage.AI("❌ ${result.message}"),
-                        isProcessing = false
-                    )
-                }
-            }
-        }
-    }
-
     private fun getDateRange(periodo: String): Pair<Long, Long> {
-        val now = System.currentTimeMillis()
-
         val hoyCal = Calendar.getInstance()
         hoyCal.set(Calendar.HOUR_OF_DAY, 0)
         hoyCal.set(Calendar.MINUTE, 0)
@@ -380,6 +230,8 @@ class ChatbotViewModel @Inject constructor(
         semCal.set(Calendar.SECOND, 0)
         semCal.set(Calendar.MILLISECOND, 0)
         val semanaStart = semCal.timeInMillis
+        // Fin de la semana = inicio + 7 días - 1 ms (fin del domingo)
+        val semanaEnd = semanaStart + (7L * 24 * 60 * 60 * 1000) - 1
 
         val mesCal = Calendar.getInstance()
         mesCal.set(Calendar.DAY_OF_MONTH, 1)
@@ -409,7 +261,7 @@ class ChatbotViewModel @Inject constructor(
 
         return when (periodo.lowercase()) {
             "hoy" -> hoyStart to hoyEnd
-            "semana" -> semanaStart to now
+            "semana" -> semanaStart to semanaEnd
             "mes" -> mesStart to mesEnd
             "año" -> anoStart to anoEnd
             else -> mesStart to mesEnd
@@ -569,7 +421,13 @@ class ChatbotViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val result = aiService.processInvoiceFromImage(uri)
-                processAIResult(result, "imagen escaneada")
+                // Reutilizamos la lógica unificada añadiendo un placeholder AI.
+                var placeholderIndex = -1
+                _uiState.update {
+                    placeholderIndex = it.messages.size
+                    it.copy(messages = it.messages + ChatMessage.AI(""))
+                }
+                applyAIResult(result, placeholderIndex)
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -582,6 +440,7 @@ class ChatbotViewModel @Inject constructor(
     }
 
     fun clearChat() {
+        aiService.resetChat()
         _uiState.update { it.copy(messages = emptyList()) }
         addSystemMessage("Chat limpiado. ¿En qué puedo ayudarte?")
     }
