@@ -46,6 +46,15 @@ fun BackupScreen(
         }
     }
 
+    // Launcher para Google Sign-In con permisos de Sheets.
+    val signInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            viewModel.handleSignInResult(result.data)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -119,18 +128,119 @@ fun BackupScreen(
                         }
                     } else {
                         Text(
-                            text = "Inicia sesión con Google para hacer backup en la nube",
+                            text = "Inicia sesión con Google para exportar a Sheets y hacer backup en la nube",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
-                            onClick = { viewModel.signIn() },
+                            onClick = { signInLauncher.launch(viewModel.getSignInIntent()) },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Icon(Icons.Default.Login, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Iniciar sesión con Google")
+                        }
+                    }
+                }
+            }
+
+            // Exportación a Google Sheets
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Google Sheets",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Exporta tus datos a un Google Sheet nuevo organizado por hojas: Gastos, Ingresos, Productos y Resumen.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (!uiState.isSignedIn) {
+                        OutlinedButton(
+                            onClick = { signInLauncher.launch(viewModel.getSignInIntent()) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Conectar cuenta Google")
+                        }
+                    } else {
+                        // Si ya hay sheet vinculado: botón sincronizar + re-exportar
+                        if (uiState.hasSheetLink) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { viewModel.exportToSheets() },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = !uiState.isExportingSheets
+                                ) {
+                                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Sincronizar")
+                                }
+                                OutlinedButton(
+                                    onClick = { viewModel.syncAllToSheets() },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = !uiState.isExportingSheets
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Forzar")
+                                }
+                            }
+                        } else {
+                            Button(
+                                onClick = { viewModel.exportToSheets() },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !uiState.isExportingSheets
+                            ) {
+                                if (uiState.isExportingSheets) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                } else {
+                                    Icon(Icons.Default.TableChart, contentDescription = null, modifier = Modifier.size(18.dp))
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(if (uiState.isExportingSheets) "Exportando..." else "Exportar a Google Sheets")
+                            }
+                        }
+                    }
+
+                    // URL resultante
+                    uiState.sheetsUrl?.let { url ->
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    "✓ Spreadsheet creado",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                        context.startActivity(intent)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Abrir en Google Sheets")
+                                }
+                            }
                         }
                     }
                 }

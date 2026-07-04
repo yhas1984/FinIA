@@ -25,7 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
+import java.io.File
 
 sealed class ChatMessage {
     data class User(val text: String, val timestamp: Long = java.lang.System.currentTimeMillis()) : ChatMessage()
@@ -47,11 +49,36 @@ fun ChatbotScreen(
         android.speech.SpeechRecognizer.isRecognitionAvailable(context)
     }
 
-    // Image picker launcher
+    // Image picker launcher (galería)
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { viewModel.processImage(it) }
+    }
+
+    // Estado para la URI de la foto tomada con cámara
+    var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var showScanMenu by remember { mutableStateOf(false) }
+
+    // Launcher para tomar una foto con la cámara
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && capturedImageUri != null) {
+            viewModel.processImage(capturedImageUri!!)
+        }
+    }
+
+    // Launcher para solicitar permiso de cámara
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            launchCamera(context) { uri ->
+                capturedImageUri = uri
+                cameraLauncher.launch(uri)
+            }
+        }
     }
 
     // Permission launcher for voice
@@ -152,13 +179,42 @@ fun ChatbotScreen(
                             Text(if (uiState.isListening) "Detener" else "Voz", style = MaterialTheme.typography.labelMedium)
                         }
                         OutlinedButton(
-                            onClick = { imagePickerLauncher.launch("image/*") },
+                            onClick = { showScanMenu = true },
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Escanear", style = MaterialTheme.typography.labelMedium)
+                        }
+                        DropdownMenu(
+                            expanded = showScanMenu,
+                            onDismissRequest = { showScanMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("📷 Hacer foto") },
+                                onClick = {
+                                    showScanMenu = false
+                                    when (PackageManager.PERMISSION_GRANTED) {
+                                        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) -> {
+                                            launchCamera(context) { uri ->
+                                                capturedImageUri = uri
+                                                cameraLauncher.launch(uri)
+                                            }
+                                        }
+                                        else -> {
+                                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                        }
+                                    }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("🖼️ Adjuntar imagen") },
+                                onClick = {
+                                    showScanMenu = false
+                                    imagePickerLauncher.launch("image/*")
+                                }
+                            )
                         }
                     }
 
@@ -352,4 +408,21 @@ private fun SystemMessageBubble(text: String) {
             )
         }
     }
+}
+
+/**
+ * Crea un archivo temporal para la foto y devuelve su URI vía FileProvider.
+ * El llamador debe usar la URI en `TakePicture`.
+ */
+private fun launchCamera(
+    context: android.content.Context,
+    onUriReady: (Uri) -> Unit
+) {
+    val photoFile = File.createTempFile("invoice_", ".jpg", context.cacheDir)
+    val photoUri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        photoFile
+    )
+    onUriReady(photoUri)
 }

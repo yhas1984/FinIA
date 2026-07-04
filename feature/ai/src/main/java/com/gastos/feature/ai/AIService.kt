@@ -44,7 +44,21 @@ class AIService @Inject constructor(
 
     /** Número máximo de turnos (usuario+modelo) que se conservan en la memoria. */
     private val chatHistory = mutableListOf<com.google.ai.client.generativeai.type.Content>()
-    private val maxHistoryTurns = 10
+    private var maxHistoryTurns = FREE_MAX_HISTORY_TURNS
+
+    /**
+     * Ajusta los límites de IA según el estado Premium.
+     * - Premium: memoria conversacional de hasta [PREMIUM_MAX_HISTORY_TURNS] turnos.
+     * - Gratuito: memoria limitada a [FREE_MAX_HISTORY_TURNS] turnos.
+     */
+    fun setPremiumLimits(isPremium: Boolean) {
+        val newMax = if (isPremium) PREMIUM_MAX_HISTORY_TURNS else FREE_MAX_HISTORY_TURNS
+        if (newMax != maxHistoryTurns) {
+            maxHistoryTurns = newMax
+            trimHistory()
+            rebuildSession()
+        }
+    }
 
     /**
      * Configura el modelo de Gemini 3.5 Flash con la API key del usuario y las
@@ -450,6 +464,10 @@ class AIService @Inject constructor(
         const val SETTINGS_PATH = "Configuración > IA"
         const val NO_API_KEY_MESSAGE =
             "Aún no has configurado tu API key de Gemini. Ve a $SETTINGS_PATH para añadir la tuya (es gratis en Google AI Studio)."
+
+        /** Límites del plan gratuito. Premium los eleva vía [setPremiumLimits]. */
+        const val FREE_MAX_HISTORY_TURNS = 3
+        const val PREMIUM_MAX_HISTORY_TURNS = 10
 
         private val INVOICE_PROMPT = """
             Analiza esta factura/recibo y extrae la siguiente información en formato JSON:

@@ -50,6 +50,11 @@ dependencies {
     // Google Sign In (Drive backup)
     implementation(libs.play.services.auth)
 
+    // Google Sheets API (exportación a Sheets)
+    implementation(libs.google.api.client.android)
+    implementation(libs.google.oauth.client.jetty)
+    implementation(libs.google.api.services.sheets)
+
     // Project modules
     implementation(project(":core:domain"))
     implementation(project(":core:data"))

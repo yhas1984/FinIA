@@ -7,6 +7,7 @@ import com.gastos.domain.model.Income
 import com.gastos.domain.model.InvoiceType
 import com.gastos.feature.ai.AIService
 import com.gastos.feature.ai.AIResult
+import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.ProductRepository
@@ -32,7 +33,8 @@ class ScanInvoiceViewModel @Inject constructor(
     private val aiService: AIService,
     private val invoiceRepository: InvoiceRepository,
     private val productRepository: ProductRepository,
-    private val incomeRepository: IncomeRepository
+    private val incomeRepository: IncomeRepository,
+    private val sheetsSyncManager: SheetsSyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ScanInvoiceUiState())
@@ -92,6 +94,7 @@ class ScanInvoiceViewModel @Inject constructor(
                                 notas = invoice.notas
                             )
                             incomeRepository.insertIncome(income)
+                            sheetsSyncManager.syncInvoiceIngreso(invoice)
                             _uiState.update {
                                 it.copy(isSaving = false, saveResult = "Ingreso guardado correctamente")
                             }
@@ -105,6 +108,8 @@ class ScanInvoiceViewModel @Inject constructor(
                                 productRepository.insertProducts(productsWithInvoiceId)
                             }
 
+                            sheetsSyncManager.syncExpense(invoice)
+
                             _uiState.update {
                                 it.copy(isSaving = false, saveResult = "Gasto guardado correctamente")
                             }
@@ -113,6 +118,7 @@ class ScanInvoiceViewModel @Inject constructor(
                     // Ingreso detectado por texto
                     result.income != null -> {
                         incomeRepository.insertIncome(result.income!!)
+                        sheetsSyncManager.syncIncome(result.income!!)
                         _uiState.update {
                             it.copy(isSaving = false, saveResult = "Ingreso guardado correctamente")
                         }

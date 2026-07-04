@@ -8,6 +8,7 @@ import com.gastos.domain.model.Income
 import com.gastos.domain.model.InvoiceType
 import com.gastos.feature.ai.AIResult
 import com.gastos.feature.ai.AIService
+import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.feature.voice.VoiceRecognitionService
 import com.gastos.feature.voice.VoiceResult
 import com.gastos.repository.IncomeRepository
@@ -38,7 +39,8 @@ class ChatbotViewModel @Inject constructor(
     private val voiceRecognitionService: VoiceRecognitionService,
     private val invoiceRepository: InvoiceRepository,
     private val incomeRepository: IncomeRepository,
-    private val productRepository: ProductRepository
+    private val productRepository: ProductRepository,
+    private val sheetsSyncManager: SheetsSyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatbotUiState())
@@ -156,6 +158,7 @@ class ChatbotViewModel @Inject constructor(
             result.invoice != null && result.invoice!!.tipo != InvoiceType.INGRESO -> {
                 val invoice = result.invoice!!
                 val savedId = invoiceRepository.insertInvoice(invoice)
+                sheetsSyncManager.syncExpense(invoice)
                 if (result.products.isNotEmpty()) {
                     productRepository.insertProducts(result.products.map { it.copy(invoiceId = savedId) })
                 }
@@ -175,12 +178,14 @@ class ChatbotViewModel @Inject constructor(
                     notas = invoice.notas
                 )
                 incomeRepository.insertIncome(income)
+                sheetsSyncManager.syncInvoiceIngreso(invoice)
                 replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
             }
             // Ingreso detectado por texto
             result.income != null -> {
                 val income = result.income!!
                 incomeRepository.insertIncome(income)
+                sheetsSyncManager.syncIncome(income)
                 val display = if (income.totalDevengado > 0 && income.totalNeto > 0) {
                     "Devengado: ${income.totalDevengado} ${income.moneda} / Neto: ${income.totalNeto} ${income.moneda}"
                 } else {

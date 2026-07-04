@@ -28,7 +28,8 @@ import androidx.compose.ui.unit.Dp
 fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
     onNavigateToChat: () -> Unit = {},
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToBackup: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val currencyFormat = NumberFormat.getCurrencyInstance(Locale("es", "ES"))
@@ -64,6 +65,13 @@ fun DashboardScreen(
                                 Icons.Filled.SmartToy,
                                 contentDescription = "Chat",
                                 tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        IconButton(onClick = onNavigateToBackup) {
+                            Icon(
+                                Icons.Filled.CloudUpload,
+                                contentDescription = "Backup",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         IconButton(onClick = onNavigateToSettings) {
