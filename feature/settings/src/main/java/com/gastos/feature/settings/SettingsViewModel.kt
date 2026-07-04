@@ -1,8 +1,10 @@
 package com.gastos.feature.settings
 
+import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.feature.ai.AIService
+import com.android.billingclient.api.ProductDetails
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,17 +26,19 @@ data class SettingsUiState(
     val settings: AppSettings = AppSettings(),
     val isLoading: Boolean = true,
     val error: String? = null,
-    val licenseInput: String = "",
-    val licenseError: String? = null,
     val isApiKeyValidating: Boolean = false,
-    val apiKeyValidation: ApiKeyValidation = ApiKeyValidation.None
+    val apiKeyValidation: ApiKeyValidation = ApiKeyValidation.None,
+    val isPremium: Boolean = false,
+    val productDetails: ProductDetails? = null,
+    val isBillingConnecting: Boolean = false,
+    val purchaseError: String? = null
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val aiService: AIService,
-    private val licenseManager: LicenseManager
+    private val billingManager: BillingManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -42,6 +46,7 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadSettings()
+        observeBilling()
     }
 
     private fun loadSettings() {
@@ -50,7 +55,7 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.settings.collect { settings ->
                 _uiState.update {
                     it.copy(
-                        settings = settings.copy(isPro = licenseManager.isPro()),
+                        settings = settings.copy(isPro = billingManager.isPremium.value),
                         isLoading = false
                     )
                 }
@@ -70,9 +75,42 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Observa el estado de Premium y los detalles de producto de BillingManager. */
+    private fun observeBilling() {
+        viewModelScope.launch {
+            billingManager.isPremium.collect { premium ->
+                // Aplica los límites de IA según el estado premium.
+                aiService.setPremiumLimits(premium)
+                _uiState.update {
+                    it.copy(
+                        isPremium = premium,
+                        settings = it.settings.copy(isPro = premium)
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            billingManager.productDetails.collect { details ->
+                _uiState.update { it.copy(productDetails = details) }
+            }
+        }
+        viewModelScope.launch {
+            billingManager.isConnecting.collect { connecting ->
+                _uiState.update { it.copy(isBillingConnecting = connecting) }
+            }
+        }
+        viewModelScope.launch {
+            billingManager.purchaseError.collect { err ->
+                _uiState.update { it.copy(purchaseError = err) }
+            }
+        }
+    }
+
+    // ---------------- API key ----------------
+
     /**
      * Valida la API key con una petición de prueba antes de guardarla.
-     * Si es válida, la persiste y reconfigura el modelo; si no, marca el estado
+     * Si es válida, la persista y reconfigura el modelo; si no, marca el estado
      * como inválido sin guardar.
      */
     fun updateGeminiApiKey(apiKey: String) {
@@ -82,7 +120,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val result = aiService.validateApiKey(apiKey)
             if (result.isSuccess) {
-                // Al persistir, el collect con distinctUntilChanged reconfigurará el modelo.
                 settingsRepository.updateGeminiApiKey(apiKey)
                 _uiState.update {
                     it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.Valid)
@@ -96,7 +133,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Limpia el estado de validación (al cerrar el diálogo, por ejemplo). */
     fun resetApiKeyValidation() {
         _uiState.update {
             it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.None)
@@ -105,68 +141,45 @@ class SettingsViewModel @Inject constructor(
 
     fun updateSystemInstructions(instructions: String) {
         viewModelScope.launch {
-            // Al persistir, el collect con distinctUntilChanged reconfigurará el modelo.
             settingsRepository.updateSystemInstructions(instructions)
         }
     }
 
+    // ---------------- Preferencias generales ----------------
+
     fun updateDefaultCurrency(currency: String) {
-        viewModelScope.launch {
-            settingsRepository.updateDefaultCurrency(currency)
-        }
+        viewModelScope.launch { settingsRepository.updateDefaultCurrency(currency) }
     }
 
     fun updateDefaultCountry(country: String) {
-        viewModelScope.launch {
-            settingsRepository.updateDefaultCountry(country)
-        }
+        viewModelScope.launch { settingsRepository.updateDefaultCountry(country) }
     }
 
     fun updateDarkMode(mode: String) {
-        viewModelScope.launch {
-            settingsRepository.updateDarkMode(mode)
-        }
+        viewModelScope.launch { settingsRepository.updateDarkMode(mode) }
     }
 
     fun updateAutoBackup(autoBackup: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.updateAutoBackup(autoBackup)
-        }
+        viewModelScope.launch { settingsRepository.updateAutoBackup(autoBackup) }
     }
 
-    fun updateLicenseInput(input: String) {
-        _uiState.update {
-            it.copy(licenseInput = input, licenseError = null)
-        }
+    // ---------------- Premium / Billing ----------------
+
+    /** Inicia el flujo de compra de Premium desde una Activity. */
+    fun purchasePremium(activity: Activity) {
+        billingManager.clearError()
+        billingManager.launchBillingFlow(activity)
     }
 
-    fun activateLicense() {
-        val code = _uiState.value.licenseInput
-        if (code.isBlank()) return
-
-        val result = licenseManager.activateLicense(code)
-        when (result) {
-            is LicenseResult.Success -> {
-                _uiState.update {
-                    it.copy(
-                        licenseError = null,
-                        licenseInput = "",
-                        settings = it.settings.copy(isPro = true)
-                    )
-                }
-            }
-            is LicenseResult.InvalidCode -> {
-                _uiState.update {
-                    it.copy(licenseError = "Código de licencia no válido")
-                }
-            }
-        }
+    /** Reintenta la conexión con Play Billing y refresca compras. */
+    fun refreshBilling() {
+        billingManager.clearError()
+        billingManager.startConnection()
+        billingManager.queryProductDetails()
+        billingManager.queryPurchases()
     }
 
-    fun deactivateLicense() {
-        licenseManager.deactivateLicense()
-        _uiState.update {
-            it.copy(settings = it.settings.copy(isPro = false))
-        }
+    fun clearPurchaseError() {
+        billingManager.clearError()
     }
 }

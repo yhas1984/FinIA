@@ -6,6 +6,7 @@ import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
+import com.gastos.feature.backup.SheetsSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +41,7 @@ data class EditInvoiceForm(
 @HiltViewModel
 class EditInvoiceViewModel @Inject constructor(
     private val invoiceRepository: InvoiceRepository,
+    private val sheetsSyncManager: SheetsSyncManager,
     private val incomeRepository: IncomeRepository
 ) : ViewModel() {
 
@@ -131,6 +133,7 @@ class EditInvoiceViewModel @Inject constructor(
 
                 if (form.id == 0L) {
                     invoiceRepository.insertInvoice(invoice)
+                    sheetsSyncManager.syncExpense(invoice)
                 } else {
                     invoiceRepository.updateInvoice(invoice)
                 }

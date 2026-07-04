@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
 import com.gastos.repository.IncomeRepository
+import com.gastos.feature.backup.SheetsSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,7 +37,8 @@ data class EditIncomeForm(
 
 @HiltViewModel
 class EditIncomeViewModel @Inject constructor(
-    private val incomeRepository: IncomeRepository
+    private val incomeRepository: IncomeRepository,
+    private val sheetsSyncManager: SheetsSyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(EditIncomeUiState())
@@ -126,6 +128,7 @@ class EditIncomeViewModel @Inject constructor(
 
                 if (form.id == 0L) {
                     incomeRepository.insertIncome(income)
+                    sheetsSyncManager.syncIncome(income)
                 } else {
                     incomeRepository.updateIncome(income)
                 }

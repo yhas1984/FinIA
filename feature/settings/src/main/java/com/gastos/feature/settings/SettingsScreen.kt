@@ -25,10 +25,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToPremium: () -> Unit = {},
+    onNavigateToBackup: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val scrollState = rememberScrollState()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var apiKeyInput by remember { mutableStateOf(uiState.settings.geminiApiKey) }
@@ -255,12 +258,12 @@ fun SettingsScreen(
                 )
             }
 
-            // Sección Licencia Pro
+            // Sección Premium
             SettingsSection(
-                title = "Licencia",
-                icon = if (uiState.settings.isPro) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                title = "Premium",
+                icon = if (uiState.isPremium) Icons.Filled.Star else Icons.Outlined.StarBorder,
                 headerContent = {
-                    if (uiState.settings.isPro) {
+                    if (uiState.isPremium) {
                         AssistChip(
                             onClick = {},
                             label = { Text("Pro") },
@@ -278,50 +281,26 @@ fun SettingsScreen(
                     }
                 }
             ) {
-                if (uiState.settings.isPro) {
+                if (uiState.isPremium) {
                     Text(
-                        text = "Funciones premium activadas",
+                        text = "Funciones premium activadas ✓",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = { viewModel.deactivateLicense() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Desactivar licencia")
-                    }
                 } else {
                     Text(
-                        text = "Introduce tu código de licencia",
+                        text = "Desbloquea exportación a Google Sheets, backup automático en Drive y chat IA avanzado.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = uiState.licenseInput,
-                        onValueChange = { viewModel.updateLicenseInput(it.uppercase()) },
-                        label = { Text("Código de licencia") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        isError = uiState.licenseError != null,
-                        supportingText = {
-                            uiState.licenseError?.let {
-                                Text(it, color = MaterialTheme.colorScheme.error)
-                            }
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
                     Button(
-                        onClick = { viewModel.activateLicense() },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = uiState.licenseInput.isNotBlank()
+                        onClick = onNavigateToPremium,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Star, contentDescription = null)
+                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Activar Pro")
+                        Text("Ver Premium")
                     }
                 }
             }
@@ -362,7 +341,7 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 OutlinedButton(
-                    onClick = { /* Navigate to backup */ },
+                    onClick = onNavigateToBackup,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Download, contentDescription = null)
@@ -406,7 +385,37 @@ fun SettingsScreen(
             text = {
                 Column {
                     Text(
-                        text = "Obtén tu API key gratuita en https://aistudio.google.com/apikey. Se usa con el modelo Gemini 3.5 Flash.",
+                        text = "Cómo obtener tu API key gratuita:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "1. Abre Google AI Studio (botón de abajo)\n" +
+                                "2. Inicia sesión con tu cuenta Google\n" +
+                                "3. Pulsa \"Create API key\"\n" +
+                                "4. Copia la clave y pégala aquí",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val intent = android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse("https://aistudio.google.com/apikey")
+                            )
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Abrir Google AI Studio")
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "💡 Gemini 3.5 Flash tiene un plan gratuito suficiente para uso personal (aprox. 10 solicitudes/min y 1500/día). Consulta tus límites exactos en AI Studio.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

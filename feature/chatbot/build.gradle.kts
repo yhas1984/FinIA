@@ -47,6 +47,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.coroutines.android)
 
+    // Sheets sync (desde backup)
+    implementation(project(":feature:backup"))
+
     // Project modules
     implementation(project(":core:domain"))
     implementation(project(":core:data"))

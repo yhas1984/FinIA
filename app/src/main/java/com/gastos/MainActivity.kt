@@ -29,6 +29,7 @@ import com.gastos.feature.ocr.ScanInvoiceScreen
 import com.gastos.feature.voice.VoiceCommandScreen
 import com.gastos.feature.settings.SettingsScreen
 import com.gastos.feature.settings.SettingsViewModel
+import com.gastos.feature.settings.PremiumScreen
 import com.gastos.feature.backup.BackupScreen
 import com.gastos.feature.fiscal.FiscalConfigScreen
 import com.gastos.feature.chatbot.ChatbotScreen
@@ -83,6 +84,7 @@ object Routes {
     const val SCAN_INVOICE = "scan_invoice"
     const val VOICE_COMMAND = "voice_command"
     const val SETTINGS = "settings"
+    const val PREMIUM = "premium"
     const val BACKUP = "backup"
     const val FISCAL_CONFIG = "fiscal_config"
     const val EDIT_INVOICE = "edit_invoice/{invoiceId}"
@@ -135,7 +137,8 @@ fun FinAIApp() {
             composable(Screen.Dashboard.route) {
                 DashboardScreen(
                     onNavigateToChat = { navController.navigate(Routes.CHATBOT) },
-                    onNavigateToSettings = { navController.navigate(Routes.SETTINGS) }
+                    onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+                    onNavigateToBackup = { navController.navigate(Routes.BACKUP) }
                 )
             }
             composable(Screen.Invoices.route) {
@@ -174,6 +177,13 @@ fun FinAIApp() {
             }
             composable(Routes.SETTINGS) {
                 SettingsScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToPremium = { navController.navigate(Routes.PREMIUM) },
+                    onNavigateToBackup = { navController.navigate(Routes.BACKUP) }
+                )
+            }
+            composable(Routes.PREMIUM) {
+                PremiumScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

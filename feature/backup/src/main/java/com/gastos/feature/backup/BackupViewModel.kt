@@ -1,6 +1,7 @@
 package com.gastos.feature.backup
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -12,6 +13,9 @@ import com.gastos.domain.model.Product
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.ProductRepository
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.common.api.ApiException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,10 +31,13 @@ import javax.inject.Inject
 data class BackupUiState(
     val isSignedIn: Boolean = false,
     val email: String? = null,
+    val hasSheetLink: Boolean = false,
     val isLoading: Boolean = false,
     val isExporting: Boolean = false,
+    val isExportingSheets: Boolean = false,
     val backupResult: BackupResult? = null,
     val exportResult: BackupResult? = null,
+    val sheetsUrl: String? = null,
     val localBackups: List<File> = emptyList(),
     val error: String? = null
 )
@@ -45,6 +52,8 @@ data class BackupResult(
 @HiltViewModel
 class BackupViewModel @Inject constructor(
     private val backupService: BackupService,
+    private val sheetsExportService: SheetsExportService,
+    private val sheetsSyncManager: SheetsSyncManager,
     private val invoiceRepository: InvoiceRepository,
     private val incomeRepository: IncomeRepository,
     private val productRepository: ProductRepository
@@ -61,8 +70,9 @@ class BackupViewModel @Inject constructor(
     private fun checkSignInStatus() {
         _uiState.update {
             it.copy(
-                isSignedIn = backupService.isSignedIn(),
-                email = backupService.getSignedInEmail()
+                isSignedIn = sheetsExportService.isSignedIn(),
+                email = sheetsExportService.getSignedInEmail(),
+                hasSheetLink = sheetsSyncManager.isEnabled()
             )
         }
     }
@@ -72,9 +82,97 @@ class BackupViewModel @Inject constructor(
         _uiState.update { it.copy(localBackups = backups) }
     }
 
-    fun signIn() {
-        _uiState.update {
-            it.copy(error = "Google Sign-In requiere configuración adicional")
+    /** Devuelve el Intent para lanzar el flujo de Sign-In de Google con scope Sheets. */
+    fun getSignInIntent(): Intent = sheetsExportService.getSignInIntent()
+
+    /** Procesa el resultado del Sign-In (desde StartActivityForResult). */
+    fun handleSignInResult(data: Intent?) {
+        try {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(data)
+            val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
+            _uiState.update {
+                it.copy(
+                    isSignedIn = true,
+                    email = account.email,
+                    error = null
+                )
+            }
+        } catch (e: ApiException) {
+            _uiState.update {
+                it.copy(error = "Error al iniciar sesión: ${e.statusCode}")
+            }
+        }
+    }
+
+    /**
+     * Exporta los datos a un Google Sheet nuevo. Requiere sesión iniciada.
+     * El resultado (URL del sheet) se expone en [BackupUiState.sheetsUrl].
+     */
+    fun exportToSheets() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(isExportingSheets = true, sheetsUrl = null, error = null)
+            }
+            try {
+                val account = sheetsExportService.getLastSignedInAccount()
+                if (account == null || !sheetsExportService.isSignedIn()) {
+                    _uiState.update {
+                        it.copy(
+                            isExportingSheets = false,
+                            error = "Debes iniciar sesión con Google primero."
+                        )
+                    }
+                    return@launch
+                }
+                val (invoices, incomes, products) = loadData()
+                // Reutiliza el sheet existente si ya había uno vinculado.
+                val existingId = sheetsSyncManager.getStoredId()
+                val (url, spreadsheetId) = sheetsExportService.exportToSheets(
+                    account, invoices, incomes, products, existingId
+                )
+                // Persistir para que la sincronización en background funcione.
+                sheetsSyncManager.setSpreadsheetId(spreadsheetId)
+                _uiState.update {
+                    it.copy(isExportingSheets = false, sheetsUrl = url)
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isExportingSheets = false,
+                        error = "Error al exportar a Sheets: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearSheetsResult() {
+        _uiState.update { it.copy(sheetsUrl = null, error = null) }
+    }
+
+    /** Fuerza la sincronización de todos los datos existentes al sheet vinculado. */
+    fun syncAllToSheets() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isExportingSheets = true, sheetsUrl = null, error = null) }
+            try {
+                val account = sheetsExportService.getLastSignedInAccount()
+                val existingId = sheetsSyncManager.getStoredId()
+                if (account == null || existingId.isBlank()) {
+                    _uiState.update {
+                        it.copy(isExportingSheets = false, error = "No hay sheet vinculado. Exporta primero.")
+                    }
+                    return@launch
+                }
+                val (invoices, incomes, products) = loadData()
+                val (url, _) = sheetsExportService.exportToSheets(
+                    account, invoices, incomes, products, existingId
+                )
+                _uiState.update { it.copy(isExportingSheets = false, sheetsUrl = url) }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isExportingSheets = false, error = "Error al sincronizar: ${e.message}")
+                }
+            }
         }
     }
 

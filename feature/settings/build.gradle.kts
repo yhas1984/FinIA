@@ -50,6 +50,9 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
 
+    // Billing (Google Play)
+    implementation(libs.billing)
+
     // Project modules
     implementation(project(":core:domain"))
     implementation(project(":core:data"))

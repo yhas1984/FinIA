@@ -57,6 +57,9 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
 
+    // Sheets sync (desde backup)
+    implementation(project(":feature:backup"))
+
     // Project modules
     implementation(project(":core:domain"))
     implementation(project(":core:data"))
