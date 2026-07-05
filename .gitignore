@@ -20,3 +20,7 @@ google-services.json
 
 # OS
 .DS_Store
+
+# Keystore / release keys
+*.keystore
+*.jks
