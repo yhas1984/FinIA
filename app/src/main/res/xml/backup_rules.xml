@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Incluir toda la base de datos Room -->
+    <include domain="database" path="gastos_ingresos_db"/>
+    <include domain="database" path="gastos_ingresos_db-wal"/>
+    <include domain="database" path="gastos_ingresos_db-shm"/>
+    <!-- Incluir DataStore de settings -->
+    <include domain="sharedpref" path="finai_settings.xml"/>
+    <!-- Incluir SharedPreferences de sheets sync -->
+    <include domain="sharedpref" path="finai_sheets_sync.xml"/>
+    <!-- Incluir licencia/shared prefs -->
+    <include domain="sharedpref" path="finai_billing.xml"/>
+    <!-- Excluir archivos temporales/caché -->
+    <exclude domain="file" path="cache/"/>
+    <exclude domain="file" path="code_cache/"/>
+</full-backup-content>

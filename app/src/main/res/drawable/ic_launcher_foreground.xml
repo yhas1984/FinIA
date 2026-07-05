@@ -29,25 +29,4 @@
         </aapt:attr>
     </path>
 
-    <!-- Small decorative dots -->
-    <path
-        android:pathData="M34,44 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0"
-        android:fillColor="#BD93F9"
-        android:fillAlpha="0.6"/>
-
-    <path
-        android:pathData="M74,52 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0"
-        android:fillColor="#50FA7B"
-        android:fillAlpha="0.6"/>
-
-    <path
-        android:pathData="M38,62 m-1.5,0 a1.5,1.5 0,1 1,3 0 a1.5,1.5 0,1 1,-3 0"
-        android:fillColor="#BD93F9"
-        android:fillAlpha="0.4"/>
-
-    <path
-        android:pathData="M70,36 m-1.5,0 a1.5,1.5 0,1 1,3 0 a1.5,1.5 0,1 1,-3 0"
-        android:fillColor="#50FA7B"
-        android:fillAlpha="0.4"/>
-
 </vector>

@@ -9,7 +9,7 @@
     <color name="white">#FFFFFFFF</color>
     <color name="green_success">#FF4CAF50</color>
     <color name="green_500">#FF4CAF50</color>
-    <color name="ic_launcher_background">#FF10131A</color>
+    <color name="ic_launcher_background">#FF000000</color>
     <color name="red_error">#FFF44336</color>
     <color name="blue_info">#FF2196F3</color>
     <color name="orange_warning">#FFFF9800</color>
