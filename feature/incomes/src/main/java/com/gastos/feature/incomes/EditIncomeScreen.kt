@@ -5,8 +5,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
@@ -28,6 +30,15 @@ fun EditIncomeScreen(
     val scrollState = rememberScrollState()
     var showDatePicker by remember { mutableStateOf(false) }
     var showCurrencyPicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState(
+        initialSelectedDateMillis = form.fecha
+    )
+
+    // Cuando el VM carga un ingreso existente, form.fecha cambia; refrescamos
+    // el estado del DatePicker para que abra en la fecha real (no en "hoy").
+    LaunchedEffect(form.fecha) {
+        datePickerState.selectedDateMillis = form.fecha
+    }
 
     LaunchedEffect(incomeId) {
         if (incomeId > 0) {
@@ -40,6 +51,7 @@ fun EditIncomeScreen(
         if (result != null && !result.contains("Error")) {
             kotlinx.coroutines.delay(1000)
             onNavigateBack()
+            viewModel.clearSaveResult()
         }
     }
 
@@ -49,7 +61,7 @@ fun EditIncomeScreen(
                 title = { Text(if (incomeId > 0) "Editar Ingreso" else "Nuevo Ingreso") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 actions = {
@@ -105,13 +117,13 @@ fun EditIncomeScreen(
                     label = { Text("Moneda") },
                     readOnly = true,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCurrencyPicker) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                    modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth()
                 )
                 ExposedDropdownMenu(
                     expanded = showCurrencyPicker,
                     onDismissRequest = { showCurrencyPicker = false }
                 ) {
-                    listOf("EUR", "USD", "MXN", "ARS", "COP", "CLP", "PEN").forEach { currency ->
+                    com.gastos.domain.model.SUPPORTED_CURRENCIES.forEach { currency ->
                         DropdownMenuItem(
                             text = { Text(currency) },
                             onClick = {
@@ -225,23 +237,19 @@ fun EditIncomeScreen(
     if (showDatePicker) {
         androidx.compose.material3.DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
-            confirmButton = { /* handled by state */ }
-        ) {
-            val datePickerState = rememberDatePickerState(
-                initialSelectedDateMillis = form.fecha
-            )
-            androidx.compose.material3.DatePicker(
-                state = datePickerState
-            )
-            Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") }
+            confirmButton = {
                 TextButton(
                     onClick = {
                         datePickerState.selectedDateMillis?.let { viewModel.updateFecha(it) }
                         showDatePicker = false
                     }
                 ) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") }
             }
+        ) {
+            androidx.compose.material3.DatePicker(state = datePickerState)
         }
     }
 }

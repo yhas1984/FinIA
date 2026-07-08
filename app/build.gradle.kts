@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -5,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.google.devtools.ksp)
     alias(libs.plugins.hilt.android)
+    alias(libs.plugins.google.services)
 }
 
 android {
@@ -23,10 +26,18 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("../finai-release.keystore")
-            storePassword = "FinAI2026!"
-            keyAlias = "finai"
-            keyPassword = "FinAI2026!"
+            val keystoreProps = Properties()
+            val f = rootProject.file("local.properties")
+            if (f.exists()) {
+                f.inputStream().use { stream -> keystoreProps.load(stream) }
+            }
+            val ksFile = keystoreProps.getProperty("FINAI_KEYSTORE_FILE")?.let(::file)
+            if (ksFile != null) {
+                storeFile = ksFile
+                storePassword = keystoreProps.getProperty("FINAI_KEYSTORE_PASSWORD") ?: ""
+                keyAlias = keystoreProps.getProperty("FINAI_KEY_ALIAS") ?: ""
+                keyPassword = keystoreProps.getProperty("FINAI_KEY_PASSWORD") ?: ""
+            }
         }
     }
 
@@ -67,14 +78,10 @@ android {
         }
     }
 
-    splits {
-        abi {
-            isEnable = false
-            reset()
-            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
-            isUniversalApk = true
-        }
-    }
+    // splits.abi eliminado: estaba con isEnable = false y solo producía un
+    // único APK universal. El bloque `splits` se reintroducirá cuando se
+    // quiera dividir el APK por arquitectura (e.g. publicar APKs separados
+    // en Play Store para reducir peso).
 }
 
 dependencies {
@@ -110,12 +117,6 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
 
-    // CameraX
-    implementation(libs.camera.core)
-    implementation(libs.camera.camera2)
-    implementation(libs.camera.lifecycle)
-    implementation(libs.camera.view)
-
     // Coil (images)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
@@ -132,7 +133,7 @@ dependencies {
     // Billing
     implementation(libs.billing)
 
-    // Google Sign In (Drive backup)
+    // Google Sign In (Sheets export)
     implementation(libs.play.services.auth)
 
     // Core modules
@@ -143,14 +144,11 @@ dependencies {
     // Feature modules
     implementation(project(":feature:dashboard"))
     implementation(project(":feature:invoices"))
-    implementation(project(":feature:products"))
     implementation(project(":feature:incomes"))
-    implementation(project(":feature:ocr"))
     implementation(project(":feature:voice"))
     implementation(project(":feature:ai"))
     implementation(project(":feature:settings"))
     implementation(project(":feature:backup"))
-    implementation(project(":feature:fiscal"))
     implementation(project(":feature:chatbot"))
 
     // Testing

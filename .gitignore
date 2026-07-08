@@ -21,6 +21,15 @@ google-services.json
 # OS
 .DS_Store
 
-# Keystore / release keys
+# Keystore / release keys / secrets
 *.keystore
 *.jks
+*.p12
+*.pfx
+keystore.properties
+secrets.properties
+# Common secret filenames — never commit
+*google-services.json
+*firebase-service-account*.json
+.env
+.env.*

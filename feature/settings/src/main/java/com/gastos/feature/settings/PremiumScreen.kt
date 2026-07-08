@@ -200,11 +200,6 @@ enum class PremiumFeature(
         "Exportación a Google Sheets",
         "Sincroniza tus datos con un Google Sheet organizado por hojas."
     ),
-    BACKUP(
-        Icons.Outlined.CloudUpload,
-        "Backup automático en Drive",
-        "Copia de seguridad programada en tu Google Drive."
-    ),
     CHAT(
         Icons.Outlined.SmartToy,
         "Chat IA avanzado",

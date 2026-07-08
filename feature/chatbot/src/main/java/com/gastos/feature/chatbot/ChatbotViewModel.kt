@@ -15,6 +15,7 @@ import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.ProductRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +46,8 @@ class ChatbotViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatbotUiState())
     val uiState: StateFlow<ChatbotUiState> = _uiState.asStateFlow()
+
+    private var voiceJob: Job? = null
 
     init {
         addSystemMessage("¡Hola! Soy FinAI, tu asistente financiero personal.")
@@ -225,6 +228,7 @@ class ChatbotViewModel @Inject constructor(
         hoyCal.set(Calendar.HOUR_OF_DAY, 23)
         hoyCal.set(Calendar.MINUTE, 59)
         hoyCal.set(Calendar.SECOND, 59)
+        hoyCal.set(Calendar.MILLISECOND, 999)
         val hoyEnd = hoyCal.timeInMillis
 
         val semCal = Calendar.getInstance()
@@ -249,6 +253,7 @@ class ChatbotViewModel @Inject constructor(
         mesCal.set(Calendar.HOUR_OF_DAY, 23)
         mesCal.set(Calendar.MINUTE, 59)
         mesCal.set(Calendar.SECOND, 59)
+        mesCal.set(Calendar.MILLISECOND, 999)
         val mesEnd = mesCal.timeInMillis
 
         val anoCal = Calendar.getInstance()
@@ -262,6 +267,7 @@ class ChatbotViewModel @Inject constructor(
         anoCal.set(Calendar.HOUR_OF_DAY, 23)
         anoCal.set(Calendar.MINUTE, 59)
         anoCal.set(Calendar.SECOND, 59)
+        anoCal.set(Calendar.MILLISECOND, 999)
         val anoEnd = anoCal.timeInMillis
 
         return when (periodo.lowercase()) {
@@ -287,18 +293,40 @@ class ChatbotViewModel @Inject constructor(
         val periodInvoiceIds = periodInvoices.map { it.id }.toSet()
         val periodProducts = allProducts.filter { it.invoiceId in periodInvoiceIds }
 
+        // Totales brutos: total = lo que el cliente pagó (IVA incluido).
         val totalGastos = periodInvoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { it.total }
         val totalIngresos = periodInvoices.filter { it.tipo == InvoiceType.INGRESO }.sumOf { it.total } +
                 periodIncomes.sumOf { it.monto }
         val countGastos = periodInvoices.count { it.tipo == InvoiceType.GASTO }
         val countIngresos = periodInvoices.count { it.tipo == InvoiceType.INGRESO } + periodIncomes.size
 
-        Log.d(TAG, "Query: type=$queryType, period=$periodo, gastos=$totalGastos, ingresos=$totalIngresos, products=${periodProducts.size}")
+        // Desglose fiscal real, agregado DESDE los productos para reflejar
+        // tasas mixtas (Mercadona: 4/10/21). Si la factura no tiene
+        // productos, recurrimos al campo `ivaPercent` global que el OCR/IA
+        // haya rellenado.
+        val totalBaseGastos = periodProducts.filter {
+            it.invoiceId in periodInvoices.filter { inv -> inv.tipo == InvoiceType.GASTO }.map { it.id }.toSet()
+        }.sumOf { it.subtotal }
+            .let { if (it > 0) it else periodInvoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { it.baseImponible } }
+        val totalIvaGastos = periodProducts.filter {
+            it.invoiceId in periodInvoices.filter { inv -> inv.tipo == InvoiceType.GASTO }.map { it.id }.toSet()
+        }.sumOf { it.ivaAmount }
+            .let { if (it > 0) it else periodInvoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { it.cuotaIva } }
+        val totalIrpfGastos = periodInvoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { it.cuotaIrpf }
+
+        Log.d(TAG, "Query: type=$queryType, period=$periodo, gastos=$totalGastos, base=$totalBaseGastos, iva=$totalIvaGastos, irpf=$totalIrpfGastos, ingresos=$totalIngresos, products=${periodProducts.size}")
 
         return when (queryType.lowercase()) {
             "gastos" -> {
                 val sb = StringBuilder("💰 Gastos del $periodo:\n")
-                sb.append("• Total: ${fmt.format(totalGastos)}\n")
+                sb.append("• Total (IVA incluido): ${fmt.format(totalGastos)}\n")
+                if (totalBaseGastos > 0) {
+                    sb.append("• Base imponible: ${fmt.format(totalBaseGastos)}\n")
+                    sb.append("• IVA repercutido: ${fmt.format(totalIvaGastos)}\n")
+                }
+                if (totalIrpfGastos > 0) {
+                    sb.append("• IRPF retenido: ${fmt.format(totalIrpfGastos)}\n")
+                }
                 sb.append("• Cantidad: $countGastos transacciones\n")
                 if (periodInvoices.isNotEmpty()) {
                     val byProvider = periodInvoices.filter { it.tipo == InvoiceType.GASTO }
@@ -341,7 +369,6 @@ class ChatbotViewModel @Inject constructor(
                     return "📦 No hay productos registrados en el periodo: $periodo"
                 }
                 val sb = StringBuilder("📦 Productos del $periodo:\n")
-                // Most bought by frequency
                 val byFrequency = periodProducts.groupBy { it.descripcion.lowercase().trim() }
                     .mapValues { it.value.sumOf { p -> p.cantidad }.toInt() to it.value.sumOf { p -> p.subtotal } }
                     .toList().sortedByDescending { it.second.first }.take(5)
@@ -351,7 +378,6 @@ class ChatbotViewModel @Inject constructor(
                     sb.append("  ${i + 1}. ${name.replaceFirstChar { it.uppercase() }}: ${pair.first} uds - ${fmt.format(pair.second)}\n")
                 }
 
-                // Most expensive
                 val byAmount = periodProducts.groupBy { it.descripcion.lowercase().trim() }
                     .mapValues { it.value.sumOf { p -> p.subtotal } }
                     .toList().sortedByDescending { it.second }.take(5)
@@ -365,11 +391,14 @@ class ChatbotViewModel @Inject constructor(
                 sb.toString().trimEnd()
             }
             else -> {
-                // Full summary for unknown query types
                 val balance = totalIngresos - totalGastos
                 val sb = StringBuilder("📊 Resumen completo del $periodo:\n")
                 sb.append("• Ingresos: ${fmt.format(totalIngresos)} ($countIngresos)\n")
                 sb.append("• Gastos: ${fmt.format(totalGastos)} ($countGastos)\n")
+                if (totalBaseGastos > 0) {
+                    sb.append("• Base imponible gastos: ${fmt.format(totalBaseGastos)}\n")
+                    sb.append("• IVA gastos: ${fmt.format(totalIvaGastos)}\n")
+                }
                 sb.append("• Balance: ${fmt.format(balance)}\n")
                 if (periodProducts.isNotEmpty()) {
                     sb.append("• Productos registrados: ${periodProducts.size}\n")
@@ -386,9 +415,10 @@ class ChatbotViewModel @Inject constructor(
     }
 
     fun startVoiceInput() {
-        _uiState.update { it.copy(isListening = true) }
+        voiceJob?.cancel()
+        voiceJob = viewModelScope.launch {
+            _uiState.update { it.copy(isListening = true) }
 
-        viewModelScope.launch {
             try {
                 voiceRecognitionService.startListening().collect { voiceResult ->
                     if (voiceResult.isFinal) {
@@ -400,6 +430,10 @@ class ChatbotViewModel @Inject constructor(
                                 it.copy(messages = it.messages + ChatMessage.AI("⚠️ Reconocimiento de voz no disponible. Usa el campo de texto."))
                             }
                         }
+                        // Cancelamos el job al primer resultado final para evitar
+                        // que el collector quede colgado si el recognizer no
+                        // emite más eventos (común en algunos dispositivos).
+                        voiceJob?.cancel()
                     }
                 }
             } catch (e: Exception) {
@@ -409,11 +443,15 @@ class ChatbotViewModel @Inject constructor(
                         messages = it.messages + ChatMessage.AI("⚠️ Error de voz: ${e.message}")
                     )
                 }
+            } finally {
+                _uiState.update { it.copy(isListening = false) }
             }
         }
     }
 
     fun stopVoiceInput() {
+        voiceJob?.cancel()
+        voiceJob = null
         voiceRecognitionService.stopListening()
         _uiState.update { it.copy(isListening = false) }
     }
@@ -426,7 +464,6 @@ class ChatbotViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val result = aiService.processInvoiceFromImage(uri)
-                // Reutilizamos la lógica unificada añadiendo un placeholder AI.
                 var placeholderIndex = -1
                 _uiState.update {
                     placeholderIndex = it.messages.size
@@ -437,6 +474,30 @@ class ChatbotViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         messages = it.messages + ChatMessage.AI("❌ Error al escanear: ${e.message}"),
+                        isProcessing = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun processPdf(uri: Uri) {
+        _uiState.update {
+            it.copy(messages = it.messages + ChatMessage.User("📄 Procesando documento..."), isProcessing = true)
+        }
+        viewModelScope.launch {
+            try {
+                val result = aiService.processInvoiceFromPdf(uri)
+                var placeholderIndex = -1
+                _uiState.update {
+                    placeholderIndex = it.messages.size
+                    it.copy(messages = it.messages + ChatMessage.AI(""))
+                }
+                applyAIResult(result, placeholderIndex)
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        messages = it.messages + ChatMessage.AI("❌ Error al procesar documento: ${e.message}"),
                         isProcessing = false
                     )
                 }

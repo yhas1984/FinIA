@@ -6,6 +6,7 @@ import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.repository.InvoiceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -25,12 +26,15 @@ class InvoicesViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(InvoicesUiState())
     val uiState: StateFlow<InvoicesUiState> = _uiState.asStateFlow()
 
+    private var collectorJob: Job? = null
+
     init {
         loadInvoices()
     }
 
     fun loadInvoices() {
-        viewModelScope.launch {
+        collectorJob?.cancel()
+        collectorJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
 
             invoiceRepository.getAllInvoices()
@@ -48,7 +52,8 @@ class InvoicesViewModel @Inject constructor(
     }
 
     fun filterByType(type: InvoiceType?) {
-        viewModelScope.launch {
+        collectorJob?.cancel()
+        collectorJob = viewModelScope.launch {
             _uiState.update { it.copy(selectedType = type, isLoading = true) }
 
             val flow = if (type == null) {

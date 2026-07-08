@@ -22,16 +22,12 @@ import androidx.navigation.compose.rememberNavController
 import com.gastos.feature.dashboard.DashboardScreen
 import com.gastos.feature.invoices.InvoicesScreen
 import com.gastos.feature.invoices.EditInvoiceScreen
-import com.gastos.feature.products.ProductsScreen
 import com.gastos.feature.incomes.IncomesScreen
 import com.gastos.feature.incomes.EditIncomeScreen
-import com.gastos.feature.ocr.ScanInvoiceScreen
-import com.gastos.feature.voice.VoiceCommandScreen
 import com.gastos.feature.settings.SettingsScreen
 import com.gastos.feature.settings.SettingsViewModel
 import com.gastos.feature.settings.PremiumScreen
 import com.gastos.feature.backup.BackupScreen
-import com.gastos.feature.fiscal.FiscalConfigScreen
 import com.gastos.feature.chatbot.ChatbotScreen
 import com.gastos.ui.theme.GastosEIngresosTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -65,12 +61,6 @@ sealed class Screen(val route: String, val title: String, val selectedIcon: @Com
         selectedIcon = { Icon(Icons.Filled.Description, contentDescription = "Facturas") },
         unselectedIcon = { Icon(Icons.Outlined.Description, contentDescription = "Facturas") }
     )
-    object Products : Screen(
-        route = "products",
-        title = "Productos",
-        selectedIcon = { Icon(Icons.Filled.Inventory, contentDescription = "Productos") },
-        unselectedIcon = { Icon(Icons.Outlined.Inventory, contentDescription = "Productos") }
-    )
     object Incomes : Screen(
         route = "incomes",
         title = "Ingresos",
@@ -81,12 +71,9 @@ sealed class Screen(val route: String, val title: String, val selectedIcon: @Com
 
 // Rutas sin bottom bar
 object Routes {
-    const val SCAN_INVOICE = "scan_invoice"
-    const val VOICE_COMMAND = "voice_command"
     const val SETTINGS = "settings"
     const val PREMIUM = "premium"
     const val BACKUP = "backup"
-    const val FISCAL_CONFIG = "fiscal_config"
     const val EDIT_INVOICE = "edit_invoice/{invoiceId}"
     const val EDIT_INCOME = "edit_income/{incomeId}"
     const val CHATBOT = "chatbot"
@@ -95,7 +82,7 @@ object Routes {
 @Composable
 fun FinAIApp() {
     val navController = rememberNavController()
-    val screens = listOf(Screen.Dashboard, Screen.Invoices, Screen.Products, Screen.Incomes)
+    val screens = listOf(Screen.Dashboard, Screen.Invoices, Screen.Incomes)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
@@ -148,9 +135,6 @@ fun FinAIApp() {
                     }
                 )
             }
-            composable(Screen.Products.route) {
-                ProductsScreen()
-            }
             composable(Screen.Incomes.route) {
                 IncomesScreen(
                     onNavigateToEdit = { incomeId ->
@@ -160,16 +144,6 @@ fun FinAIApp() {
             }
 
             // Pantallas secundarias (sin bottom bar)
-            composable(Routes.SCAN_INVOICE) {
-                ScanInvoiceScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-            composable(Routes.VOICE_COMMAND) {
-                VoiceCommandScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
             composable(Routes.CHATBOT) {
                 ChatbotScreen(
                     onNavigateBack = { navController.popBackStack() }
@@ -189,11 +163,6 @@ fun FinAIApp() {
             }
             composable(Routes.BACKUP) {
                 BackupScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
-            }
-            composable(Routes.FISCAL_CONFIG) {
-                FiscalConfigScreen(
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

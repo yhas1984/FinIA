@@ -34,6 +34,9 @@ class VoiceRecognitionService @Inject constructor(
             return@callbackFlow
         }
 
+        // Limpia cualquier recognizer previo antes de crear uno nuevo para
+        // evitar duplicar listeners si el flow se re-colecta rápidamente.
+        cleanupRecognizer()
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
 
         val recognitionListener = object : RecognitionListener {
@@ -114,12 +117,16 @@ class VoiceRecognitionService @Inject constructor(
     }
 
     fun stopListening() {
-        speechRecognizer?.stopListening()
-        speechRecognizer?.destroy()
+        cleanupRecognizer()
+    }
+
+    private fun cleanupRecognizer() {
+        speechRecognizer?.runCatching { stopListening() }
+        speechRecognizer?.runCatching { destroy() }
         speechRecognizer = null
     }
 
     fun destroy() {
-        stopListening()
+        cleanupRecognizer()
     }
 }

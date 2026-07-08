@@ -47,6 +47,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.coroutines.android)
 
+    // Room (para que AppDatabase exponga RoomDatabase y openHelper)
+    implementation(libs.room.runtime)
+
     // Google Sign In (Drive backup)
     implementation(libs.play.services.auth)
 

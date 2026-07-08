@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -61,7 +62,7 @@ fun BackupScreen(
                 title = { Text("Backup") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -78,68 +79,46 @@ fun BackupScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Estado de Google Drive
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Google Drive",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+            // Estado del último sync automático (de gastos/ingresos recién creados)
+            uiState.syncStatusMessage?.let { msg ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (uiState.lastSyncSuccess)
+                            MaterialTheme.colorScheme.primaryContainer
+                        else
+                            MaterialTheme.colorScheme.errorContainer
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    if (uiState.isSignedIn) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text("Conectado")
-                                Text(
-                                    text = uiState.email ?: "",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        Button(
-                            onClick = { viewModel.createBackup() },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !uiState.isLoading
-                        ) {
-                            if (uiState.isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(Icons.Default.Backup, contentDescription = null)
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Crear Backup")
-                        }
-                    } else {
-                        Text(
-                            text = "Inicia sesión con Google para exportar a Sheets y hacer backup en la nube",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (uiState.lastSyncSuccess)
+                                Icons.Default.CloudDone
+                            else
+                                Icons.Default.CloudOff,
+                            contentDescription = null,
+                            tint = if (uiState.lastSyncSuccess)
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            else
+                                MaterialTheme.colorScheme.onErrorContainer
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = { signInLauncher.launch(viewModel.getSignInIntent()) },
-                            modifier = Modifier.fillMaxWidth()
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = msg,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (uiState.lastSyncSuccess)
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            else
+                                MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = { viewModel.clearSyncStatusMessage() }
                         ) {
-                            Icon(Icons.Default.Login, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Iniciar sesión con Google")
+                            Text("✕")
                         }
                     }
                 }
@@ -193,6 +172,17 @@ fun BackupScreen(
                                     Text("Forzar")
                                 }
                             }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            // Importar datos desde Sheets (recuperar tras reinstalar)
+                            OutlinedButton(
+                                onClick = { viewModel.importFromSheets() },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !uiState.isExportingSheets
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Importar datos desde Sheets")
+                            }
                         } else {
                             Button(
                                 onClick = { viewModel.exportToSheets() },
@@ -214,8 +204,9 @@ fun BackupScreen(
                         }
                     }
 
-                    // URL resultante
+                    // URL resultante o mensaje de importación
                     uiState.sheetsUrl?.let { url ->
+                        val isImport = url.startsWith("imported:")
                         Spacer(modifier = Modifier.height(12.dp))
                         Card(
                             colors = CardDefaults.cardColors(
@@ -223,26 +214,40 @@ fun BackupScreen(
                             )
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text(
-                                    "✓ Spreadsheet creado",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedButton(
-                                    onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                                        context.startActivity(intent)
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Abrir en Google Sheets")
+                                if (isImport) {
+                                    val msg = url.removePrefix("imported:")
+                                    Text(
+                                        "✓ $msg",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                } else {
+                                    Text(
+                                        "✓ Spreadsheet creado",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    OutlinedButton(
+                                        onClick = {
+                                            try {
+                                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                context.startActivity(intent)
+                                            } catch (e: android.content.ActivityNotFoundException) {
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Abrir en Google Sheets")
+                                    }
                                 }
                             }
                         }
                     }
+
                 }
             }
 
@@ -361,39 +366,6 @@ fun BackupScreen(
                 }
             }
 
-            // Backups locales
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Backups locales",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    
-                    if (uiState.localBackups.isEmpty()) {
-                        Text(
-                            text = "No hay backups locales",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.heightIn(max = 200.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(uiState.localBackups) { file ->
-                                BackupFileItem(
-                                    file = file,
-                                    onRestore = { viewModel.restoreFromLocal(file) },
-                                    onDelete = { viewModel.deleteBackup(file) }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
             // Error
             uiState.error?.let { error ->
                 Card(
@@ -413,6 +385,81 @@ fun BackupScreen(
                             text = error,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
+                        // Si el error es "Sesión caducada", intentamos
+                        // re-autenticar silenciosamente sin pedirle al usuario
+                        // que cierre sesión manualmente.
+                        val isSessionError = error.contains("caducada", ignoreCase = true) ||
+                                error.contains("sesión", ignoreCase = true)
+                        if (isSessionError) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = { viewModel.retryWithSilentReauth() },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !uiState.isExportingSheets
+                            ) {
+                                if (uiState.isExportingSheets) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(18.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Reintentando...")
+                                } else {
+                                    Icon(
+                                        Icons.Default.Refresh,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Reintentar conexión con Google")
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "La app intentará refrescar tu sesión automáticamente, sin pedirte que cierres sesión.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                        // Si el error es "Sheets API no habilitada", ofrecemos un
+                        // atajo a la consola de Google Cloud para que el
+                        // usuario (o admin del proyecto) pueda activarla.
+                        uiState.apiActivationUrl?.let { url ->
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(
+                                            Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(url)
+                                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(intent)
+                                    } catch (e: android.content.ActivityNotFoundException) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "No hay navegador instalado.",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.Default.OpenInBrowser,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Habilitar Sheets API en Google Cloud")
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Pide a quien gestione el proyecto GCP que active la API y vuelva a intentarlo pasados unos minutos.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
                     }
                 }
             }
@@ -420,44 +467,3 @@ fun BackupScreen(
     }
 }
 
-@Composable
-private fun BackupFileItem(
-    file: File,
-    onRestore: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-    val date = Date(file.lastModified())
-    val size = file.length() / 1024 // KB
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = file.name,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = "${dateFormat.format(date)} • ${size}KB",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Row {
-            IconButton(onClick = onRestore) {
-                Icon(Icons.Default.Restore, contentDescription = "Restaurar")
-            }
-            IconButton(onClick = onDelete) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = "Eliminar",
-                    tint = MaterialTheme.colorScheme.error
-                )
-            }
-        }
-    }
-}

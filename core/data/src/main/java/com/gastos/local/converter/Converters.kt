@@ -1,4 +1,4 @@
-package com.gastos.local.database
+package com.gastos.local.converter
 
 import androidx.room.TypeConverter
 import com.gastos.domain.model.InvoiceType
@@ -9,5 +9,6 @@ class Converters {
     fun fromInvoiceType(value: InvoiceType): String = value.name
 
     @TypeConverter
-    fun toInvoiceType(value: String): InvoiceType = InvoiceType.valueOf(value)
+    fun toInvoiceType(value: String): InvoiceType = runCatching { InvoiceType.valueOf(value) }
+        .getOrDefault(InvoiceType.GASTO)
 }

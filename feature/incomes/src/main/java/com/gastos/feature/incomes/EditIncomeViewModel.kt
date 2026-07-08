@@ -3,6 +3,7 @@ package com.gastos.feature.incomes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
+import com.gastos.domain.model.parseMoney
 import com.gastos.repository.IncomeRepository
 import com.gastos.feature.backup.SheetsSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -96,7 +97,7 @@ class EditIncomeViewModel @Inject constructor(
     fun saveIncome() {
         viewModelScope.launch {
             val form = _form.value
-            val monto = form.monto.toDoubleOrNull()
+            val monto = form.monto.parseMoney()
             if (monto == null || monto <= 0) {
                 _uiState.update { it.copy(saveResult = "El monto debe ser un número positivo") }
                 return@launch
@@ -109,28 +110,35 @@ class EditIncomeViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true, saveResult = null) }
 
             try {
-                val devengado = form.totalDevengado.toDoubleOrNull() ?: 0.0
-                val neto = form.totalNeto.toDoubleOrNull() ?: 0.0
-                val income = Income(
-                    id = form.id,
-                    fecha = form.fecha,
-                    concepto = form.concepto.trim(),
-                    monto = monto,
-                    totalDevengado = if (devengado > 0) devengado else monto,
-                    totalNeto = if (neto > 0) neto else monto,
-                    moneda = form.moneda,
-                    fuente = form.fuente.trim().takeIf { it.isNotBlank() },
-                    ivaPercent = form.ivaPercent.toDoubleOrNull() ?: 0.0,
-                    irpfPercent = form.irpfPercent.toDoubleOrNull() ?: 0.0,
-                    notas = form.notas.trim().takeIf { it.isNotBlank() },
-                    updatedAt = System.currentTimeMillis()
-                )
+                val devengado = form.totalDevengado.parseMoney() ?: 0.0
+                val neto = form.totalNeto.parseMoney() ?: 0.0
+                val income = run {
+                    // Coherencia: si el usuario rellenó devengado/neto, esos mandan.
+                    // Si no, ambos = monto (no hay retenciones).
+                    val finalDevengado = if (devengado > 0) devengado else monto
+                    val finalNeto = if (neto > 0) neto else monto
+                    Income(
+                        id = form.id,
+                        fecha = form.fecha,
+                        concepto = form.concepto.trim(),
+                        monto = monto,
+                        totalDevengado = finalDevengado,
+                        totalNeto = finalNeto,
+                        moneda = form.moneda,
+                        fuente = form.fuente.trim().takeIf { it.isNotBlank() },
+                        ivaPercent = form.ivaPercent.parseMoney() ?: 0.0,
+                        irpfPercent = form.irpfPercent.parseMoney() ?: 0.0,
+                        notas = form.notas.trim().takeIf { it.isNotBlank() },
+                        updatedAt = System.currentTimeMillis()
+                    )
+                }
 
                 if (form.id == 0L) {
                     incomeRepository.insertIncome(income)
                     sheetsSyncManager.syncIncome(income)
                 } else {
                     incomeRepository.updateIncome(income)
+                    sheetsSyncManager.syncIncome(income)
                 }
 
                 _uiState.update {

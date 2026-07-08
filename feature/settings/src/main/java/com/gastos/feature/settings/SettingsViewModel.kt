@@ -9,6 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
@@ -51,18 +52,25 @@ class SettingsViewModel @Inject constructor(
 
     private fun loadSettings() {
         viewModelScope.launch {
-            // Refresca el UI con cada cambio de settings...
-            settingsRepository.settings.collect { settings ->
+            // Un único collector combina settings + estado premium para refrescar
+            // la UI de forma consistente (evita carreras entre dos emissions
+            // que pisaban _uiState en orden no determinista).
+            combine(
+                settingsRepository.settings,
+                billingManager.isPremium
+            ) { settings, isPremium ->
+                settings to isPremium
+            }.collect { (settings, isPremium) ->
                 _uiState.update {
                     it.copy(
-                        settings = settings.copy(isPro = billingManager.isPremium.value),
+                        settings = settings.copy(isPro = isPremium),
                         isLoading = false
                     )
                 }
             }
         }
 
-        // ...pero solo reconfigura el modelo cuando cambian la API key o las
+        // Solo reconfigura el modelo cuando cambian la API key o las
         // instrucciones (no al tocar moneda, tema, etc.), evitando reiniciar
         // la memoria conversacional innecesariamente.
         viewModelScope.launch {
@@ -161,6 +169,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updateAutoBackup(autoBackup: Boolean) {
         viewModelScope.launch { settingsRepository.updateAutoBackup(autoBackup) }
+    }
+
+    fun updateShowTutorials(show: Boolean) {
+        viewModelScope.launch { settingsRepository.updateShowTutorials(show) }
     }
 
     // ---------------- Premium / Billing ----------------

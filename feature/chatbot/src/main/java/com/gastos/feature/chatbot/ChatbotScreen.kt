@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -54,6 +55,13 @@ fun ChatbotScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { viewModel.processImage(it) }
+    }
+
+    // Launcher para seleccionar PDFs/documentos
+    val pdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.processPdf(it) }
     }
 
     // Estado para la URI de la foto tomada con cámara
@@ -122,7 +130,7 @@ fun ChatbotScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 actions = {
@@ -213,6 +221,13 @@ fun ChatbotScreen(
                                 onClick = {
                                     showScanMenu = false
                                     imagePickerLauncher.launch("image/*")
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("📄 Adjuntar documento") },
+                                onClick = {
+                                    showScanMenu = false
+                                    pdfPickerLauncher.launch("application/pdf")
                                 }
                             )
                         }

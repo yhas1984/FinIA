@@ -58,3 +58,18 @@
 
 # Coil
 -keep class coil.** { *; }
+
+# Gson (usado por Google Sheets API y Backup CSV/JSON opcional)
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class com.google.gson.** { *; }
+-keep class com.google.api.client.json.gson.** { *; }
+-dontwarn sun.misc.**
+-keep class com.google.api.services.sheets.v4.** { *; }
+-keep class com.google.api.client.googleapis.extensions.android.gms.auth.** { *; }
+
+# OkHttp / Okio (necesario para Play Services Auth y MediaPipe)
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class okhttp3.** { *; }
+-keep interface okhttp3.** { *; }

@@ -14,6 +14,9 @@ data class InvoiceEntity(
     val total: Double,
     val ivaPercent: Double = 21.0,
     val irpfPercent: Double = 0.0,
+    val baseImponible: Double = 0.0,
+    val cuotaIva: Double = 0.0,
+    val cuotaIrpf: Double = 0.0,
     val paisCodigo: String = "ES",
     val nifEmisor: String? = null,
     val nifReceptor: String? = null,
@@ -56,31 +59,3 @@ data class IncomeEntity(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "categories")
-data class CategoryEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val nombre: String,
-    val icono: String = "category",
-    val color: Long = 0xFF4CAF50,
-    val esDefault: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-@Entity(tableName = "exchange_rates")
-data class ExchangeRateEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val monedaOrigen: String,
-    val monedaDestino: String,
-    val tasa: Double,
-    val fecha: Long = System.currentTimeMillis()
-)
-
-@Entity(tableName = "country_fiscal_config")
-data class CountryFiscalConfigEntity(
-    @PrimaryKey val paisCodigo: String,
-    val nombrePais: String,
-    val ivaRates: String = "[21]",
-    val irpfRate: Double? = null,
-    val nifFormat: String = "",
-    val nombreLeyFiscal: String = "IVA"
-)

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
@@ -16,11 +17,13 @@ import com.gastos.repository.ProductRepository
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.common.api.ApiException
+import android.util.Log
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -39,7 +42,13 @@ data class BackupUiState(
     val exportResult: BackupResult? = null,
     val sheetsUrl: String? = null,
     val localBackups: List<File> = emptyList(),
-    val error: String? = null
+    val error: String? = null,
+    /** Si el último error es "Sheets API no habilitada", contiene la URL de activación. */
+    val apiActivationUrl: String? = null,
+    /** Mensaje de estado del último sync automático (gasto/ingreso recién creado). */
+    val syncStatusMessage: String? = null,
+    /** true si el último sync automático salió bien. */
+    val lastSyncSuccess: Boolean = true
 )
 
 data class BackupResult(
@@ -51,7 +60,6 @@ data class BackupResult(
 
 @HiltViewModel
 class BackupViewModel @Inject constructor(
-    private val backupService: BackupService,
     private val sheetsExportService: SheetsExportService,
     private val sheetsSyncManager: SheetsSyncManager,
     private val invoiceRepository: InvoiceRepository,
@@ -59,12 +67,45 @@ class BackupViewModel @Inject constructor(
     private val productRepository: ProductRepository
 ) : ViewModel() {
 
+    companion object {
+        private const val TAG_SHEETS = "BackupViewModel"
+    }
+
     private val _uiState = MutableStateFlow(BackupUiState())
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
 
     init {
         checkSignInStatus()
-        loadLocalBackups()
+        // Observamos el estado del sync automático tras cada gasto/ingreso
+        // para reflejarlo en la pantalla de Backup.
+        viewModelScope.launch {
+            sheetsSyncManager.status.collectLatest { result ->
+                if (result is SheetsSyncManager.SyncResult.Failure) {
+                    val warningMsg = when (result.reason) {
+                        SheetsSyncManager.SyncResult.Failure.Reason.NO_SHEET_LINKED ->
+                            "Tienes gastos/ingresos sin sincronizar con Google Sheets. " +
+                                "Ve a Backup y pulsa \"Exportar a Google Sheets\"."
+                        SheetsSyncManager.SyncResult.Failure.Reason.NO_ACCOUNT ->
+                            "Sesión de Google caducada. Vuelve a iniciar sesión."
+                        SheetsSyncManager.SyncResult.Failure.Reason.UNAUTHORIZED ->
+                            "Google rechazó el token. Vuelve a iniciar sesión."
+                        SheetsSyncManager.SyncResult.Failure.Reason.API_DISABLED ->
+                            "Sheets API no habilitada en el proyecto GCP."
+                        else -> "No se pudo sincronizar con Google Sheets."
+                    }
+                    _uiState.update {
+                        it.copy(syncStatusMessage = warningMsg, lastSyncSuccess = false)
+                    }
+                } else if (result is SheetsSyncManager.SyncResult.Success) {
+                    _uiState.update {
+                        it.copy(
+                            syncStatusMessage = "Última sincronización: ${result.sheet} OK",
+                            lastSyncSuccess = true
+                        )
+                    }
+                }
+            }
+        }
     }
 
     private fun checkSignInStatus() {
@@ -75,11 +116,6 @@ class BackupViewModel @Inject constructor(
                 hasSheetLink = sheetsSyncManager.isEnabled()
             )
         }
-    }
-
-    private fun loadLocalBackups() {
-        val backups = backupService.getLocalBackups()
-        _uiState.update { it.copy(localBackups = backups) }
     }
 
     /** Devuelve el Intent para lanzar el flujo de Sign-In de Google con scope Sheets. */
@@ -106,54 +142,61 @@ class BackupViewModel @Inject constructor(
 
     /**
      * Exporta los datos a un Google Sheet nuevo. Requiere sesión iniciada.
-     * El resultado (URL del sheet) se expone en [BackupUiState.sheetsUrl].
      */
     fun exportToSheets() {
+        android.util.Log.e("BackupVM", "1-exportToSheets called")
         viewModelScope.launch {
+            android.util.Log.e("BackupVM", "2-launched")
             _uiState.update {
-                it.copy(isExportingSheets = true, sheetsUrl = null, error = null)
+                it.copy(isExportingSheets = true, sheetsUrl = null, error = null, apiActivationUrl = null)
             }
             try {
                 val account = sheetsExportService.getLastSignedInAccount()
+                android.util.Log.e("BackupVM", "3-account=$account, isSignedIn=${sheetsExportService.isSignedIn()}")
                 if (account == null || !sheetsExportService.isSignedIn()) {
-                    _uiState.update {
-                        it.copy(
-                            isExportingSheets = false,
-                            error = "Debes iniciar sesión con Google primero."
-                        )
-                    }
+                    android.util.Log.e("BackupVM", "4-not signed in")
+                    _uiState.update { it.copy(isExportingSheets = false, error = "Debes iniciar sesión con Google primero.") }
                     return@launch
                 }
                 val (invoices, incomes, products) = loadData()
-                // Reutiliza el sheet existente si ya había uno vinculado.
+                android.util.Log.e("BackupVM", "5-data=${invoices.size}i ${incomes.size}inc ${products.size}p")
                 val existingId = sheetsSyncManager.getStoredId()
-                val (url, spreadsheetId) = sheetsExportService.exportToSheets(
-                    account, invoices, incomes, products, existingId
-                )
-                // Persistir para que la sincronización en background funcione.
+                android.util.Log.e("BackupVM", "6-existingId=$existingId")
+                val (url, spreadsheetId) = sheetsExportService.exportToSheets(account, invoices, incomes, products, existingId)
+                android.util.Log.e("BackupVM", "7-SUCCESS url=$url id=$spreadsheetId")
                 sheetsSyncManager.setSpreadsheetId(spreadsheetId)
-                _uiState.update {
-                    it.copy(isExportingSheets = false, sheetsUrl = url)
-                }
-            } catch (e: Exception) {
+                _uiState.update { it.copy(isExportingSheets = false, sheetsUrl = url) }
+            } catch (e: SheetsExportService.SheetsExportError) {
+                android.util.Log.e("BackupVM", "8-SheetsExportError ${e.javaClass.simpleName}", e)
+                // Si la API no está habilitada en el proyecto GCP, mostramos un
+                // enlace directo a la consola para que el usuario (o admin)
+                // pueda activarla en un click.
+                val activationUrl = (e as? SheetsExportService.SheetsExportError.ServiceDisabled)?.activationUrl
                 _uiState.update {
                     it.copy(
                         isExportingSheets = false,
-                        error = "Error al exportar a Sheets: ${e.message}"
+                        error = e.message ?: "Error desconocido",
+                        apiActivationUrl = activationUrl
                     )
                 }
+            } catch (e: Exception) {
+                android.util.Log.e("BackupVM", "8-EXCEPTION", e)
+                _uiState.update { it.copy(isExportingSheets = false, error = "Error: ${e.message}") }
             }
         }
     }
 
     fun clearSheetsResult() {
-        _uiState.update { it.copy(sheetsUrl = null, error = null) }
+        _uiState.update { it.copy(sheetsUrl = null, error = null, apiActivationUrl = null) }
     }
 
-    /** Fuerza la sincronización de todos los datos existentes al sheet vinculado. */
-    fun syncAllToSheets() {
+    /**
+     * Importa todos los datos desde el Google Sheet vinculado a la BD local.
+     * Útil para recuperar datos tras reinstalar la app.
+     */
+    fun importFromSheets() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isExportingSheets = true, sheetsUrl = null, error = null) }
+            _uiState.update { it.copy(isExportingSheets = true, error = null) }
             try {
                 val account = sheetsExportService.getLastSignedInAccount()
                 val existingId = sheetsSyncManager.getStoredId()
@@ -163,41 +206,122 @@ class BackupViewModel @Inject constructor(
                     }
                     return@launch
                 }
-                val (invoices, incomes, products) = loadData()
-                val (url, _) = sheetsExportService.exportToSheets(
-                    account, invoices, incomes, products, existingId
-                )
-                _uiState.update { it.copy(isExportingSheets = false, sheetsUrl = url) }
+                val (invoices, incomes) = sheetsExportService.importFromSheets(existingId)
+                // Insertar en BD local (batch).
+                invoices.forEach { invoiceRepository.insertInvoice(it) }
+                incomes.forEach { incomeRepository.insertIncome(it) }
+                _uiState.update {
+                    it.copy(
+                        isExportingSheets = false,
+                        error = null,
+                        sheetsUrl = "imported:${invoices.size}gastos-${incomes.size}ingresos"
+                    )
+                }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isExportingSheets = false, error = "Error al sincronizar: ${e.message}")
+                    it.copy(isExportingSheets = false, error = "Error al importar: ${e.message}")
                 }
             }
         }
     }
 
-    fun createBackup() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, backupResult = null, error = null) }
+    /** Limpia el mensaje de estado del último sync automático. */
+    fun clearSyncStatusMessage() {
+        _uiState.update { it.copy(syncStatusMessage = null) }
+    }
 
-            try {
-                val result = backupService.createBackup()
+    /** Limpia el error explícito al pulsar "Aceptar". */
+    fun clearError() {
+        _uiState.update { it.copy(error = null, apiActivationUrl = null) }
+    }
+
+    /**
+     * Re-autentica en background con `silentSignIn` de Play Services (sin
+     * mostrar UI) y vuelve a intentar la última exportación. Si el usuario
+     * sigue autenticado con los scopes correctos, esto resuelve el caso
+     * "token caducado en cache" sin necesidad de logout/login manual.
+     */
+    fun retryWithSilentReauth() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(isExportingSheets = true, error = null, apiActivationUrl = null)
+            }
+            val refreshed = sheetsExportService.silentReauthenticate()
+            Log.d(TAG_SHEETS, "retryWithSilentReauth: refreshed=$refreshed")
+            if (!refreshed) {
                 _uiState.update {
                     it.copy(
-                        isLoading = false,
-                        backupResult = result,
-                        error = if (!result.success) result.message else null
+                        isExportingSheets = false,
+                        error = "No se pudo renovar la sesión con Google automáticamente. " +
+                                "Comprueba tu conexión a internet o espera unos minutos."
                     )
                 }
-                if (result.success) {
-                    loadLocalBackups()
+                return@launch
+            }
+            // Reintentar la operación de sync
+            syncAllToSheets()
+        }
+    }
+
+    /** Fuerza la sincronización de todos los datos existentes al sheet vinculado. */
+    fun syncAllToSheets() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isExportingSheets = true, sheetsUrl = null, error = null, apiActivationUrl = null) }
+            try {
+                val account = sheetsExportService.getLastSignedInAccount()
+                when {
+                    account == null -> {
+                        _uiState.update {
+                            it.copy(
+                                isExportingSheets = false,
+                                error = "Sesión de Google caducada. Toca \"Iniciar sesión con Google\" arriba."
+                            )
+                        }
+                        return@launch
+                    }
+                    !sheetsExportService.isSignedIn() -> {
+                        _uiState.update {
+                            it.copy(
+                                isExportingSheets = false,
+                                error = "Faltan permisos de Google Sheets. Inicia sesión de nuevo y concede los permisos."
+                            )
+                        }
+                        return@launch
+                    }
+                }
+                val (invoices, incomes, products) = loadData()
+                Log.d(TAG_SHEETS, "Sincronizando ${invoices.size} invoices, ${incomes.size} incomes, ${products.size} products al sheet")
+
+                // Si no existe sheet vinculado, exportToSheets lo crea.
+                val existingId = sheetsSyncManager.getStoredId()
+                val (url, newId) = sheetsExportService.exportToSheets(
+                    account, invoices, incomes, products, existingId
+                )
+                sheetsSyncManager.setSpreadsheetId(newId)
+
+                _uiState.update {
+                    it.copy(
+                        isExportingSheets = false,
+                        sheetsUrl = url,
+                        syncStatusMessage = "✓ Re-sincronizado: ${invoices.size} facturas + ${incomes.size} ingresos",
+                        lastSyncSuccess = true
+                    )
+                }
+                Log.d(TAG_SHEETS, "✓ Sincronización completa. URL=$url")
+            } catch (e: SheetsExportService.SheetsExportError) {
+                val activationUrl = (e as? SheetsExportService.SheetsExportError.ServiceDisabled)?.activationUrl
+                _uiState.update {
+                    it.copy(
+                        isExportingSheets = false,
+                        error = e.message ?: "Error desconocido",
+                        apiActivationUrl = activationUrl
+                    )
                 }
             } catch (e: Exception) {
+                Log.e(TAG_SHEETS, "syncAllToSheets fallo", e)
+                val msg = e.message ?: e.javaClass.simpleName
                 _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.message ?: "Error al crear backup"
-                    )
+                    it.copy(isExportingSheets = false, error = "Error al sincronizar: $msg")
                 }
             }
         }
@@ -354,7 +478,8 @@ class BackupViewModel @Inject constructor(
                 val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
                 val pdfDocument = PdfDocument()
-                val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+                var pageNumber = 1
+                var pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNumber).create()
                 var page = pdfDocument.startPage(pageInfo)
                 var canvas = page.canvas
                 var y = 50f
@@ -399,6 +524,8 @@ class BackupViewModel @Inject constructor(
                 invoices.filter { it.tipo == InvoiceType.GASTO }.forEach { inv ->
                     if (y > 780f) {
                         pdfDocument.finishPage(page)
+                        pageNumber += 1
+                        pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNumber).create()
                         page = pdfDocument.startPage(pageInfo)
                         canvas = page.canvas
                         y = 50f
@@ -414,6 +541,8 @@ class BackupViewModel @Inject constructor(
                 incomes.forEach { inc ->
                     if (y > 780f) {
                         pdfDocument.finishPage(page)
+                        pageNumber += 1
+                        pageInfo = PdfDocument.PageInfo.Builder(595, 842, pageNumber).create()
                         page = pdfDocument.startPage(pageInfo)
                         canvas = page.canvas
                         y = 50f
@@ -424,10 +553,13 @@ class BackupViewModel @Inject constructor(
 
                 pdfDocument.finishPage(page)
 
-                context.contentResolver.openOutputStream(uri)?.use { outputStream ->
-                    pdfDocument.writeTo(outputStream)
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        pdfDocument.writeTo(outputStream)
+                    }
+                } finally {
+                    pdfDocument.close()
                 }
-                pdfDocument.close()
 
                 _uiState.update {
                     it.copy(
@@ -569,17 +701,28 @@ class BackupViewModel @Inject constructor(
 
                 val chooser = android.content.Intent.createChooser(shareIntent, "Compartir backup FinAI")
                 chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(chooser)
-
-                _uiState.update {
-                    it.copy(
-                        isExporting = false,
-                        exportResult = BackupResult(
-                            success = true,
-                            message = "Backup listo para compartir: ${invoices.size} facturas, ${products.size} productos, ${incomes.size} ingresos",
-                            sharedFile = csvFile
+                try {
+                    context.startActivity(chooser)
+                    _uiState.update {
+                        it.copy(
+                            isExporting = false,
+                            exportResult = BackupResult(
+                                success = true,
+                                message = "Backup listo para compartir: ${invoices.size} facturas, ${products.size} productos, ${incomes.size} ingresos",
+                                sharedFile = csvFile
+                            )
                         )
-                    )
+                    }
+                } catch (e: android.content.ActivityNotFoundException) {
+                    _uiState.update {
+                        it.copy(
+                            isExporting = false,
+                            exportResult = BackupResult(
+                                success = false,
+                                message = "No hay ninguna app disponible para compartir el backup. Instala una app de email o mensajería."
+                            )
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 _uiState.update {
@@ -590,44 +733,6 @@ class BackupViewModel @Inject constructor(
                             message = "Error al crear backup: ${e.message}"
                         )
                     )
-                }
-            }
-        }
-    }
-
-    fun restoreFromLocal(file: File) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-
-            try {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        backupResult = BackupResult(
-                            success = false,
-                            message = "Restauración no implementada aún"
-                        )
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.message ?: "Error al restaurar"
-                    )
-                }
-            }
-        }
-    }
-
-    fun deleteBackup(file: File) {
-        viewModelScope.launch {
-            try {
-                backupService.deleteBackup(file)
-                loadLocalBackups()
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(error = e.message ?: "Error al eliminar backup")
                 }
             }
         }

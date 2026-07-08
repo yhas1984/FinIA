@@ -81,8 +81,11 @@ fun ProductsScreen(
                     }
                 }
             } else {
-                // Resumen
-                val totalProductos = uiState.products.sumOf { it.subtotal }
+                // Resumen: mostramos 3 cifras para evitar ambigüedad:
+                //   base imponible total · IVA total · Total con IVA.
+                val totalBase = uiState.products.sumOf { it.subtotal }
+                val totalIva = uiState.products.sumOf { it.ivaAmount }
+                val totalConIva = uiState.products.sumOf { it.totalConIva }
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -91,21 +94,57 @@ fun ProductsScreen(
                         containerColor = MaterialTheme.colorScheme.secondaryContainer
                     )
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
                             text = "${uiState.products.size} productos",
                             style = MaterialTheme.typography.bodyMedium
                         )
-                        Text(
-                            text = "Total: ${currencyFormat.format(totalProductos)}",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Base imponible",
+                                style = MaterialTheme.typography.bodySmall
                             )
-                        )
+                            Text(
+                                text = currencyFormat.format(totalBase),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "IVA",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = currencyFormat.format(totalIva),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Total con IVA",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                            Text(
+                                text = currencyFormat.format(totalConIva),
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
                     }
                 }
 
@@ -152,22 +191,33 @@ private fun ProductCard(
                             fontWeight = FontWeight.Bold
                         )
                     )
+                    // Mostramos el precio por unidad SIN IVA (base imponible)
+                    // y el total con IVA al final, así el usuario ve números
+                    // que cuadran con lo que pagó en el ticket.
                     Text(
-                        text = "Cantidad: ${product.cantidad} x ${currencyFormat.format(product.precioUnitario)}",
+                        text = "${product.cantidad} × ${currencyFormat.format(product.precioUnitario)} (sin IVA)",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (product.cantidad > 1 || product.ivaPercent > 0) {
+                        Text(
+                            text = "Total con IVA: ${currencyFormat.format(product.totalConIva)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 Column(horizontalAlignment = Alignment.End) {
+                    // Subtotal mostrado = base imponible (sin IVA).
                     Text(
                         text = currencyFormat.format(product.subtotal),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold
                         )
                     )
-                    if (product.ivaPercent > 0) {
+                    if (product.ivaAmount > 0.0) {
                         Text(
-                            text = "IVA: ${product.ivaPercent}%",
+                            text = "IVA ${product.ivaPercent.toInt()}%: ${currencyFormat.format(product.ivaAmount)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

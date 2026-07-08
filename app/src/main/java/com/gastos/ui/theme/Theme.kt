@@ -1,21 +1,36 @@
 package com.gastos.ui.theme
 
 import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.gastos.feature.settings.SettingsRepository
+
+// Helper para aplicar colores de barras en API 23+ sin usar las APIs deprecated.
+// statusBarColor/navigationBarColor están deprecated en API 35; en API 23+ basta
+// con controlar la apariencia de los iconos (claro/oscuro) vía WindowInsetsController.
+private fun applySystemBarColors(
+    window: android.view.Window,
+    view: android.view.View,
+    color: Color,
+    useDark: Boolean
+) {
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+        @Suppress("DEPRECATION")
+        window.statusBarColor = color.toArgb()
+    }
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = color.toArgb()
+    }
+    val insetsController = WindowCompat.getInsetsController(window, view)
+    insetsController.isAppearanceLightStatusBars = !useDark
+    insetsController.isAppearanceLightNavigationBars = !useDark
+}
 
 private val DarkColorScheme = darkColorScheme(
     primary = ElectricViolet,
@@ -74,10 +89,7 @@ fun GastosEIngresosTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.surface.toArgb()
-            window.navigationBarColor = colorScheme.surface.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !useDark
-            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !useDark
+            applySystemBarColors(window, view, colorScheme.surface, useDark)
         }
     }
 

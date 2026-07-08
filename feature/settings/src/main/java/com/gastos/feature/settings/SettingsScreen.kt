@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -218,6 +219,36 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     )
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Outlined.School,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Mostrar tutoriales",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = "Pistas y consejos al abrir cada pantalla.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = uiState.settings.showTutorials,
+                        onCheckedChange = { viewModel.updateShowTutorials(it) }
+                    )
+                }
             }
 
             // Sección Regional
@@ -228,7 +259,7 @@ fun SettingsScreen(
                 SettingsDropdown(
                     label = "Moneda",
                     value = uiState.settings.defaultCurrency,
-                    options = listOf("EUR", "USD", "MXN", "ARS", "COP", "CLP", "PEN"),
+                    options = com.gastos.domain.model.SUPPORTED_CURRENCIES,
                     onValueChange = { viewModel.updateDefaultCurrency(it) }
                 )
                 
@@ -239,22 +270,27 @@ fun SettingsScreen(
                     "MX" to "México",
                     "US" to "Estados Unidos",
                     "AR" to "Argentina",
-                    "CO" to "Colombia",
+                    "BO" to "Bolivia",
                     "CL" to "Chile",
-                    "PE" to "Perú"
+                    "CO" to "Colombia",
+                    "EC" to "Ecuador",
+                    "SV" to "El Salvador",
+                    "GT" to "Guatemala",
+                    "NI" to "Nicaragua",
+                    "PA" to "Panamá",
+                    "PY" to "Paraguay",
+                    "PE" to "Perú",
+                    "UY" to "Uruguay",
+                    "VE" to "Venezuela"
                 )
                 val selectedCountry = countries[uiState.settings.defaultCountry] ?: "España"
-                
+
                 SettingsDropdown(
                     label = "País",
                     value = selectedCountry,
                     options = countries.values.toList(),
                     valueMap = countries.entries.associate { it.value to it.key },
-                    onValueChange = { name ->
-                        countries.entries.find { it.value == name }?.let {
-                            viewModel.updateDefaultCountry(it.key)
-                        }
-                    }
+                    onValueChange = { code -> viewModel.updateDefaultCountry(code) }
                 )
             }
 
@@ -310,30 +346,14 @@ fun SettingsScreen(
                 title = "Datos",
                 icon = Icons.Outlined.Storage
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Backup automático",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = "Guardar en Google Drive semanalmente",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = uiState.settings.autoBackup,
-                        onCheckedChange = { viewModel.updateAutoBackup(it) }
-                    )
-                }
-                
+                Text(
+                    text = "Tus datos se sincronizan automáticamente con Google Sheets tras cada transacción una vez configurado.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 Spacer(modifier = Modifier.height(12.dp))
-                
+
                 Text(
                     text = "Exportar y compartir tus datos",
                     style = MaterialTheme.typography.bodySmall,
@@ -618,7 +638,7 @@ private fun SettingsDropdown(
             readOnly = true,
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
-                .menuAnchor()
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true)
                 .fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,

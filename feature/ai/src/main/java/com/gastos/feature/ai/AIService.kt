@@ -3,7 +3,9 @@ package com.gastos.feature.ai
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
@@ -210,6 +212,31 @@ class AIService @Inject constructor(
         }
     }
 
+    /** Procesa un PDF de factura usando PdfRenderer para convertirlo a imagen. */
+    suspend fun processInvoiceFromPdf(pdfUri: Uri): AIResult {
+        val model = generativeModel ?: return notConfiguredResult()
+        return try {
+            val bitmap = pdfToBitmap(pdfUri)
+            if (bitmap == null) {
+                return AIResult(success = false, message = "No se pudo leer el PDF. Asegúrate de que es un archivo válido.")
+            }
+            val response = model.generateContent(
+                content {
+                    image(bitmap)
+                    text(INVOICE_PROMPT)
+                }
+            )
+            val text = response.text ?: ""
+            if (text.isBlank()) {
+                return AIResult(success = false, message = "La IA no pudo extraer datos del PDF.")
+            }
+            parseInvoiceResponse(text, pdfUri.toString())
+        } catch (e: Exception) {
+            Log.e(TAG, "Error procesando PDF", e)
+            AIResult(success = false, message = friendlyError(e))
+        }
+    }
+
     // ------------------------------------------------------------------
     // Consultas de datos
     // ------------------------------------------------------------------
@@ -296,13 +323,36 @@ class AIService @Inject constructor(
         return try {
             val json = extractJsonFromResponse(responseText)
 
-            val proveedor = json.optString("proveedor", "Desconocido")
+            val proveedor = json.optString("proveedor", json.optString("concepto", "Desconocido"))
             val fechaStr = json.optString("fecha", "")
-            val total = json.optDouble("total", 0.0)
+            // Usar parseMoneyFromJson para manejar números con coma, puntos de miles, o strings.
+            var total = parseMoneyFromJson(json, "total")
             val moneda = json.optString("moneda", "EUR")
-            val ivaPercent = json.optDouble("iva_percent", 21.0)
+            val ivaPercent = parseMoneyFromJson(json, "iva_percent").let { if (it > 0) it else 21.0 }
+            val irpfPercent = parseMoneyFromJson(json, "irpf_percent")
             val nifEmisor = json.optString("nif_emisor")
             val tipoStr = json.optString("tipo", "").lowercase()
+
+            // Para nóminas: el modelo puede devolver total_devengado y total_neto
+            // en vez de total. Usamos el neto como total si existe.
+            val totalDevengado = parseMoneyFromJson(json, "total_devengado")
+            val totalNeto = parseMoneyFromJson(json, "total_neto")
+            if (total == 0.0 && totalNeto > 0) total = totalNeto
+            if (total == 0.0 && totalDevengado > 0) total = totalDevengado
+
+            // Datos fiscales España: base imponible + cuota IVA + cuota IRPF.
+            var baseImponible = parseMoneyFromJson(json, "base_imponible")
+            var cuotaIva = parseMoneyFromJson(json, "cuota_iva")
+            var cuotaIrpf = parseMoneyFromJson(json, "cuota_irpf")
+            if (total > 0 && baseImponible == 0.0) {
+                baseImponible = if (ivaPercent > 0) total / (1 + ivaPercent / 100.0) else total
+            }
+            if (cuotaIva == 0.0 && baseImponible > 0 && ivaPercent > 0) {
+                cuotaIva = baseImponible * ivaPercent / 100.0
+            }
+            if (cuotaIrpf == 0.0 && baseImponible > 0 && irpfPercent > 0) {
+                cuotaIrpf = baseImponible * irpfPercent / 100.0
+            }
 
             val rawLower = responseText.lowercase()
             val incomeKeywords = listOf("nómina", "nomina", "salario", "sueldo", "ingreso", "paga", "devengado", "neto", "bruto", "irpf", "seguridad social", "deducciones", "retenciones")
@@ -310,41 +360,94 @@ class AIService @Inject constructor(
 
             val fecha = parseDate(fechaStr)
 
-            val invoice = Invoice(
-                fecha = fecha,
-                proveedor = proveedor,
-                tipo = if (isIncome) InvoiceType.INGRESO else InvoiceType.GASTO,
-                moneda = moneda,
-                total = total,
-                ivaPercent = ivaPercent,
-                nifEmisor = nifEmisor,
-                imagenUri = imageUri,
-                ocrRawText = responseText
-            )
-
             val productsArray = json.optJSONArray("productos")
             val products = mutableListOf<Product>()
 
             if (productsArray != null) {
                 for (i in 0 until productsArray.length()) {
                     val productJson = productsArray.getJSONObject(i)
+                    val descripcion = productJson.optString("descripcion", "")
+                    val cantidad = parseMoneyFromJson(productJson, "cantidad").let { if (it > 0) it else 1.0 }
+                    val ivaP = parseMoneyFromJson(productJson, "iva_percent").let { if (it > 0) it else ivaPercent }
+
+                    // precio_unitario viene del ticket (IVA-incluido).
+                    val precioConIvaUnit = parseMoneyFromJson(productJson, "precio_unitario")
+                    val factor = 1.0 + ivaP / 100.0
+                    val precioSinIvaUnit = if (factor > 0 && precioConIvaUnit > 0) precioConIvaUnit / factor else 0.0
+                    val subtotalSinIva = cantidad * precioSinIvaUnit
+                    val ivaAmount = subtotalSinIva * ivaP / 100.0
+
                     products.add(
                         Product(
                             invoiceId = 0,
-                            descripcion = productJson.optString("descripcion", ""),
-                            cantidad = productJson.optDouble("cantidad", 1.0),
-                            precioUnitario = productJson.optDouble("precio_unitario", 0.0),
-                            subtotal = productJson.optDouble("subtotal", 0.0),
-                            ivaPercent = productJson.optDouble("iva_percent", ivaPercent)
+                            descripcion = descripcion,
+                            cantidad = cantidad,
+                            precioUnitario = precioSinIvaUnit,
+                            subtotal = subtotalSinIva,
+                            ivaPercent = ivaP,
+                            ivaAmount = ivaAmount
                         )
                     )
                 }
             }
 
+            // Si hay productos agregamos base/cuota reales; si no, usamos lo del modelo.
+            val aggregateBase = if (products.isNotEmpty()) products.sumOf { it.subtotal } else baseImponible
+            val aggregateCuotaIva = if (products.isNotEmpty()) products.sumOf { it.ivaAmount } else cuotaIva
+
+            val invoice = Invoice(
+                fecha = fecha,
+                proveedor = proveedor,
+                tipo = if (isIncome) InvoiceType.INGRESO else InvoiceType.GASTO,
+                moneda = moneda,
+                total = total,
+                ivaPercent = if (products.isNotEmpty()) 0.0 else ivaPercent,
+                irpfPercent = irpfPercent,
+                baseImponible = aggregateBase,
+                cuotaIva = aggregateCuotaIva,
+                cuotaIrpf = cuotaIrpf,
+                nifEmisor = nifEmisor,
+                imagenUri = imageUri,
+                ocrRawText = responseText
+            )
+
             val tipoLabel = if (isIncome) "Ingreso" else "Factura"
             AIResult(success = true, message = "$tipoLabel procesada correctamente", invoice = invoice, products = products)
         } catch (e: Exception) {
             AIResult(success = false, message = "Error al parsear la factura: ${e.message}")
+        }
+    }
+
+    /**
+     * Parsea un valor monetario de un JSONObject de forma robusta.
+     * Maneja: números nativos JSON (double), strings con coma decimal,
+     * strings con puntos de miles ("2.409,90"), y strings con espacios.
+     * Ej: "2.409,90" → 2409.90 ; "21,5" → 21.5 ; "24.090.909" → 24090909.
+     */
+    private fun parseMoneyFromJson(json: JSONObject, key: String): Double {
+        return try {
+            if (!json.has(key) || json.isNull(key)) return 0.0
+            val raw = json.opt(key)?.toString()?.trim() ?: return 0.0
+            if (raw.isEmpty()) return 0.0
+            // Quitar símbolos de moneda y espacios.
+            val cleaned = raw
+                .replace("€", "")
+                .replace("$", "")
+                .replace("EUR", "")
+                .replace("\\s".toRegex(), "")
+            // Si tiene punto y coma (formato es-ES: "2.409,90"):
+            // el punto es separador de miles, la coma es decimal.
+            if (cleaned.contains('.') && cleaned.contains(',')) {
+                return cleaned.replace(".", "").replace(',', '.').toDoubleOrNull() ?: 0.0
+            }
+            // Si solo tiene coma (formato es-ES simple: "21,5"):
+            if (cleaned.contains(',')) {
+                return cleaned.replace(',', '.').toDoubleOrNull() ?: 0.0
+            }
+            // Si solo tiene punto, o es un número entero:
+            cleaned.toDoubleOrNull() ?: 0.0
+        } catch (_: Exception) {
+            0.0
         }
     }
 
@@ -458,6 +561,32 @@ class AIService @Inject constructor(
         }
     }
 
+    /** Convierte la primera página de un PDF a Bitmap con el doble de resolución. */
+    private fun pdfToBitmap(pdfUri: Uri): Bitmap? {
+        var fd: ParcelFileDescriptor? = null
+        var renderer: PdfRenderer? = null
+        var page: PdfRenderer.Page? = null
+        return try {
+            fd = context.contentResolver.openFileDescriptor(pdfUri, "r") ?: return null
+            renderer = PdfRenderer(fd)
+            if (renderer.pageCount == 0) return null
+            page = renderer.openPage(0)
+            val scale = 2
+            val width = page.width * scale
+            val height = page.height * scale
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+            bitmap
+        } catch (e: Exception) {
+            Log.e(TAG, "Error convirtiendo PDF a bitmap", e)
+            null
+        } finally {
+            try { page?.close() } catch (_: Exception) {}
+            try { renderer?.close() } catch (_: Exception) {}
+            try { fd?.close() } catch (_: Exception) {}
+        }
+    }
+
     companion object {
         private const val TAG = "AIService"
         private const val MODEL_NAME = "gemini-3.5-flash"
@@ -470,13 +599,21 @@ class AIService @Inject constructor(
         const val PREMIUM_MAX_HISTORY_TURNS = 10
 
         private val INVOICE_PROMPT = """
-            Analiza esta factura/recibo y extrae la siguiente información en formato JSON:
+            Analiza esta factura/recibo y extrae la siguiente información en formato JSON.
+            IMPORTANTE:
+            - Los precios en el ticket son **IVA incluido** (es lo que ve el cliente).
+            - CADA producto puede tener una tasa de IVA distinta (Mercadona:
+              4% para alimentos básicos, 10% para algunos alimentos y agua,
+              21% para cosmética, limpieza, etc.). Devuelve `iva_percent` POR
+              PRODUCTO, no un único valor global.
+            - El `iva_percent` a nivel de factura es OPCIONAL y solo se usa
+              si no hay productos. Si hay productos, puedes ponerlo a 0.
             {
                 "proveedor": "nombre del proveedor",
                 "fecha": "YYYY-MM-DD",
+                "iva_percent_global": 0.0,
                 "total": 0.0,
                 "moneda": "EUR",
-                "iva_percent": 21.0,
                 "nif_emisor": "NIF/CIF del emisor si visible",
                 "productos": [
                     {
@@ -488,6 +625,11 @@ class AIService @Inject constructor(
                     }
                 ]
             }
+            Convenciones:
+            - total = importe IVA incluido (lo que paga el cliente).
+            - precio_unitario y subtotal de cada producto: IVA incluido.
+            - iva_percent de cada producto: el que aplique (4, 10 o 21 en España).
+            Si no hay productos, devuelve iva_percent_global = 21 y array productos vacío.
             Si no puedes extraer algún campo, usa null. Devuelve solo el JSON.
         """.trimIndent()
     }

@@ -23,16 +23,4 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindIncomeRepository(impl: IncomeRepositoryImpl): IncomeRepository
-
-    @Binds
-    @Singleton
-    abstract fun bindCategoryRepository(impl: CategoryRepositoryImpl): CategoryRepository
-
-    @Binds
-    @Singleton
-    abstract fun bindExchangeRateRepository(impl: ExchangeRateRepositoryImpl): ExchangeRateRepository
-
-    @Binds
-    @Singleton
-    abstract fun bindCountryFiscalConfigRepository(impl: CountryFiscalConfigRepositoryImpl): CountryFiscalConfigRepository
 }

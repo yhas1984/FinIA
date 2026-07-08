@@ -20,6 +20,28 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE invoices ADD COLUMN baseImponible REAL NOT NULL DEFAULT 0.0")
+        db.execSQL("ALTER TABLE invoices ADD COLUMN cuotaIva REAL NOT NULL DEFAULT 0.0")
+    }
+}
+
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE invoices ADD COLUMN cuotaIrpf REAL NOT NULL DEFAULT 0.0")
+    }
+}
+
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // Limpieza de tablas huérfanas (features eliminadas).
+        db.execSQL("DROP TABLE IF EXISTS categories")
+        db.execSQL("DROP TABLE IF EXISTS exchange_rates")
+        db.execSQL("DROP TABLE IF EXISTS country_fiscal_config")
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
@@ -32,7 +54,7 @@ object AppModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()
     }
@@ -48,16 +70,4 @@ object AppModule {
     @Provides
     @Singleton
     fun provideIncomeDao(database: AppDatabase): IncomeDao = database.incomeDao()
-
-    @Provides
-    @Singleton
-    fun provideCategoryDao(database: AppDatabase): CategoryDao = database.categoryDao()
-
-    @Provides
-    @Singleton
-    fun provideExchangeRateDao(database: AppDatabase): ExchangeRateDao = database.exchangeRateDao()
-
-    @Provides
-    @Singleton
-    fun provideCountryFiscalConfigDao(database: AppDatabase): CountryFiscalConfigDao = database.countryFiscalConfigDao()
 }

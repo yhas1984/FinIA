@@ -135,6 +135,7 @@ class DashboardViewModel @Inject constructor(
         hoyCal.set(Calendar.HOUR_OF_DAY, 23)
         hoyCal.set(Calendar.MINUTE, 59)
         hoyCal.set(Calendar.SECOND, 59)
+        hoyCal.set(Calendar.MILLISECOND, 999)
         val hoyFin = hoyCal.timeInMillis
 
         // Esta semana - crear instancia fresca
@@ -160,6 +161,7 @@ class DashboardViewModel @Inject constructor(
         mesCal.set(Calendar.HOUR_OF_DAY, 23)
         mesCal.set(Calendar.MINUTE, 59)
         mesCal.set(Calendar.SECOND, 59)
+        mesCal.set(Calendar.MILLISECOND, 999)
         val mesFin = mesCal.timeInMillis
 
         return DateRanges(hoyInicio, hoyFin, semanaInicio, mesInicio, mesFin)
@@ -183,6 +185,7 @@ class DashboardViewModel @Inject constructor(
             dayCal.set(Calendar.HOUR_OF_DAY, 23)
             dayCal.set(Calendar.MINUTE, 59)
             dayCal.set(Calendar.SECOND, 59)
+            dayCal.set(Calendar.MILLISECOND, 999)
             val dayEnd = dayCal.timeInMillis
 
             val gastos = invoices
