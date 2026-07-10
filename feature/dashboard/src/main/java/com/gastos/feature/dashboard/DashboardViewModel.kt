@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
+import com.gastos.extension.SafeLog
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -13,7 +14,6 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
-import android.util.Log
 
 private const val TAG = "DashboardVM"
 
@@ -58,13 +58,13 @@ class DashboardViewModel @Inject constructor(
             ) { invoices, incomes ->
                 Pair(invoices, incomes)
             }.collect { (invoices, incomes) ->
-                Log.d(TAG, "Dashboard: ${invoices.size} invoices, ${incomes.size} incomes")
-                invoices.forEach { inv -> Log.d(TAG, "  Invoice: id=${inv.id}, tipo=${inv.tipo}, fecha=${inv.fecha}, total=${inv.total}") }
-                incomes.forEach { inc -> Log.d(TAG, "  Income: id=${inc.id}, fecha=${inc.fecha}, monto=${inc.monto}") }
+                SafeLog.d(TAG, "Dashboard: ${invoices.size} invoices, ${incomes.size} incomes")
+                invoices.forEach { inv -> SafeLog.d(TAG, "  Invoice: id=${inv.id}, tipo=${inv.tipo}, fecha=${inv.fecha}, total=${inv.total}") }
+                incomes.forEach { inc -> SafeLog.d(TAG, "  Income: id=${inc.id}, fecha=${inc.fecha}, monto=${inc.monto}") }
 
                 val now = System.currentTimeMillis()
                 val ranges = computeDateRanges()
-                Log.d(TAG, "  Ranges: hoy=${ranges.hoyInicio}-${ranges.hoyFin}, semana=${ranges.semanaInicio}-now, mes=${ranges.mesInicio}-${ranges.mesFin}")
+                SafeLog.d(TAG, "  Ranges: hoy=${ranges.hoyInicio}-${ranges.hoyFin}, semana=${ranges.semanaInicio}-now, mes=${ranges.mesInicio}-${ranges.mesFin}")
 
                 // Filtrar por rangos
                 val gastosMes = invoices
@@ -91,7 +91,7 @@ class DashboardViewModel @Inject constructor(
                     .filter { it.fecha >= ranges.semanaInicio && it.fecha <= now }
                     .sumOf { it.monto }
 
-                Log.d(TAG, "  Computed: gastosMes=$gastosMes, ingresosMes=$ingresosMes, gastosHoy=$gastosHoy, gastosSemana=$gastosSemana")
+                SafeLog.d(TAG, "  Computed: gastosMes=$gastosMes, ingresosMes=$ingresosMes, gastosHoy=$gastosHoy, gastosSemana=$gastosSemana")
 
                 // Datos diarios
                 val dailyData = computeDailyData(invoices, incomes)
@@ -205,10 +205,60 @@ class DashboardViewModel @Inject constructor(
         return data
     }
 
+    /**
+     * Refresh: fuerza un re-fetch de los datos desde la base de datos.
+     * Pone isLoading=true al inicio y false al final. Si falla, deja
+     * isLoading=false y propaga el error.
+     */
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            kotlinx.coroutines.delay(300)
+            try {
+                // Forzar un re-emit del flow combinado
+                val invoices = invoiceRepository.getAllInvoices().first()
+                val incomes = incomeRepository.getAllIncomes().first()
+                // Aplica la misma lógica de observeDashboardData
+                val now = System.currentTimeMillis()
+                val ranges = computeDateRanges()
+                val totalFacturas = invoices.count { it.tipo == InvoiceType.GASTO }
+                val totalIngresosCount = incomes.size
+                val gastosMes = invoices
+                    .filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.mesInicio..ranges.mesFin }
+                    .sumOf { it.total }
+                val ingresosMes = incomes
+                    .filter { it.fecha in ranges.mesInicio..ranges.mesFin }
+                    .sumOf { it.monto }
+                val balanceMes = ingresosMes - gastosMes
+                val totalGastosHoy = invoices
+                    .filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.hoyInicio..ranges.hoyFin }
+                    .sumOf { it.total }
+                val totalIngresosHoy = incomes
+                    .filter { it.fecha in ranges.hoyInicio..ranges.hoyFin }
+                    .sumOf { it.monto }
+                val totalGastosSemana = invoices
+                    .filter { it.tipo == InvoiceType.GASTO && it.fecha >= ranges.semanaInicio }
+                    .sumOf { it.total }
+                val totalIngresosSemana = incomes
+                    .filter { it.fecha >= ranges.semanaInicio }
+                    .sumOf { it.monto }
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        totalGastosMes = gastosMes,
+                        totalIngresosMes = ingresosMes,
+                        balanceMes = balanceMes,
+                        totalGastosHoy = totalGastosHoy,
+                        totalIngresosHoy = totalIngresosHoy,
+                        totalGastosSemana = totalGastosSemana,
+                        totalIngresosSemana = totalIngresosSemana,
+                        totalFacturas = totalFacturas,
+                        totalIngresosCount = totalIngresosCount
+                    )
+                }
+            } catch (e: Exception) {
+                SafeLog.e(TAG, "Error refrescando dashboard", e)
+                _uiState.update { it.copy(isLoading = false) }
+            }
         }
     }
 }
