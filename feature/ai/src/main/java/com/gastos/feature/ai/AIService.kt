@@ -5,10 +5,12 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
+import com.gastos.domain.model.CountryFiscalConfig
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
+import com.gastos.repository.CountryFiscalConfigRepository
 import com.google.ai.client.generativeai.Chat
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.GenerateContentResponse
@@ -35,12 +37,45 @@ data class AIResult(
 
 @Singleton
 class AIService @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val fiscalConfigRepository: CountryFiscalConfigRepository
 ) {
     private var generativeModel: GenerativeModel? = null
     private var chatSession: Chat? = null
     private var currentApiKey: String = ""
     private var systemInstructions: String = ""
+
+    /** País fiscal usado al escanear documentos (por defecto España).
+     *  La UI puede cambiarlo con [setFiscalCountry]. Esto aplica las
+     *  reglas de extracción fiscales del país (sólo España tiene reglas
+     *  AEAT específicas hoy; resto del mundo usa un prompt genérico). */
+    @Volatile
+    private var currentFiscalCountry: String = "ES"
+    @Volatile
+    private var cachedFiscalConfig: CountryFiscalConfig? = null
+    @Volatile
+    private var cachedFiscalCountryForConfig: String? = null
+
+    /** Cambia el país fiscal de referencia para el escaneo de documentos.
+     *  Recarga la [CountryFiscalConfig] correspondiente en caché. */
+    suspend fun setFiscalCountry(countryCode: String) {
+        val code = countryCode.uppercase()
+        if (code == currentFiscalCountry && cachedFiscalConfig != null) return
+        currentFiscalCountry = code
+        cachedFiscalConfig = fiscalConfigRepository.getConfigByCountry(code)
+        cachedFiscalCountryForConfig = code
+    }
+
+    /** Devuelve la config fiscal del país actual, cargándola en caché si es
+     *  necesario. Llamado desde suspend (processInvoiceFromImage). */
+    private suspend fun currentFiscalConfig(): CountryFiscalConfig? {
+        val code = currentFiscalCountry
+        if (cachedFiscalCountryForConfig != code) {
+            cachedFiscalConfig = fiscalConfigRepository.getConfigByCountry(code)
+            cachedFiscalCountryForConfig = code
+        }
+        return cachedFiscalConfig
+    }
 
     /** Número máximo de turnos (usuario+modelo) que se conservan en la memoria. */
     private val chatHistory = mutableListOf<com.google.ai.client.generativeai.type.Content>()
@@ -197,13 +232,18 @@ class AIService @Inject constructor(
             val bitmap = uriToBitmap(imageUri)
                 ?: return AIResult(success = false, message = "Error al cargar la imagen")
 
+            val fiscalCfg = currentFiscalConfig()
+            val prompt = ocrPrompt(currentFiscalCountry, fiscalCfg)
+
             val response = model.generateContent(
                 content {
                     image(bitmap)
-                    text(INVOICE_PROMPT)
+                    text(prompt)
                 }
             )
-            parseInvoiceResponse(response.text ?: "", imageUri.toString())
+            val raw = response.text ?: ""
+            Log.d(TAG, "OCR raw response: $raw")
+            parseInvoiceResponse(raw, imageUri.toString(), currentFiscalCountry)
         } catch (e: Exception) {
             Log.e(TAG, "Error procesando imagen", e)
             AIResult(success = false, message = friendlyError(e))
@@ -292,39 +332,99 @@ class AIService @Inject constructor(
     // Parseo de respuestas
     // ------------------------------------------------------------------
 
-    private fun parseInvoiceResponse(responseText: String, imageUri: String): AIResult {
+    private fun parseInvoiceResponse(
+        responseText: String,
+        imageUri: String,
+        fiscalCountry: String
+    ): AIResult {
         return try {
             val json = extractJsonFromResponse(responseText)
+            val tipoDoc = json.optString("tipo_documento", "").lowercase()
+            val rawLower = responseText.lowercase()
 
-            val proveedor = json.optString("proveedor", "Desconocido")
+            // ---------- NÓMINA ----------
+            // documento salarial: empresa paga a empleado. Se guarda como
+            // Income (NO Invoice) — totalDevengado=bruto, monto/totalNeto
+            // =líquido recibido, fuente=nombre empresa.
+            // Red de seguridad: si el modelo no devolvió "nomina" pero el
+            // texto contiene keywords típicos de nómina, igual lo trata
+            // como nómina.
+            val esNomina = tipoDoc == "nomina" ||
+                NOMINA_KEYWORDS.any { rawLower.contains(it) }
+            if (esNomina) {
+                val empresa = json.optString("empresa", json.optString("proveedor", ""))
+                    .ifBlank { "Nómina" }
+                val moneda = json.optString("moneda", "EUR")
+                val devengado = json.optDouble("devengado", json.optDouble("total_devengado", 0.0))
+                val liquido = json.optDouble("liquido", json.optDouble("neto", json.optDouble("total_neto", 0.0)))
+                val total = json.optDouble("total", 0.0)
+                val monto = when {
+                    liquido > 0 -> liquido
+                    devengado > 0 -> devengado
+                    else -> total   // fallback: si la IA sólo rellenó "total"
+                }
+                if (monto <= 0) {
+                    return AIResult(success = false, message = "No se pudo leer el importe de la nómina")
+                }
+                val irpf = json.optDouble("retencion_irpf", 0.0)
+                val fecha = parseDate(json.optString("fecha", ""))
+                val concepto = "Nómina - $empresa"
+
+                val income = Income(
+                    fecha = fecha,
+                    concepto = concepto,
+                    monto = monto,
+                    totalDevengado = if (devengado > 0) devengado else monto,
+                    totalNeto = if (liquido > 0) liquido else monto,
+                    moneda = moneda,
+                    fuente = empresa,
+                    ivaPercent = 0.0,
+                    irpfPercent = irpf,
+                    imagenUri = imageUri,
+                    notas = null
+                )
+                return AIResult(
+                    success = true,
+                    message = "Nómina procesada: $empresa — líquido ${if (liquido > 0) liquido else monto} $moneda${ if (irpf > 0) " (IRPF ${irpf}%)" else "" }",
+                    income = income
+                )
+            }
+
+            // ---------- FACTURA / TICKET / RECIBO ----------
+            val proveedor = json.optString("proveedor", json.optString("empresa", json.optString("razon_social", "")))
+                .ifBlank { "Desconocido" }
             val fechaStr = json.optString("fecha", "")
             val total = json.optDouble("total", 0.0)
             val moneda = json.optString("moneda", "EUR")
-            val ivaPercent = json.optDouble("iva_percent", 21.0)
-            val nifEmisor = json.optString("nif_emisor")
-            val tipoStr = json.optString("tipo", "").lowercase()
+            val ivaPercent = json.optDouble("tipo_iva", json.optDouble("iva_percent", 0.0))
+            val irpfPercent = json.optDouble("retencion_irpf", 0.0)
+            val nifEmisor = json.optString("nif_emisor").ifBlank { null }
 
-            val rawLower = responseText.lowercase()
-            val incomeKeywords = listOf("nómina", "nomina", "salario", "sueldo", "ingreso", "paga", "devengado", "neto", "bruto", "irpf", "seguridad social", "deducciones", "retenciones")
-            val isIncome = incomeKeywords.any { rawLower.contains(it) } || tipoStr.contains("ingreso") || tipoStr.contains("income") || tipoStr.contains("nomina")
+            // país detectado (ISO 3166-1 alpha-2) si la IA lo indica.
+            val detectedPais = json.optString("pais", "").ifBlank { fiscalCountry }
+
+            val esIngresoFactura = tipoDoc.contains("emitida") ||
+                // "factura emitida" (ventas) es un ingreso, no un gasto.
+                json.optString("tipo", "").lowercase() == "ingreso"
 
             val fecha = parseDate(fechaStr)
-
             val invoice = Invoice(
                 fecha = fecha,
                 proveedor = proveedor,
-                tipo = if (isIncome) InvoiceType.INGRESO else InvoiceType.GASTO,
+                tipo = if (esIngresoFactura) InvoiceType.INGRESO else InvoiceType.GASTO,
                 moneda = moneda,
                 total = total,
                 ivaPercent = ivaPercent,
+                irpfPercent = irpfPercent,
+                paisCodigo = detectedPais,
                 nifEmisor = nifEmisor,
+                nifReceptor = json.optString("nif_receptor").ifBlank { null },
                 imagenUri = imageUri,
                 ocrRawText = responseText
             )
 
             val productsArray = json.optJSONArray("productos")
             val products = mutableListOf<Product>()
-
             if (productsArray != null) {
                 for (i in 0 until productsArray.length()) {
                     val productJson = productsArray.getJSONObject(i)
@@ -341,11 +441,122 @@ class AIService @Inject constructor(
                 }
             }
 
-            val tipoLabel = if (isIncome) "Ingreso" else "Factura"
-            AIResult(success = true, message = "$tipoLabel procesada correctamente", invoice = invoice, products = products)
+            val tipoLabel = if (esIngresoFactura) "Ingreso" else "Gasto"
+            AIResult(success = true, message = "$tipoLabel procesado correctamente", invoice = invoice, products = products)
         } catch (e: Exception) {
-            AIResult(success = false, message = "Error al parsear la factura: ${e.message}")
+            AIResult(success = false, message = "Error al parsear documento: ${e.message}")
         }
+    }
+
+    /**
+     * Construye el prompt de OCR adaptado al país fiscal.
+     *
+     *  - España (ES): reglas AEAT estrictas — detecta tipo de documento,
+     *    motivos de la Orden HAC/773/2019 (NIF desglosado en país ISO +
+     *    base imponible + tipo IVA + cuota + retención IRPF + total),
+     *    nómina con devengado/neto/IRPF/Seguridad Social.
+     *  - Otro país: prompt genérico, sólo pide los básicos sin imposición
+     *    de reglas ES (cada país es diferente).
+     * Los [config] (ivaRates/etc.) se inyectan como hints para el modelo.
+     */
+    private fun ocrPrompt(country: String, config: CountryFiscalConfig?): String {
+        val es = country.equals("ES", ignoreCase = true)
+        val ivaHint = config?.ivaRates?.takeIf { it.isNotEmpty() }?.let {
+            "Posibles tipos de ${config.nombreLeyFiscal}: ${it.joinToString(", ")}%."
+        } ?: ""
+        val irpfHint = config?.irpfRate?.let { "IRPF típico ~${it}%." } ?: ""
+
+        if (es) {
+            return """
+                Eres un experto en contabilidad española (AEAT, Orden HAC/773/2019).
+                Analiza la imagen del documento y devuelve SOLO un JSON válido (sin
+                markdown, sin comentarios). Todos los importes como NÚMEROS.
+
+                CRÍTICO — PASO 1: clasifica la imagen en EXACTAMENTE uno de:
+                  "nomina"          → recibo salarial recibido por un empleado. Palabras
+                                     clave típicas: nómina, salario, sueldo, devengado,
+                                     líquido a percibir, percepciones, deducciones,
+                                     retención IRPF, base de cotización, Seguridad Social.
+                  "factura_recibida"→ factura/ticket de compra/gasto (tú eres receptor).
+                  "factura_emitida" → factura de venta (tú eres el emisor).
+                  "ticket"          → recibo simplificado de compra (sin NIF).
+                  "recibo"          → otro recibo de pago.
+
+                REGLA OBLIGATORIA: en una NÓMINA NO devuelvas "proveedor" ni "total";
+                usa "empresa" + "devengado"/"liquido". Confundir una nómina con una
+                factura produce un gasto erróneo con 0€ que rompe la contabilidad.
+
+                PASO 2 — extrae los campos del tipo correspondiente.
+
+                COMUNES:
+                  "pais":"ES", "moneda":"EUR", "fecha":"YYYY-MM-DD"
+
+                PARA "nomina" (campos EXACTOS, en bruto sin IVA):
+                  "empresa":"...", "empleado":"...",
+                  "devengado":1567.54,   // total devengado (bruto)
+                  "liquido":1212.30,     // líquido a percibir (neto)
+                  "retencion_irpf":15.0, // % IRPF aplicado
+                  "base_cotizacion":1313.46,
+                  "seguridad_social":105.90,
+                  "nif_emisor":"...NIF empresa..."
+
+                PARA factura_recibida/factura_emitida/ticket/recibo (AEAT):
+                  "proveedor":"...", "nif_emisor":"...", "nif_receptor":"...",
+                  "numero_factura":"...",
+                  "base_imponible":149.42,
+                  "tipo_iva":21.0,        // 0/4/10/21
+                  "cuota_iva":31.38,
+                  "retencion_irpf":0.0,   // sólo si aplica (profesionales)
+                  "total":180.80,
+                  "productos":[{"descripcion":"...","cantidad":1.0,"precio_unitario":0.0,
+                                "subtotal":0.0,"iva_percent":21.0}]
+
+                EJEMPLO de salida para una NÓMINA:
+                {"tipo_documento":"nomina","pais":"ES","moneda":"EUR","fecha":"2026-06-30",
+                 "empresa":"ACME S.L.","empleado":"Juan Pérez",
+                 "devengado":1567.54,"liquido":1212.30,"retencion_irpf":15.0,
+                 "base_cotizacion":1313.46,"seguridad_social":105.90,
+                 "nif_emisor":"B12345678"}
+
+                EJEMPLO de salida para una FACTURA RECIBIDA:
+                {"tipo_documento":"factura_recibida","pais":"ES","moneda":"EUR",
+                 "fecha":"2026-06-15","proveedor":"Papelería López S.L.",
+                 "nif_emisor":"B87654321","nif_receptor":"12345678Z",
+                 "numero_factura":"F-2026-0421","base_imponible":149.42,
+                 "tipo_iva":21.0,"cuota_iva":31.38,"retencion_irpf":0.0,
+                 "total":180.80,"productos":[{"descripcion":"Toner","cantidad":2.0,
+                 "precio_unitario":74.71,"subtotal":149.42,"iva_percent":21.0}]}
+
+                REGLAS ES:
+                  - NIF: rellena "nif_emisor" y/o "nif_receptor" con el NÚMERO tal cual
+                    (sin prefijo de país); el de España lleva letra final (DNI-NIF). No inventes.
+                  - IVA: elige entre 0/4/10/21. Si no es claro, 21.
+                  - Base + cuota IVA + retención IRPF deben cuadrar con total.
+                  $ivaHint
+                  $irpfHint
+
+                Si un dato no es legible, usa null. Devuelve SIEMPRE "tipo_documento".
+            """.trimIndent()
+        }
+
+        // ---- Otro país: prompt genérico (no imponer reglas ES) ----
+        return """
+            Analiza el documento (factura/recibo/nómina) y devuelve SOLO un JSON.
+            Todos los importes como NÚMEROS. Fechas "YYYY-MM-DD".
+
+            "tipo_documento":"factura_recibida|factura_emitida|nomina|ticket|recibo",
+            "pais":"$country",
+            "moneda":"...","fecha":"YYYY-MM-DD","proveedor":"...",
+            "nif_emisor":"...","nif_receptor":"...",
+            "total":0.0,"iva_percent":0.0,"retencion_irpf":0.0,
+            "productos":[{"descripcion":"...","cantidad":1.0,"precio_unitario":0.0,"subtotal":0.0,"iva_percent":0.0}]
+
+            Para nómina añade:
+            "empresa":"...","devengado":0.0,"liquido":0.0,"retencion_irpf":0.0
+            $ivaHint
+            $irpfHint
+            Devuelve solo el JSON, sin markdown.
+        """.trimIndent()
     }
 
     private fun extractJsonFromResponse(responseText: String): JSONObject {
@@ -469,26 +680,25 @@ class AIService @Inject constructor(
         const val FREE_MAX_HISTORY_TURNS = 3
         const val PREMIUM_MAX_HISTORY_TURNS = 10
 
-        private val INVOICE_PROMPT = """
-            Analiza esta factura/recibo y extrae la siguiente información en formato JSON:
-            {
-                "proveedor": "nombre del proveedor",
-                "fecha": "YYYY-MM-DD",
-                "total": 0.0,
-                "moneda": "EUR",
-                "iva_percent": 21.0,
-                "nif_emisor": "NIF/CIF del emisor si visible",
-                "productos": [
-                    {
-                        "descripcion": "nombre del producto",
-                        "cantidad": 1.0,
-                        "precio_unitario": 0.0,
-                        "subtotal": 0.0,
-                        "iva_percent": 21.0
-                    }
-                ]
-            }
-            Si no puedes extraer algún campo, usa null. Devuelve solo el JSON.
-        """.trimIndent()
+        /**
+         * Keywords ESPECÍFICAS de nómina (recibo salarial) que no aparecen
+         * típicamente en facturas de compra/venta. Se usan como red de
+         * seguridad en [parseInvoiceResponse] cuando el modelo no devuelve
+         * `tipo_documento: "nomina"`.
+         *
+         * NO incluir "retención", "irpf", "empresa:" — esas palabras
+         * aparecen en facturas normales (con retención IRPF de
+         * profesionales, encabezado "EMPRESA: …"). Con ellas, cualquier
+         * factura con IRPF sería falsamente clasificada como nómina →
+         * ingreso, rompiendo la contabilidad.
+         */
+        private val NOMINA_KEYWORDS = listOf(
+            "nómina", "nomina", "salario", "sueldo",
+            "devengado", "líquido a percibir", "liquido a percibir",
+            "percepciones", "deducciones",
+            "base de cotización", "cotización",
+            "total devengado", "total a percibir",
+            "seguridad social"
+        )
     }
 }
