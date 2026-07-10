@@ -19,9 +19,12 @@ billing = "7.0.0"
 play-services-auth = "21.3.0"
 datastore = "1.1.1"
 serialization-json = "1.7.3"
+androidx-security-crypto = "1.1.0-alpha06"
 junit = "4.13.2"
 androidx-test-ext = "1.2.1"
 espresso = "3.6.1"
+mockk = "1.13.16"
+turbine = "1.2.1"
 
 [libraries]
 # Compose
@@ -60,6 +63,7 @@ androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lif
 # Coroutines
 coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 
 # CameraX
 camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraX" }
@@ -88,6 +92,9 @@ google-api-services-sheets = { group = "com.google.apis", name = "google-api-ser
 # DataStore
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 
+# Security
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "androidx-security-crypto" }
+
 # Serialization
 serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization-json" }
 
@@ -95,6 +102,8 @@ serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serializ
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidx-test-ext" }
 espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
