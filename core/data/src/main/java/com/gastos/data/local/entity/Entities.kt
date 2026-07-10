@@ -1,6 +1,8 @@
 package com.gastos.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.gastos.domain.model.InvoiceType
 
@@ -24,7 +26,24 @@ data class InvoiceEntity(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "products")
+@Entity(
+    tableName = "products",
+    foreignKeys = [
+        ForeignKey(
+            entity = InvoiceEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["invoiceId"],
+            onDelete = ForeignKey.CASCADE
+        ),
+        ForeignKey(
+            entity = CategoryEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["categoriaId"],
+            onDelete = ForeignKey.SET_NULL
+        )
+    ],
+    indices = [Index("invoiceId"), Index("categoriaId")]
+)
 data class ProductEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val invoiceId: Long,

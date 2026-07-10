@@ -20,6 +20,48 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+/**
+ * Migration 2 → 3: añade ForeignKeys con CASCADE/SET NULL e índices a la
+ * tabla `products` para integridad referencial.
+ *
+ *   - products.invoiceId → invoices.id  ON DELETE CASCADE
+ *     (borrar una factura borra sus productos)
+ *   - products.categoriaId → categories.id  ON DELETE SET NULL
+ *     (borrar una categoría deja los productos sin categoría)
+ *
+ * SQLite no permite ALTER TABLE ADD FOREIGN KEY, así que se reconstruye
+ * la tabla con el patrón create-copy-drop-rename.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `products_new` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `invoiceId` INTEGER NOT NULL,
+                `descripcion` TEXT NOT NULL,
+                `cantidad` REAL NOT NULL,
+                `precioUnitario` REAL NOT NULL,
+                `subtotal` REAL NOT NULL,
+                `ivaPercent` REAL NOT NULL,
+                `ivaAmount` REAL NOT NULL,
+                `categoriaId` INTEGER,
+                `createdAt` INTEGER NOT NULL,
+                FOREIGN KEY(`invoiceId`) REFERENCES `invoices`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
+                FOREIGN KEY(`categoriaId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_new_invoiceId` ON `products_new`(`invoiceId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_new_categoriaId` ON `products_new`(`categoriaId`)")
+        db.execSQL("INSERT INTO `products_new` SELECT * FROM `products`")
+        db.execSQL("DROP TABLE `products`")
+        db.execSQL("ALTER TABLE `products_new` RENAME TO `products`")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_invoiceId` ON `products`(`invoiceId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_categoriaId` ON `products`(`categoriaId`)")
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
@@ -32,7 +74,7 @@ object AppModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()
     }

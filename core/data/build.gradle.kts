@@ -44,4 +44,10 @@ dependencies {
 
     api(project(":core:domain"))
     implementation(project(":core:common"))
+
+    // Testing
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.turbine)
 }
