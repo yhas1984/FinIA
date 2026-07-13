@@ -391,8 +391,22 @@ class AIService @Inject constructor(
             }
 
             // ---------- FACTURA / TICKET / RECIBO ----------
-            val proveedor = json.optString("proveedor", json.optString("empresa", json.optString("razon_social", "")))
-                .ifBlank { "Desconocido" }
+            // El nombre del emisor puede llegar en cualquiera de estos
+            // campos según cómo la IA haya interpretado el documento.
+            // Cubrimos los nombres más comunes (ES/EN) para evitar
+            // falsos 'Desconocido' cuando la IA rellena, p. ej.,
+            // `merchant` (inglés), `comercio`, o `establecimiento`.
+            val proveedor = listOf(
+                "proveedor", "empresa", "razon_social", "razon social",
+                "nombre", "name", "merchant", "comercio",
+                "establecimiento", "vendedor", "supplier",
+                "razon", "sociedad", "compañia", "compania"
+            )
+                .asSequence()
+                .map { json.optString(it, "").trim() }
+                .firstOrNull { it.isNotBlank() }
+                ?.let { it }
+                ?: "Desconocido"
             val fechaStr = json.optString("fecha", "")
             val total = json.optDouble("total", 0.0)
             val moneda = json.optString("moneda", "EUR")
