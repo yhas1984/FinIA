@@ -118,31 +118,6 @@ dependencies {
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
 
-    // CameraX
-    implementation(libs.camera.core)
-    implementation(libs.camera.camera2)
-    implementation(libs.camera.lifecycle)
-    implementation(libs.camera.view)
-
-    // Coil (images)
-    implementation(libs.coil.compose)
-    implementation(libs.coil.network.okhttp)
-
-    // Google AI (Gemini API - cloud)
-    implementation(libs.google.generative.ai)
-
-    // DataStore
-    implementation(libs.datastore.preferences)
-
-    // Serialization
-    implementation(libs.serialization.json)
-
-    // Billing
-    implementation(libs.billing)
-
-    // Google Sign In (Drive backup)
-    implementation(libs.play.services.auth)
-
     // Core modules
     implementation(project(":core:domain"))
     implementation(project(":core:data"))
@@ -151,14 +126,11 @@ dependencies {
     // Feature modules
     implementation(project(":feature:dashboard"))
     implementation(project(":feature:invoices"))
-    implementation(project(":feature:products"))
     implementation(project(":feature:incomes"))
-    implementation(project(":feature:ocr"))
     implementation(project(":feature:voice"))
     implementation(project(":feature:ai"))
     implementation(project(":feature:settings"))
     implementation(project(":feature:backup"))
-    implementation(project(":feature:fiscal"))
     implementation(project(":feature:chatbot"))
 
     // Testing

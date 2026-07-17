@@ -2,6 +2,7 @@ package com.gastos.feature.invoices
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.repository.IncomeRepository
@@ -185,6 +186,12 @@ class EditInvoiceViewModel @Inject constructor(
                     sheetsSyncManager.syncExpense(invoice)
                 } else {
                     invoiceRepository.updateInvoice(invoice)
+                    // Re-sync a Sheets para que refleje los cambios.
+                    if (form.tipo == InvoiceType.INGRESO) {
+                        sheetsSyncManager.syncIncome(invoice.toIncome())
+                    } else {
+                        sheetsSyncManager.syncExpense(invoice)
+                    }
                 }
 
                 _uiState.update {

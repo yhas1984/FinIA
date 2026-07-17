@@ -13,8 +13,6 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE invoiceId = :invoiceId ORDER BY createdAt DESC")
     fun getProductsByInvoiceId(invoiceId: Long): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products WHERE categoriaId = :categoriaId ORDER BY createdAt DESC")
-    fun getProductsByCategoryEntity(categoriaId: Long): Flow<List<ProductEntity>>
 
     @Query("SELECT * FROM products WHERE descripcion LIKE '%' || :query || '%' ORDER BY descripcion ASC")
     fun searchProducts(query: String): Flow<List<ProductEntity>>

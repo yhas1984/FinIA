@@ -1,0 +1,1 @@
+Revisar el contenido de la PR #9 en detalle y compararla con la #8 para decidir el orden de merge.

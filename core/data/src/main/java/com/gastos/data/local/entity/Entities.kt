@@ -34,15 +34,9 @@ data class InvoiceEntity(
             parentColumns = ["id"],
             childColumns = ["invoiceId"],
             onDelete = ForeignKey.CASCADE
-        ),
-        ForeignKey(
-            entity = CategoryEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["categoriaId"],
-            onDelete = ForeignKey.SET_NULL
         )
     ],
-    indices = [Index("invoiceId"), Index("categoriaId")]
+    indices = [Index("invoiceId")]
 )
 data class ProductEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -53,7 +47,6 @@ data class ProductEntity(
     val subtotal: Double = cantidad * precioUnitario,
     val ivaPercent: Double = 21.0,
     val ivaAmount: Double = subtotal * ivaPercent / 100.0,
-    val categoriaId: Long? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -73,25 +66,6 @@ data class IncomeEntity(
     val notas: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
-)
-
-@Entity(tableName = "categories")
-data class CategoryEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val nombre: String,
-    val icono: String = "category",
-    val color: Long = 0xFF4CAF50,
-    val esDefault: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-@Entity(tableName = "exchange_rates")
-data class ExchangeRateEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val monedaOrigen: String,
-    val monedaDestino: String,
-    val tasa: Double,
-    val fecha: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "country_fiscal_config")

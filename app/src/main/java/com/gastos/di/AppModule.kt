@@ -91,13 +91,7 @@ object AppModule {
     @Singleton
     fun provideIncomeDao(database: AppDatabase): IncomeDao = database.incomeDao()
 
-    @Provides
-    @Singleton
-    fun provideCategoryDao(database: AppDatabase): CategoryDao = database.categoryDao()
 
-    @Provides
-    @Singleton
-    fun provideExchangeRateDao(database: AppDatabase): ExchangeRateDao = database.exchangeRateDao()
 
     @Provides
     @Singleton
