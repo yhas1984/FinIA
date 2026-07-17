@@ -5,12 +5,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.InvoiceType
+import com.gastos.domain.usecase.SaveIncomeUseCase
+import com.gastos.domain.usecase.SaveInvoiceUseCase
 import com.gastos.feature.ai.AIService
 import com.gastos.feature.ai.AIResult
 import com.gastos.feature.backup.SheetsSyncManager
-import com.gastos.repository.IncomeRepository
-import com.gastos.repository.InvoiceRepository
-import com.gastos.repository.ProductRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,9 +30,8 @@ data class ScanInvoiceUiState(
 @HiltViewModel
 class ScanInvoiceViewModel @Inject constructor(
     private val aiService: AIService,
-    private val invoiceRepository: InvoiceRepository,
-    private val productRepository: ProductRepository,
-    private val incomeRepository: IncomeRepository,
+    private val saveInvoiceUseCase: SaveInvoiceUseCase,
+    private val saveIncomeUseCase: SaveIncomeUseCase,
     private val sheetsSyncManager: SheetsSyncManager
 ) : ViewModel() {
 
@@ -93,22 +91,16 @@ class ScanInvoiceViewModel @Inject constructor(
                                 imagenUri = invoice.imagenUri,
                                 notas = invoice.notas
                             )
-                            incomeRepository.insertIncome(income)
-                            sheetsSyncManager.syncInvoiceIngreso(invoice)
+                            saveIncomeUseCase(income)
+                            sheetsSyncManager.syncIncome(income)
                             _uiState.update {
                                 it.copy(isSaving = false, saveResult = "Ingreso guardado correctamente")
                             }
                         } else {
-                            val savedInvoiceId = invoiceRepository.insertInvoice(invoice)
-
-                            if (result.products.isNotEmpty()) {
-                                val productsWithInvoiceId = result.products.map {
-                                    it.copy(invoiceId = savedInvoiceId)
-                                }
-                                productRepository.insertProducts(productsWithInvoiceId)
-                            }
+                            saveInvoiceUseCase(invoice, result.products)
 
                             sheetsSyncManager.syncExpense(invoice)
+                            sheetsSyncManager.syncProducts(result.products, invoice.proveedor)
 
                             _uiState.update {
                                 it.copy(isSaving = false, saveResult = "Gasto guardado correctamente")
@@ -117,7 +109,7 @@ class ScanInvoiceViewModel @Inject constructor(
                     }
                     // Ingreso detectado por texto
                     result.income != null -> {
-                        incomeRepository.insertIncome(result.income!!)
+                        saveIncomeUseCase(result.income!!)
                         sheetsSyncManager.syncIncome(result.income!!)
                         _uiState.update {
                             it.copy(isSaving = false, saveResult = "Ingreso guardado correctamente")

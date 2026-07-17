@@ -50,6 +50,9 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
 
+    // Security (EncryptedSharedPreferences)
+    implementation(libs.androidx.security.crypto)
+
     // Billing (Google Play)
     implementation(libs.billing)
 

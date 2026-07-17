@@ -23,12 +23,12 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("../finai-release.keystore")
-            // Leemos credenciales desde variables de entorno /
-            // gradle.properties, NUNCA hardcoded en el repo.
+            // Leemos las credenciales SOLO desde variables de entorno del
+            // proceso de build (o desde gradle.properties del home del
+            // usuario). NUNCA hardcoded en el repositorio.
             val storeFilePath: String? = System.getenv("FINAI_KEYSTORE_FILE")
                 ?: project.findProperty("finai.keystore.file") as String?
-            if (storeFilePath != null) storeFile = file(storeFilePath)
+            storeFile = storeFilePath?.let { file(it) } ?: file("../finai-release.keystore")
             storePassword = System.getenv("FINAI_KEYSTORE_PASSWORD")
                 ?: (project.findProperty("finai.keystore.password") as String? ?: "")
             keyAlias = System.getenv("FINAI_KEY_ALIAS")

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
+import com.gastos.domain.model.Product
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.javanet.NetHttpTransport
@@ -25,8 +26,16 @@ import javax.inject.Singleton
 
 /**
  * Sincroniza en background cada nuevo gasto/ingreso hacia el Google Sheet
- * vinculado. Simplemente añade filas; las fórmulas SUM en la hoja Resumen
- * (establecidas durante la exportación inicial) se recalculan automáticamente.
+ * vinculado, escribiendo en las hojas AEAT (España):
+ *   • Gasto (Invoice GASTO)        → "Facturas Recibidas"
+ *   • Nómina (Income de recibo salarial)
+ *                                    → "Nóminas"
+ *   • Productos                     → "Productos"
+ * Las fórmulas SUM en la hoja Resumen (establecidas en el export inicial)
+ * se recalculan automáticamente al añadir filas aquí.
+ *
+ * Los importes se envían como Double nativos (NO como String con punto
+ * decimal) para evitar que Sheets-ES los interprete como fechas.
  */
 @Singleton
 class SheetsSyncManager @Inject constructor(
@@ -36,12 +45,14 @@ class SheetsSyncManager @Inject constructor(
         private const val TAG = "SheetsSyncManager"
         private const val PREFS_NAME = "finai_sheets_sync"
         private const val KEY_SHEET_ID = "spreadsheet_id"
-        private const val SHEET_GASTOS = "Gastos"
-        private const val SHEET_INGRESOS = "Ingresos"
+        // Hojas AEAT (España, Orden HAC/773/2019).
+        private const val SHEET_RECIBIDAS = "Facturas Recibidas"
+        private const val SHEET_NOMINAS = "Nóminas"
+        private const val SHEET_PRODUCTOS = "Productos"
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private val df = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /** ¿Hay un sheet vinculado con el que sincronizar? */
@@ -54,41 +65,115 @@ class SheetsSyncManager @Inject constructor(
     fun getStoredId(): String = prefs.getString(KEY_SHEET_ID, "") ?: ""
 
     // ---- Sync ----
+    //
+    // Las columnas de cada fila EXACTAMENTE las mismas que escribe
+    // `SheetsExportService` para esa hoja AEAT, en el mismo orden;
+    // así append+INSERT_ROWS no desfasea columnas.
+    //
 
-    /** Añade una fila de gasto. */
-    fun syncExpense(invoice: Invoice) = sync(SHEET_GASTOS, listOf(
-        df.format(Date(invoice.fecha)), invoice.proveedor,
-        invoice.total.toString(), invoice.ivaPercent.toString(),
-        invoice.moneda, invoice.nifEmisor ?: "", invoice.notas ?: ""
-    ))
+    /**
+     * Añade una fila a "Facturas Recibidas" (gasto del usuario como
+     * receptor). Columnas AEAT:
+     *   Nº Factura | Fecha | NIF País | NIF Emisor | Base | IVA % | Cuota |
+     *   Recargo Eq. | IRPF | Total | Moneda | Notas
+     *
+     * Base y cuota se calculan aquí (sin persistirlas en Room).
+     */
+    fun syncExpense(invoice: Invoice) {
+        val base = if (invoice.ivaPercent > 0) invoice.total / (1 + invoice.ivaPercent / 100.0) else invoice.total
+        val cuota = invoice.total - base
+        val numFactura = extractFromOcr(invoice.ocrRawText, "numero_factura")
+        sync(SHEET_RECIBIDAS, listOf(
+            numFactura,                                   // Nº Factura (extraído del OCR)
+            df.format(Date(invoice.fecha)),                // Fecha dd/MM/yyyy
+            invoice.paisCodigo,                            // NIF País (ISO)
+            invoice.nifEmisor ?: "",                      // NIF Emisor
+            invoice.proveedor,                            // Emisor (Razón Social)
+            round2(base),                                  // Base Imponible
+            invoice.ivaPercent,                            // Tipo IVA
+            round2(cuota),                                 // Cuota IVA
+            0.0,                                            // Recargo Eq. (no capturado)
+            invoice.irpfPercent,                          // IRPF %
+            invoice.total,                                 // Total
+            invoice.moneda,                                // Moneda
+            invoice.notas ?: ""                           // Notas
+        ))
+    }
 
-    /** Añade una fila de ingreso (tabla incomes). */
-    fun syncIncome(income: Income) = sync(SHEET_INGRESOS, listOf(
-        df.format(Date(income.fecha)), income.concepto,
-        income.monto.toString(), income.moneda,
-        income.fuente ?: "", income.notas ?: ""
-    ))
+    /**
+     * Añade una fila a "Nóminas" (recibo salarial). Columnas:
+     *   Empresa | Fecha | Devengado | Líquido | IRPF % | Base Cot. |
+     *   Seg. Social | Moneda | Notas
+     */
+    fun syncIncome(income: Income) {
+        sync(SHEET_NOMINAS, listOf(
+            income.fuente ?: income.concepto,             // Empresa
+            df.format(Date(income.fecha)),                // Fecha
+            income.totalDevengado,                         // Devengado
+            income.totalNeto,                              // Líquido
+            income.irpfPercent,                            // IRPF %
+            "",                                            // Base Cot. (no capturada)
+            "",                                            // Seg. Social (no capturada)
+            income.moneda                                 // Moneda
+        ))
+    }
 
-    /** Añade una fila de ingreso proveniente de un Invoice INGRESO. */
-    fun syncInvoiceIngreso(invoice: Invoice) = sync(SHEET_INGRESOS, listOf(
-        df.format(Date(invoice.fecha)), invoice.proveedor,
-        invoice.total.toString(), invoice.moneda,
-        invoice.nifEmisor ?: "", invoice.notas ?: ""
-    ))
+    /**
+     * Añade una fila por cada producto asociado a una factura (gasto).
+     * Columnas: Descripción | Cantidad | P.U. | Subtotal | IVA % |
+     * Total + IVA | Factura (Proveedor). Llamar después de [syncExpense].
+     */
+    fun syncProducts(products: List<Product>, proveedor: String) {
+        if (products.isEmpty()) return
+        products.forEach { p ->
+            val totalConIva = p.subtotal * (1 + p.ivaPercent / 100.0)
+            sync(SHEET_PRODUCTOS, listOf(
+                p.descripcion, p.cantidad, p.precioUnitario,
+                p.subtotal, p.ivaPercent, round2(totalConIva), proveedor
+            ))
+        }
+    }
 
-    private fun sync(sheet: String, values: List<String>) {
+    /** Redondea a 2 decimales (base imponible / cuota IVA / total+IVA). */
+    private fun round2(v: Double): Double = Math.round(v * 100.0) / 100.0
+
+    /**
+     * Extrae un campo del JSON crudo guardado en [Invoice.ocrRawText]
+     * cuando el AIService escaneó el documento.
+     */
+    private fun extractFromOcr(ocrRawText: String?, field: String): String {
+        if (ocrRawText.isNullOrBlank()) return ""
+        return try {
+            val jsonMatch = Regex("""\{[\s\S]*\}""").find(ocrRawText)?.value ?: return ""
+            val json = org.json.JSONObject(jsonMatch)
+            json.optString(field, "")
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private fun sync(sheet: String, values: List<Any>) {
         val sheetId = getStoredId()
-        if (sheetId.isBlank()) return
+        if (sheetId.isBlank()) {
+            Log.w(TAG, "sync OMITIDO — sheetId vacío")
+            return
+        }
+        Log.d(TAG, "sync → hoja='$sheet' valores=$values sheetId=${sheetId.take(8)}…")
         scope.launch {
             try {
-                val sheets = getSheetsService() ?: return@launch
-                sheets.spreadsheets().values()
-                    .append(sheetId, "$sheet!A:A", ValueRange().setValues(listOf(values)))
+                val sheets = getSheetsService()
+                if (sheets == null) {
+                    Log.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
+                    return@launch
+                }
+                val resp = sheets.spreadsheets().values()
+                    .append(sheetId, "'$sheet'!A:A", ValueRange().setValues(listOf(values)))
                     .setValueInputOption("USER_ENTERED")
                     .setInsertDataOption("INSERT_ROWS")
                     .execute()
+                Log.d(TAG, "sync OK → hoja='$sheet' updRange=${resp.updates?.updatedRange}")
             } catch (e: Exception) {
-                Log.w(TAG, "Error syncing to $sheet", e)
+                Log.e(TAG, "sync FALLO hoja='$sheet' valores=$values", e)
             }
         }
     }

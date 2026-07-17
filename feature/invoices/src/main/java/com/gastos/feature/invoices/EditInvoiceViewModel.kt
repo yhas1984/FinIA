@@ -36,7 +36,56 @@ data class EditInvoiceForm(
     val nifEmisor: String = "",
     val nifReceptor: String = "",
     val notas: String = ""
-)
+) {
+
+    /**
+     * Resultado inmutable del cálculo fiscal: cantidades derivadas a
+     * partir del [total] y los porcentajes de [ivaPercent]/[irpfPercent].
+     *
+     * Interpretación (factura emitida/recibida en España):
+     *   - [total] es el importe con IVA incluido (bruto).
+     *   - [baseImponible] = total / (1 + iva%)       → sin IVA
+     *   - [ivaAmount]     = total - baseImponible     → cuota de IVA
+     *   - [irpfAmount]    = baseImponible * irpf%     → retención
+     *   - [totalNeto]     = total - irpfAmount        → a ingresar/cobrar
+     */
+    data class FiscalBreakdown(
+        val total: Double,
+        val ivaPercent: Double,
+        val irpfPercent: Double,
+        val baseImponible: Double,
+        val ivaAmount: Double,
+        val irpfAmount: Double,
+        val totalNeto: Double
+    )
+
+    /**
+     * Recalcula el desglose fiscal del formulario a partir de los campos
+     * de texto. Es una función PURA (sin Android, sin I/O) para que pueda
+     * testearse con JUnit sin Robolectric.
+     *
+     * Devuelve `null` si el total o los porcentajes no son numéricos
+     * válidos (igual que hacía `saveInvoice()` antes con `toDoubleOrNull`).
+     */
+    fun recalcFiscal(): FiscalBreakdown? {
+        val total = total.toDoubleOrNull()?.takeIf { it >= 0.0 } ?: return null
+        val iva = ivaPercent.toDoubleOrNull()?.takeIf { it >= 0.0 } ?: return null
+        val irpf = irpfPercent.toDoubleOrNull()?.takeIf { it >= 0.0 } ?: return null
+        val base = total / (1.0 + iva / 100.0)
+        val ivaAmount = total - base
+        val irpfAmount = base * irpf / 100.0
+        val neto = total - irpfAmount
+        return FiscalBreakdown(
+            total = total,
+            ivaPercent = iva,
+            irpfPercent = irpf,
+            baseImponible = base,
+            ivaAmount = ivaAmount,
+            irpfAmount = irpfAmount,
+            totalNeto = neto
+        )
+    }
+}
 
 @HiltViewModel
 class EditInvoiceViewModel @Inject constructor(

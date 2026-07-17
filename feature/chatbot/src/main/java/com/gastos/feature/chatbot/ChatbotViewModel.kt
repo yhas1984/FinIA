@@ -1,14 +1,16 @@
 package com.gastos.feature.chatbot
 
 import android.net.Uri
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.InvoiceType
+import com.gastos.extension.SafeLog
 import com.gastos.feature.ai.AIResult
 import com.gastos.feature.ai.AIService
 import com.gastos.feature.backup.SheetsSyncManager
+import com.gastos.domain.usecase.SaveIncomeUseCase
+import com.gastos.domain.usecase.SaveInvoiceUseCase
 import com.gastos.feature.voice.VoiceRecognitionService
 import com.gastos.feature.voice.VoiceResult
 import com.gastos.repository.IncomeRepository
@@ -40,7 +42,9 @@ class ChatbotViewModel @Inject constructor(
     private val invoiceRepository: InvoiceRepository,
     private val incomeRepository: IncomeRepository,
     private val productRepository: ProductRepository,
-    private val sheetsSyncManager: SheetsSyncManager
+    private val sheetsSyncManager: SheetsSyncManager,
+    private val saveInvoiceUseCase: SaveInvoiceUseCase,
+    private val saveIncomeUseCase: SaveIncomeUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatbotUiState())
@@ -110,7 +114,7 @@ class ChatbotViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error processing message", e)
+                SafeLog.e(TAG, "Error processing message", e)
                 _uiState.update {
                     it.copy(
                         messages = it.messages.toMutableList().apply {
@@ -157,11 +161,9 @@ class ChatbotViewModel @Inject constructor(
             // Gasto (factura)
             result.invoice != null && result.invoice!!.tipo != InvoiceType.INGRESO -> {
                 val invoice = result.invoice!!
-                val savedId = invoiceRepository.insertInvoice(invoice)
+                saveInvoiceUseCase(invoice, result.products)
                 sheetsSyncManager.syncExpense(invoice)
-                if (result.products.isNotEmpty()) {
-                    productRepository.insertProducts(result.products.map { it.copy(invoiceId = savedId) })
-                }
+                sheetsSyncManager.syncProducts(result.products, invoice.proveedor)
                 replacePlaceholder("✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}")
             }
             // Ingreso detectado por OCR (factura marcada como ingreso)
@@ -177,14 +179,14 @@ class ChatbotViewModel @Inject constructor(
                     irpfPercent = invoice.irpfPercent,
                     notas = invoice.notas
                 )
-                incomeRepository.insertIncome(income)
-                sheetsSyncManager.syncInvoiceIngreso(invoice)
+                saveIncomeUseCase(income)
+                sheetsSyncManager.syncIncome(income)
                 replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
             }
             // Ingreso detectado por texto
             result.income != null -> {
                 val income = result.income!!
-                incomeRepository.insertIncome(income)
+                saveIncomeUseCase(income)
                 sheetsSyncManager.syncIncome(income)
                 val display = if (income.totalDevengado > 0 && income.totalNeto > 0) {
                     "Devengado: ${income.totalDevengado} ${income.moneda} / Neto: ${income.totalNeto} ${income.moneda}"
@@ -293,7 +295,7 @@ class ChatbotViewModel @Inject constructor(
         val countGastos = periodInvoices.count { it.tipo == InvoiceType.GASTO }
         val countIngresos = periodInvoices.count { it.tipo == InvoiceType.INGRESO } + periodIncomes.size
 
-        Log.d(TAG, "Query: type=$queryType, period=$periodo, gastos=$totalGastos, ingresos=$totalIngresos, products=${periodProducts.size}")
+        SafeLog.d(TAG, "Query: type=$queryType, period=$periodo, gastos=$totalGastos, ingresos=$totalIngresos, products=${periodProducts.size}")
 
         return when (queryType.lowercase()) {
             "gastos" -> {

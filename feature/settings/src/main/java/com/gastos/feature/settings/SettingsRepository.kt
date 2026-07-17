@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,10 +27,10 @@ data class AppSettings(
 
 @Singleton
 class SettingsRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val secureStorage: SecureStorage
 ) {
     private object Keys {
-        val GEMINI_API_KEY = stringPreferencesKey("gemini_api_key")
         val SYSTEM_INSTRUCTIONS = stringPreferencesKey("system_instructions")
         val SHEET_ID = stringPreferencesKey("sheet_id")
         val DEFAULT_CURRENCY = stringPreferencesKey("default_currency")
@@ -39,9 +40,16 @@ class SettingsRepository @Inject constructor(
         val AUTO_BACKUP = booleanPreferencesKey("auto_backup")
     }
 
-    val settings: Flow<AppSettings> = context.dataStore.data.map { preferences ->
+    /**
+     * Flujo combinado: datos no sensibles de DataStore + datos sensibles
+     * de EncryptedSharedPreferences (SecureStorage).
+     */
+    val settings: Flow<AppSettings> = combine(
+        context.dataStore.data,
+        secureStorage.geminiApiKeyFlow()
+    ) { preferences, geminiKey ->
         AppSettings(
-            geminiApiKey = preferences[Keys.GEMINI_API_KEY] ?: "",
+            geminiApiKey = geminiKey,
             systemInstructions = preferences[Keys.SYSTEM_INSTRUCTIONS] ?: "",
             sheetId = preferences[Keys.SHEET_ID] ?: "",
             defaultCurrency = preferences[Keys.DEFAULT_CURRENCY] ?: "EUR",
@@ -52,10 +60,12 @@ class SettingsRepository @Inject constructor(
         )
     }
 
+    private fun SecureStorage.geminiApiKeyFlow(): Flow<String> = kotlinx.coroutines.flow.flow {
+        emit(getString(SecureStorage.KEY_GEMINI_API_KEY))
+    }
+
     suspend fun updateGeminiApiKey(apiKey: String) {
-        context.dataStore.edit { preferences ->
-            preferences[Keys.GEMINI_API_KEY] = apiKey
-        }
+        secureStorage.putString(SecureStorage.KEY_GEMINI_API_KEY, apiKey)
     }
 
     suspend fun updateSystemInstructions(instructions: String) {
