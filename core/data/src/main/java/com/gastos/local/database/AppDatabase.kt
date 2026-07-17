@@ -11,8 +11,6 @@ import com.gastos.local.dao.*
         InvoiceEntity::class,
         ProductEntity::class,
         IncomeEntity::class,
-        CategoryEntity::class,
-        ExchangeRateEntity::class,
         CountryFiscalConfigEntity::class
     ],
     version = 3,
@@ -24,8 +22,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun invoiceDao(): InvoiceDao
     abstract fun productDao(): ProductDao
     abstract fun incomeDao(): IncomeDao
-    abstract fun categoryDao(): CategoryDao
-    abstract fun exchangeRateDao(): ExchangeRateDao
     abstract fun countryFiscalConfigDao(): CountryFiscalConfigDao
 
     companion object {

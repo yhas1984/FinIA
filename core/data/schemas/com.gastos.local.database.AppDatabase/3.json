@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 3,
-    "identityHash": "ff29a07fe98265f5ac2caf0dfadcbcbe",
+    "identityHash": "0214298a702c3b3ab9931fb6fb6c3db9",
     "entities": [
       {
         "tableName": "invoices",
@@ -116,7 +116,7 @@
       },
       {
         "tableName": "products",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `invoiceId` INTEGER NOT NULL, `descripcion` TEXT NOT NULL, `cantidad` REAL NOT NULL, `precioUnitario` REAL NOT NULL, `subtotal` REAL NOT NULL, `ivaPercent` REAL NOT NULL, `ivaAmount` REAL NOT NULL, `categoriaId` INTEGER, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`invoiceId`) REFERENCES `invoices`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`categoriaId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `invoiceId` INTEGER NOT NULL, `descripcion` TEXT NOT NULL, `cantidad` REAL NOT NULL, `precioUnitario` REAL NOT NULL, `subtotal` REAL NOT NULL, `ivaPercent` REAL NOT NULL, `ivaAmount` REAL NOT NULL, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`invoiceId`) REFERENCES `invoices`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
         "fields": [
           {
             "fieldPath": "id",
@@ -167,12 +167,6 @@
             "notNull": true
           },
           {
-            "fieldPath": "categoriaId",
-            "columnName": "categoriaId",
-            "affinity": "INTEGER",
-            "notNull": false
-          },
-          {
             "fieldPath": "createdAt",
             "columnName": "createdAt",
             "affinity": "INTEGER",
@@ -194,15 +188,6 @@
             ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_products_invoiceId` ON `${TABLE_NAME}` (`invoiceId`)"
-          },
-          {
-            "name": "index_products_categoriaId",
-            "unique": false,
-            "columnNames": [
-              "categoriaId"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_products_categoriaId` ON `${TABLE_NAME}` (`categoriaId`)"
           }
         ],
         "foreignKeys": [
@@ -212,17 +197,6 @@
             "onUpdate": "NO ACTION",
             "columns": [
               "invoiceId"
-            ],
-            "referencedColumns": [
-              "id"
-            ]
-          },
-          {
-            "table": "categories",
-            "onDelete": "SET NULL",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "categoriaId"
             ],
             "referencedColumns": [
               "id"
@@ -329,100 +303,6 @@
         "foreignKeys": []
       },
       {
-        "tableName": "categories",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `nombre` TEXT NOT NULL, `icono` TEXT NOT NULL, `color` INTEGER NOT NULL, `esDefault` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL)",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "nombre",
-            "columnName": "nombre",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "icono",
-            "columnName": "icono",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "color",
-            "columnName": "color",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "esDefault",
-            "columnName": "esDefault",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "createdAt",
-            "columnName": "createdAt",
-            "affinity": "INTEGER",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": true,
-          "columnNames": [
-            "id"
-          ]
-        },
-        "indices": [],
-        "foreignKeys": []
-      },
-      {
-        "tableName": "exchange_rates",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `monedaOrigen` TEXT NOT NULL, `monedaDestino` TEXT NOT NULL, `tasa` REAL NOT NULL, `fecha` INTEGER NOT NULL)",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "monedaOrigen",
-            "columnName": "monedaOrigen",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "monedaDestino",
-            "columnName": "monedaDestino",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "tasa",
-            "columnName": "tasa",
-            "affinity": "REAL",
-            "notNull": true
-          },
-          {
-            "fieldPath": "fecha",
-            "columnName": "fecha",
-            "affinity": "INTEGER",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": true,
-          "columnNames": [
-            "id"
-          ]
-        },
-        "indices": [],
-        "foreignKeys": []
-      },
-      {
         "tableName": "country_fiscal_config",
         "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`paisCodigo` TEXT NOT NULL, `nombrePais` TEXT NOT NULL, `ivaRates` TEXT NOT NULL, `irpfRate` REAL, `nifFormat` TEXT NOT NULL, `nombreLeyFiscal` TEXT NOT NULL, PRIMARY KEY(`paisCodigo`))",
         "fields": [
@@ -476,7 +356,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'ff29a07fe98265f5ac2caf0dfadcbcbe')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0214298a702c3b3ab9931fb6fb6c3db9')"
     ]
   }
 }

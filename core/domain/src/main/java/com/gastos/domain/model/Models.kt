@@ -19,7 +19,25 @@ data class Invoice(
     val notas: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
-)
+) {
+    /** Convierte una factura tipo INGRESO a un Income para persistirlo en la tabla correcta. */
+    fun toIncome(): Income = Income(
+        fecha = fecha,
+        concepto = proveedor,
+        monto = total,
+        totalDevengado = if (totalDevengadoSafe > 0) totalDevengadoSafe else total,
+        totalNeto = if (totalNetoSafe > 0) totalNetoSafe else total,
+        moneda = moneda,
+        fuente = nifEmisor,
+        ivaPercent = ivaPercent,
+        irpfPercent = irpfPercent,
+        imagenUri = imagenUri,
+        notas = notas
+    )
+
+    private val totalDevengadoSafe: Double get() = 0.0
+    private val totalNetoSafe: Double get() = 0.0
+}
 
 data class Product(
     val id: Long = 0,
@@ -30,7 +48,6 @@ data class Product(
     val subtotal: Double = cantidad * precioUnitario,
     val ivaPercent: Double = 21.0,
     val ivaAmount: Double = subtotal * ivaPercent / 100.0,
-    val categoriaId: Long? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -49,23 +66,6 @@ data class Income(
     val notas: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
-)
-
-data class Category(
-    val id: Long = 0,
-    val nombre: String,
-    val icono: String = "category",
-    val color: Long = 0xFF4CAF50,
-    val esDefault: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
-)
-
-data class ExchangeRate(
-    val id: Long = 0,
-    val monedaOrigen: String,
-    val monedaDestino: String,
-    val tasa: Double,
-    val fecha: Long = System.currentTimeMillis()
 )
 
 data class CountryFiscalConfig(

@@ -49,7 +49,6 @@ fun ProductEntity.toDomain(): Product = Product(
     subtotal = subtotal,
     ivaPercent = ivaPercent,
     ivaAmount = ivaAmount,
-    categoriaId = categoriaId,
     createdAt = createdAt
 )
 
@@ -62,7 +61,6 @@ fun Product.toEntity(): ProductEntity = ProductEntity(
     subtotal = subtotal,
     ivaPercent = ivaPercent,
     ivaAmount = ivaAmount,
-    categoriaId = categoriaId,
     createdAt = createdAt
 )
 
@@ -100,44 +98,11 @@ fun Income.toEntity(): IncomeEntity = IncomeEntity(
     updatedAt = updatedAt
 )
 
-fun CategoryEntity.toDomain(): Category = Category(
-    id = id,
-    nombre = nombre,
-    icono = icono,
-    color = color,
-    esDefault = esDefault,
-    createdAt = createdAt
-)
-
-fun Category.toEntity(): CategoryEntity = CategoryEntity(
-    id = id,
-    nombre = nombre,
-    icono = icono,
-    color = color,
-    esDefault = esDefault,
-    createdAt = createdAt
-)
-
-fun ExchangeRateEntity.toDomain(): ExchangeRate = ExchangeRate(
-    id = id,
-    monedaOrigen = monedaOrigen,
-    monedaDestino = monedaDestino,
-    tasa = tasa,
-    fecha = fecha
-)
-
-fun ExchangeRate.toEntity(): ExchangeRateEntity = ExchangeRateEntity(
-    id = id,
-    monedaOrigen = monedaOrigen,
-    monedaDestino = monedaDestino,
-    tasa = tasa,
-    fecha = fecha
-)
 
 fun CountryFiscalConfigEntity.toDomain(): CountryFiscalConfig = CountryFiscalConfig(
     paisCodigo = paisCodigo,
     nombrePais = nombrePais,
-    ivaRates = ivaRates.removeSurrounding("[", "]").split(",").mapNotNull { it.trim().toDoubleOrNull() },
+    ivaRates = ivaRates.split(",").mapNotNull { it.trim().toDoubleOrNull() }.ifEmpty { listOf(21.0) },
     irpfRate = irpfRate,
     nifFormat = nifFormat,
     nombreLeyFiscal = nombreLeyFiscal
@@ -146,7 +111,7 @@ fun CountryFiscalConfigEntity.toDomain(): CountryFiscalConfig = CountryFiscalCon
 fun CountryFiscalConfig.toEntity(): CountryFiscalConfigEntity = CountryFiscalConfigEntity(
     paisCodigo = paisCodigo,
     nombrePais = nombrePais,
-    ivaRates = ivaRates.joinToString(",", "[", "]"),
+    ivaRates = ivaRates.joinToString(","),
     irpfRate = irpfRate,
     nifFormat = nifFormat,
     nombreLeyFiscal = nombreLeyFiscal

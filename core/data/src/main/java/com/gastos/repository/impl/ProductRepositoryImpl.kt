@@ -21,9 +21,6 @@ class ProductRepositoryImpl @Inject constructor(
     override fun getProductsByInvoiceId(invoiceId: Long): Flow<List<Product>> =
         productDao.getProductsByInvoiceId(invoiceId).map { list -> list.map { it.toDomain() } }
 
-    override fun getProductsByCategory(categoriaId: Long): Flow<List<Product>> =
-        productDao.getProductsByCategoryEntity(categoriaId).map { list -> list.map { it.toDomain() } }
-
     override fun searchProducts(query: String): Flow<List<Product>> =
         productDao.searchProducts(query).map { list -> list.map { it.toDomain() } }
 
