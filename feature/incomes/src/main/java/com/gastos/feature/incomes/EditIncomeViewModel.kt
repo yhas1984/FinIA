@@ -131,6 +131,7 @@ class EditIncomeViewModel @Inject constructor(
                     sheetsSyncManager.syncIncome(income)
                 } else {
                     incomeRepository.updateIncome(income)
+                    sheetsSyncManager.syncIncome(income)
                 }
 
                 _uiState.update {

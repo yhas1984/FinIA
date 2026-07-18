@@ -55,7 +55,7 @@ fun EditIncomeScreen(
                 actions = {
                     IconButton(
                         onClick = { viewModel.saveIncome() },
-                        enabled = !uiState.isSaving
+                        enabled = !uiState.isSaving && form.monto.toDoubleOrNull()?.let { it > 0 } == true && form.concepto.isNotBlank()
                     ) {
                         Icon(Icons.Default.Save, contentDescription = "Guardar")
                     }
@@ -123,18 +123,18 @@ fun EditIncomeScreen(
                 }
             }
 
-            // Monto
+            // Monto (cantidad principal)
             OutlinedTextField(
                 value = form.monto,
                 onValueChange = { viewModel.updateMonto(it) },
-                label = { Text("Monto Neto") },
+                label = { Text("Monto") },
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
                 prefix = { Text(form.moneda) }
             )
 
-            // Devengado y Neto
+            // Devengado (bruto) y Líquido (neto)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = form.totalDevengado,
@@ -148,11 +148,24 @@ fun EditIncomeScreen(
                 OutlinedTextField(
                     value = form.totalNeto,
                     onValueChange = { viewModel.updateTotalNeto(it) },
-                    label = { Text("Neto") },
+                    label = { Text("Líquido (neto)") },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     prefix = { Text(form.moneda) }
+                )
+            }
+
+            // Cálculo automático: si hay devengado e IRPF, mostrar neto
+            val dev = form.totalDevengado.toDoubleOrNull() ?: 0.0
+            val irpf = form.irpfPercent.toDoubleOrNull() ?: 0.0
+            if (dev > 0 && irpf > 0) {
+                val netoCalc = dev * (1.0 - irpf / 100.0)
+                Text(
+                    "Líquido calculado: ${String.format("%.2f", netoCalc)} ${form.moneda}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 4.dp)
                 )
             }
 

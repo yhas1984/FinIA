@@ -2,6 +2,7 @@ package com.gastos.feature.invoices
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -57,7 +58,7 @@ fun EditInvoiceScreen(
                 actions = {
                     IconButton(
                         onClick = { viewModel.saveInvoice() },
-                        enabled = !uiState.isSaving
+                        enabled = !uiState.isSaving && form.total.toDoubleOrNull()?.let { it > 0 } == true && form.proveedor.isNotBlank()
                     ) {
                         Icon(Icons.Default.Save, contentDescription = "Guardar")
                     }
@@ -184,32 +185,38 @@ fun EditInvoiceScreen(
                 }
             }
 
-            // NIF Emisor
-            OutlinedTextField(
-                value = form.nifEmisor,
-                onValueChange = { viewModel.updateNifEmisor(it) },
-                label = { Text("NIF/CIF Emisor (opcional)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            // NIF Receptor
-            OutlinedTextField(
-                value = form.nifReceptor,
-                onValueChange = { viewModel.updateNifReceptor(it) },
-                label = { Text("NIF/CIF Receptor (opcional)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            // Notas
-            OutlinedTextField(
-                value = form.notas,
-                onValueChange = { viewModel.updateNotas(it) },
-                label = { Text("Notas (opcional)") },
-                modifier = Modifier.fillMaxWidth().height(120.dp),
-                minLines = 3
-            )
+            // Sección plegable: Más datos fiscales
+            var showAdvanced by remember { mutableStateOf(false) }
+            TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                Icon(if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Más datos fiscales")
+            }
+            AnimatedVisibility(visible = showAdvanced) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = form.nifEmisor,
+                        onValueChange = { viewModel.updateNifEmisor(it) },
+                        label = { Text("Identificación fiscal emisor") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = form.nifReceptor,
+                        onValueChange = { viewModel.updateNifReceptor(it) },
+                        label = { Text("Identificación fiscal receptor") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    OutlinedTextField(
+                        value = form.notas,
+                        onValueChange = { viewModel.updateNotas(it) },
+                        label = { Text("Notas (opcional)") },
+                        modifier = Modifier.fillMaxWidth().height(100.dp),
+                        minLines = 3
+                    )
+                }
+            }
 
             // Resultado del guardado
             uiState.saveResult?.let { msg ->
