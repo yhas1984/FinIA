@@ -21,16 +21,19 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
 }
 
 /**
- * Migration 2 → 3: añade ForeignKeys con CASCADE/SET NULL e índices a la
- * tabla `products` para integridad referencial.
+ * Migration 2 → 3: reconstruye la tabla `products` para que coincida con
+ * el esquema v3 exportado:
  *
- *   - products.invoiceId → invoices.id  ON DELETE CASCADE
- *     (borrar una factura borra sus productos)
- *   - products.categoriaId → categories.id  ON DELETE SET NULL
- *     (borrar una categoría deja los productos sin categoría)
+ *   - Se ELIMINA la columna `categoriaId` (las categorías se retiraron del
+ *     modelo en v3) y la FK que apuntaba a `categories`.
+ *   - Se AÑADE products.invoiceId → invoices.id  ON DELETE CASCADE
+ *     (borrar una factura borra sus productos).
+ *   - Se eliminan las tablas retiradas `categories` y `exchange_rates`.
  *
- * SQLite no permite ALTER TABLE ADD FOREIGN KEY, así que se reconstruye
- * la tabla con el patrón create-copy-drop-rename.
+ * SQLite no permite ALTER TABLE ADD/DROP FOREIGN KEY ni DROP COLUMN hasta
+ * versiones recientes, así que se usa el patrón create-copy-drop-rename.
+ * El DDL es exactamente el del esquema v3 exportado (schema JSON), de lo
+ * contrario la validación de Room fallaría al abrir la base de datos.
  */
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -45,20 +48,28 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
                 `subtotal` REAL NOT NULL,
                 `ivaPercent` REAL NOT NULL,
                 `ivaAmount` REAL NOT NULL,
-                `categoriaId` INTEGER,
                 `createdAt` INTEGER NOT NULL,
-                FOREIGN KEY(`invoiceId`) REFERENCES `invoices`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE,
-                FOREIGN KEY(`categoriaId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+                FOREIGN KEY(`invoiceId`) REFERENCES `invoices`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
             )
             """.trimIndent()
         )
-        db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_new_invoiceId` ON `products_new`(`invoiceId`)")
-        db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_new_categoriaId` ON `products_new`(`categoriaId`)")
-        db.execSQL("INSERT INTO `products_new` SELECT * FROM `products`")
+        // Copia explícita de columnas: la v2 tenía `categoriaId`, que en v3
+        // ya no existe; un SELECT * rompería el INSERT.
+        db.execSQL(
+            """
+            INSERT INTO `products_new` (`id`, `invoiceId`, `descripcion`, `cantidad`, `precioUnitario`, `subtotal`, `ivaPercent`, `ivaAmount`, `createdAt`)
+            SELECT `id`, `invoiceId`, `descripcion`, `cantidad`, `precioUnitario`, `subtotal`, `ivaPercent`, `ivaAmount`, `createdAt` FROM `products`
+            """.trimIndent()
+        )
         db.execSQL("DROP TABLE `products`")
         db.execSQL("ALTER TABLE `products_new` RENAME TO `products`")
+        // El nombre del índice debe ser el que Room espera (index_products_invoiceId).
         db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_invoiceId` ON `products`(`invoiceId`)")
-        db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_categoriaId` ON `products`(`categoriaId`)")
+
+        // Tablas retiradas del modelo en v3. Room no valida tablas extra,
+        // pero las eliminamos para no arrastrar esquema muerto.
+        db.execSQL("DROP TABLE IF EXISTS `categories`")
+        db.execSQL("DROP TABLE IF EXISTS `exchange_rates`")
     }
 }
 

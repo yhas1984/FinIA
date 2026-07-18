@@ -52,7 +52,6 @@ dependencies {
 
     // Google Sheets API (exportación a Sheets)
     implementation(libs.google.api.client.android)
-    implementation(libs.google.oauth.client.jetty)
     implementation(libs.google.api.services.sheets)
 
     // Project modules

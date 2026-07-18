@@ -13,6 +13,10 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 
 /**
@@ -74,6 +78,25 @@ class SecureStorage @Inject constructor(
     suspend fun putString(key: String, value: String) = withContext(Dispatchers.IO) {
         prefs.edit().putString(key, value).apply()
     }
+
+    /**
+     * Flow que emite el valor actual de [key] y vuelve a emitir cada vez que
+     * cambia. Necesario para que los consumidores (p.ej. la API key de
+     * Gemini) reaccionen en caliente sin reiniciar la app.
+     *
+     * El listener funciona también sobre EncryptedSharedPreferences porque
+     * ésta delega en un SharedPreferences real que sí notifica cambios.
+     */
+    fun observeString(key: String, default: String = ""): Flow<String> = callbackFlow {
+        trySend(prefs.getString(key, default) ?: default)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+            if (changedKey == null || changedKey == key) {
+                trySend(prefs.getString(key, default) ?: default)
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }.flowOn(Dispatchers.IO)
 
     suspend fun getString(key: String, default: String = ""): String = withContext(Dispatchers.IO) {
         prefs.getString(key, default) ?: default

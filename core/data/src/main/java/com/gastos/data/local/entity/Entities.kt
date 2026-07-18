@@ -72,7 +72,7 @@ data class IncomeEntity(
 data class CountryFiscalConfigEntity(
     @PrimaryKey val paisCodigo: String,
     val nombrePais: String,
-    val ivaRates: String = "[21]",
+    val ivaRates: String = "21",
     val irpfRate: Double? = null,
     val nifFormat: String = "",
     val nombreLeyFiscal: String = "IVA"

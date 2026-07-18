@@ -39,7 +39,6 @@ dependencies {
     implementation(libs.coroutines.android)
 
     implementation(libs.androidx.core.ktx)
-    implementation(libs.serialization.json)
     implementation(libs.datastore.preferences)
 
     api(project(":core:domain"))

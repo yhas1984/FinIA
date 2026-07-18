@@ -181,23 +181,45 @@ class EditInvoiceViewModel @Inject constructor(
                     updatedAt = System.currentTimeMillis()
                 )
 
+                val saveMessage: String
                 if (form.id == 0L) {
-                    invoiceRepository.insertInvoice(invoice)
-                    sheetsSyncManager.syncExpense(invoice)
-                } else {
-                    invoiceRepository.updateInvoice(invoice)
-                    // Re-sync a Sheets para que refleje los cambios.
-                    if (form.tipo == InvoiceType.INGRESO) {
-                        sheetsSyncManager.syncIncome(invoice.toIncome())
+                    if (invoice.tipo == InvoiceType.INGRESO) {
+                        // Un INGRESO se persiste en la tabla `incomes` (mismo
+                        // criterio que el chatbot/OCR). Guardarlo en `invoices`
+                        // lo dejaría fuera de los totales de ingresos del
+                        // dashboard y lo sincronizaría a Sheets como gasto.
+                        val income = invoice.toIncome()
+                        val incomeId = incomeRepository.insertIncome(income)
+                        sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
+                        saveMessage = "Ingreso guardado correctamente"
                     } else {
-                        sheetsSyncManager.syncExpense(invoice)
+                        val invoiceId = invoiceRepository.insertInvoice(invoice)
+                        sheetsSyncManager.upsertExpense(invoice.copy(id = invoiceId))
+                        saveMessage = "Factura guardada correctamente"
+                    }
+                } else {
+                    if (form.tipo == InvoiceType.INGRESO) {
+                        // Cambio GASTO→INGRESO al editar: el registro se MUEVE
+                        // a la tabla incomes (convención de la app) y en Sheets
+                        // se borra la fila de gasto (y sus productos) y se
+                        // escribe como ingreso.
+                        invoiceRepository.deleteInvoice(invoice)
+                        val income = invoice.toIncome()
+                        val incomeId = incomeRepository.insertIncome(income)
+                        sheetsSyncManager.deleteExpense(invoice.id)
+                        sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
+                        saveMessage = "Ingreso guardado correctamente"
+                    } else {
+                        invoiceRepository.updateInvoice(invoice)
+                        sheetsSyncManager.upsertExpense(invoice)
+                        saveMessage = "Factura guardada correctamente"
                     }
                 }
 
                 _uiState.update {
                     it.copy(
                         isSaving = false,
-                        saveResult = "Factura guardada correctamente"
+                        saveResult = saveMessage
                     )
                 }
             } catch (e: Exception) {

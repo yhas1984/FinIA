@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
+import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.repository.InvoiceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -19,7 +20,8 @@ data class InvoicesUiState(
 
 @HiltViewModel
 class InvoicesViewModel @Inject constructor(
-    private val invoiceRepository: InvoiceRepository
+    private val invoiceRepository: InvoiceRepository,
+    private val sheetsSyncManager: SheetsSyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(InvoicesUiState())
@@ -73,6 +75,8 @@ class InvoicesViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 invoiceRepository.deleteInvoice(invoice)
+                // Propaga el borrado al Sheet (fila del gasto + sus productos).
+                sheetsSyncManager.deleteExpense(invoice.id)
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(error = e.message ?: "Error al eliminar")

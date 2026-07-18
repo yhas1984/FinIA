@@ -25,7 +25,6 @@ android {
 
 dependencies {
     implementation(libs.coroutines.core)
-    implementation(libs.serialization.json)
 
     // Hilt para los @Inject constructor de los UseCases
     implementation(libs.hilt.android)

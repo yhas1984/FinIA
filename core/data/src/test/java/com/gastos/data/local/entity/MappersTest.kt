@@ -9,10 +9,10 @@ import org.junit.Test
 
 /**
  * Tests unitarios de los Mappers Entity ↔ Domain en [Mappers.kt].
- * Son funciones puras (不开 Room/Android), el test corre en JVM sin
+ * Son funciones puras (sin Room/Android), el test corre en JVM sin
  * Robolectric. Validamos round-trip ida y vuelta y el caso más
  * delicado: el parsing de `ivaRates` en [CountryFiscalConfigEntity]
- * (String "[21,10,4]" ↔ List<Double>).
+ * (String "21,10,4" — o el legado "[21,10,4]" — ↔ List<Double>).
  */
 class MappersTest {
 
@@ -74,10 +74,10 @@ class MappersTest {
     }
 
     @Test
-    fun `CountryFiscalConfigEntity toDomain parsea ivaRates como lista de doubles`() {
+    fun `CountryFiscalConfigEntity toDomain parsea ivaRates en formato CSV`() {
         val entity = CountryFiscalConfigEntity(
             paisCodigo = "ES", nombrePais = "España",
-            ivaRates = "[21,10,4]", irpfRate = 15.0,
+            ivaRates = "21,10,4", irpfRate = 15.0,
             nifFormat = "^[A-Z]\\d{8}$", nombreLeyFiscal = "IVA"
         )
         val domain = entity.toDomain()
@@ -87,14 +87,36 @@ class MappersTest {
     }
 
     @Test
-    fun `CountryFiscalConfig toEntity serializa ivaRates como string con corchetes`() {
+    fun `CountryFiscalConfigEntity toDomain tolera el formato legado con corchetes`() {
+        // Versiones antiguas persistían "[21,10,4]"; debe seguir leyéndose.
+        val entity = CountryFiscalConfigEntity(
+            paisCodigo = "ES", nombrePais = "España",
+            ivaRates = "[21,10,4]", irpfRate = 15.0,
+            nifFormat = "", nombreLeyFiscal = "IVA"
+        )
+        assertEquals(listOf(21.0, 10.0, 4.0), entity.toDomain().ivaRates)
+    }
+
+    @Test
+    fun `CountryFiscalConfigEntity toDomain con ivaRates vacio o invalido cae en la tarifa estandar`() {
+        val base = CountryFiscalConfigEntity(
+            paisCodigo = "ES", nombrePais = "España",
+            ivaRates = "", irpfRate = null, nifFormat = "", nombreLeyFiscal = "IVA"
+        )
+        assertEquals(listOf(21.0), base.toDomain().ivaRates)
+        assertEquals(listOf(21.0), base.copy(ivaRates = "abc").toDomain().ivaRates)
+        assertEquals(listOf(21.0), base.copy(ivaRates = "[]").toDomain().ivaRates)
+    }
+
+    @Test
+    fun `CountryFiscalConfig toEntity serializa ivaRates como CSV`() {
         val domain = CountryFiscalConfig(
             paisCodigo = "PT", nombrePais = "Portugal",
             ivaRates = listOf(23.0, 13.0, 6.0), irpfRate = null,
             nifFormat = "", nombreLeyFiscal = "IVA"
         )
         val entity = domain.toEntity()
-        assertEquals("[23.0,13.0,6.0]", entity.ivaRates)
+        assertEquals("23.0,13.0,6.0", entity.ivaRates)
         assertNull(entity.irpfRate)
     }
 

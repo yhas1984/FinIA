@@ -1,7 +1,6 @@
 plugins {
     id("com.android.library")
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -28,6 +27,5 @@ android {
 
 dependencies {
     implementation(libs.coroutines.core)
-    implementation(libs.serialization.json)
     implementation(libs.androidx.core.ktx)
 }

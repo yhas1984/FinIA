@@ -3,6 +3,7 @@ package com.gastos.feature.incomes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
+import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.repository.IncomeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
@@ -17,7 +18,8 @@ data class IncomesUiState(
 
 @HiltViewModel
 class IncomesViewModel @Inject constructor(
-    private val incomeRepository: IncomeRepository
+    private val incomeRepository: IncomeRepository,
+    private val sheetsSyncManager: SheetsSyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(IncomesUiState())
@@ -49,6 +51,8 @@ class IncomesViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 incomeRepository.deleteIncome(income)
+                // Propaga el borrado a la hoja "Nóminas" del Sheet vinculado.
+                sheetsSyncManager.deleteIncome(income.id)
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(error = e.message ?: "Error al eliminar")
