@@ -127,11 +127,11 @@ class EditIncomeViewModel @Inject constructor(
                 )
 
                 if (form.id == 0L) {
-                    incomeRepository.insertIncome(income)
-                    sheetsSyncManager.syncIncome(income)
+                    val incomeId = incomeRepository.insertIncome(income)
+                    sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
                 } else {
                     incomeRepository.updateIncome(income)
-                    sheetsSyncManager.syncIncome(income)
+                    sheetsSyncManager.upsertIncome(income)
                 }
 
                 _uiState.update {

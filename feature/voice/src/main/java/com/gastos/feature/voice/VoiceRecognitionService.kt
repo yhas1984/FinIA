@@ -16,7 +16,10 @@ import javax.inject.Singleton
 data class VoiceResult(
     val text: String,
     val isFinal: Boolean,
-    val confidence: Float = 0.0f
+    val confidence: Float = 0.0f,
+    /** true si [text] describe un error/una no-disponibilidad y NO debe
+     *  tratarse como entrada del usuario (p.ej. enviarse al asistente). */
+    val isError: Boolean = false
 )
 
 @Singleton
@@ -29,7 +32,7 @@ class VoiceRecognitionService @Inject constructor(
 
     fun startListening(): Flow<VoiceResult> = callbackFlow {
         if (!isAvailable()) {
-            trySend(VoiceResult(text = "Reconocimiento de voz no disponible", isFinal = true, confidence = 0.0f))
+            trySend(VoiceResult(text = "Reconocimiento de voz no disponible", isFinal = true, confidence = 0.0f, isError = true))
             close()
             return@callbackFlow
         }
@@ -68,7 +71,7 @@ class VoiceRecognitionService @Inject constructor(
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Tiempo de espera agotado"
                     else -> "Error desconocido: $error"
                 }
-                trySend(VoiceResult(text = errorMessage, isFinal = true, confidence = 0.0f))
+                trySend(VoiceResult(text = errorMessage, isFinal = true, confidence = 0.0f, isError = true))
                 close()
             }
 
@@ -81,7 +84,7 @@ class VoiceRecognitionService @Inject constructor(
                     val confidence = confidenceScores?.getOrNull(0) ?: 0.0f
                     trySend(VoiceResult(text = bestResult, isFinal = true, confidence = confidence))
                 } else {
-                    trySend(VoiceResult(text = "No se detectó texto", isFinal = true, confidence = 0.0f))
+                    trySend(VoiceResult(text = "No se detectó texto", isFinal = true, confidence = 0.0f, isError = true))
                 }
                 close()
             }

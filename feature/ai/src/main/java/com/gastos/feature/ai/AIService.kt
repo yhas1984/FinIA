@@ -4,12 +4,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.util.Log
 import com.gastos.domain.model.CountryFiscalConfig
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
+import com.gastos.extension.SafeLog
 import com.gastos.repository.CountryFiscalConfigRepository
 import com.google.ai.client.generativeai.Chat
 import com.google.ai.client.generativeai.GenerativeModel
@@ -176,7 +176,7 @@ class AIService @Inject constructor(
             recordTurn(command, responseText)
             parseCommandResponse(responseText)
         } catch (e: Exception) {
-            Log.e(TAG, "Error en processCommand", e)
+            SafeLog.e(TAG, "Error en processCommand", e)
             AIResult(success = false, message = friendlyError(e))
         }
     }
@@ -203,7 +203,7 @@ class AIService @Inject constructor(
             // Registramos el turno completo tras terminar el stream.
             recordTurn(userMsg, collected.toString())
         }.catch { e ->
-            Log.e(TAG, "Error en streaming", e)
+            SafeLog.e(TAG, "Error en streaming", e)
             throw e
         }
     }
@@ -241,10 +241,11 @@ class AIService @Inject constructor(
                 }
             )
             val raw = response.text ?: ""
-            Log.d(TAG, "OCR raw response: $raw")
+            // Solo en debug: el OCR contiene datos financieros del documento.
+            SafeLog.d(TAG, "OCR raw response: $raw")
             parseInvoiceResponse(raw, imageUri.toString(), currentFiscalCountry)
         } catch (e: Exception) {
-            Log.e(TAG, "Error procesando imagen", e)
+            SafeLog.e(TAG, "Error procesando imagen", e)
             AIResult(success = false, message = friendlyError(e))
         }
     }
@@ -259,7 +260,7 @@ class AIService @Inject constructor(
             val response = model.generateContent(queryExtractionPrompt(query))
             AIResult(success = true, message = "Consulta procesada", queryResult = response.text ?: "")
         } catch (e: Exception) {
-            Log.e(TAG, "Error en queryData", e)
+            SafeLog.e(TAG, "Error en queryData", e)
             AIResult(success = false, message = friendlyError(e))
         }
     }

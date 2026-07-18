@@ -2,11 +2,11 @@ package com.gastos.feature.backup
 
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
+import com.gastos.extension.SafeLog
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
@@ -164,8 +164,10 @@ class SheetsExportService @Inject constructor(
     /**
      * Escribe la hoja "Facturas Recibidas" (gastos del usuario como
      * receptor) con columnas AEAT: Nº Factura, Fecha (dd/mm/yyyy),
-     * NIF País (ISO), NIF Emisor, Base Imponible, Tipo IVA, Cuota IVA,
-     * Recargo Eq., IRPF, Total.
+     * NIF País, NIF Emisor, Base Imponible, Tipo IVA, Cuota IVA,
+     * Recargo Eq., IRPF, Total, Moneda, Notas y, como ÚLTIMA columna,
+     * el "ID" del registro en Room (clave para el sync upsert/delete
+     * de [SheetsSyncManager]).
      *
      * Base / cuota se CALCULAN aquí en el export (sin migration de
      * Room): base = total / (1 + iva%/100); cuota = total - base.
@@ -176,7 +178,8 @@ class SheetsExportService @Inject constructor(
                 "Nº Factura", "Fecha", "NIF País", "NIF Emisor",
                 "Emisor (Razón Social)",
                 "Base Imponible", "Tipo IVA", "Cuota IVA",
-                "Recargo Eq.", "IRPF", "Total", "Moneda", "Notas"
+                "Recargo Eq.", "IRPF", "Total", "Moneda", "Notas",
+                "ID"
             )
         )
         val df = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
@@ -202,7 +205,8 @@ class SheetsExportService @Inject constructor(
                     inv.irpfPercent,
                     inv.total,
                     inv.moneda,
-                    inv.notas ?: ""
+                    inv.notas ?: "",
+                    inv.id
                 )
             )
         }
@@ -232,13 +236,15 @@ class SheetsExportService @Inject constructor(
 
     /**
      * Escribe la hoja "Nóminas" con: Empresa, Fecha, Devengado, Líquido,
-     * IRPF %, Base Cot., Seg. Social, Moneda, Notas.
+     * IRPF %, Base Cot., Seg. Social, Moneda y, como ÚLTIMA columna,
+     * el "ID" del ingreso en Room (clave del sync upsert/delete).
      */
     private fun writeNominas(sheets: Sheets, id: String, nominas: List<Income>) {
         val values = mutableListOf<List<Any>>(
             listOf(
                 "Empresa", "Fecha", "Devengado", "Líquido",
-                "IRPF %", "Base Cot.", "Seg. Social", "Moneda"
+                "IRPF %", "Base Cot.", "Seg. Social", "Moneda",
+                "ID"
             )
         )
         val df = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
@@ -252,7 +258,8 @@ class SheetsExportService @Inject constructor(
                     inc.irpfPercent,
                     "",   // base cotización no capturada
                     "",   // Seguridad Social no capturada
-                    inc.moneda
+                    inc.moneda,
+                    inc.id
                 )
             )
         }
@@ -291,7 +298,7 @@ class SheetsExportService @Inject constructor(
     ) {
         val values = mutableListOf<List<Any>>(
             listOf("Descripción", "Cantidad", "Precio Unitario", "Subtotal",
-                   "IVA %", "Total + IVA", "Factura (Proveedor)")
+                   "IVA %", "Total + IVA", "Factura (Proveedor)", "InvoiceID")
         )
         // Mapa idFactura -> proveedor para enriquecer.
         val invMap = invoices.associate { it.id to it.proveedor }
@@ -305,7 +312,8 @@ class SheetsExportService @Inject constructor(
                     p.subtotal,
                     p.ivaPercent,
                     round2(totalConIva),
-                    invMap[p.invoiceId] ?: ""
+                    invMap[p.invoiceId] ?: "",
+                    p.invoiceId
                 )
             )
         }
@@ -338,7 +346,7 @@ class SheetsExportService @Inject constructor(
             try {
                 sheets.spreadsheets().values().clear(id, "'$title'!A2:Z", null).execute()
             } catch (e: Exception) {
-                Log.w("SheetsExport", "clearSheets: hoja '$title' no existe aún, se omite")
+                SafeLog.w("SheetsExport", "clearSheets: hoja '$title' no existe aún, se omite")
             }
         }
 
@@ -387,7 +395,7 @@ class SheetsExportService @Inject constructor(
         val existing = meta.sheets.map { it.properties.title as String }.toSet()
         val missing = titles.filter { it !in existing }
         if (missing.isEmpty()) return
-        Log.d("SheetsExport", "ensureSheetsExist: creando hojas faltantes=$missing")
+        SafeLog.d("SheetsExport", "ensureSheetsExist: creando hojas faltantes=$missing")
         val addReqs = missing.map { title ->
             Request().setAddSheet(
                 AddSheetRequest().setProperties(SheetProperties().setTitle(title))

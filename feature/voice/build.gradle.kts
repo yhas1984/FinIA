@@ -55,5 +55,4 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:common"))
     implementation(project(":feature:ai"))
-    implementation(libs.serialization.json)
 }

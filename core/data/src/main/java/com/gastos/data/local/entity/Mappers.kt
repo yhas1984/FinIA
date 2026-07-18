@@ -99,10 +99,24 @@ fun Income.toEntity(): IncomeEntity = IncomeEntity(
 )
 
 
+/**
+ * Parsea `ivaRates` tolerando tanto el formato actual CSV ("21,10,4") como
+ * el legado con corchetes ("[21,10,4]") que escribían versiones antiguas.
+ * Los valores no numéricos se descartan; si no queda ninguno se cae en la
+ * tarifa estándar española.
+ */
+private fun parseIvaRates(raw: String): List<Double> =
+    raw.trim()
+        .removePrefix("[")
+        .removeSuffix("]")
+        .split(",")
+        .mapNotNull { it.trim().toDoubleOrNull() }
+        .ifEmpty { listOf(21.0) }
+
 fun CountryFiscalConfigEntity.toDomain(): CountryFiscalConfig = CountryFiscalConfig(
     paisCodigo = paisCodigo,
     nombrePais = nombrePais,
-    ivaRates = ivaRates.split(",").mapNotNull { it.trim().toDoubleOrNull() }.ifEmpty { listOf(21.0) },
+    ivaRates = parseIvaRates(ivaRates),
     irpfRate = irpfRate,
     nifFormat = nifFormat,
     nombreLeyFiscal = nombreLeyFiscal

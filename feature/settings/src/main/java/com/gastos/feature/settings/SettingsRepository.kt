@@ -43,10 +43,14 @@ class SettingsRepository @Inject constructor(
     /**
      * Flujo combinado: datos no sensibles de DataStore + datos sensibles
      * de EncryptedSharedPreferences (SecureStorage).
+     *
+     * La API key se observa con [SecureStorage.observeString] (NO con un
+     * flow one-shot) para que al guardarla se re-emita al instante y el
+     * AIService se reconfigure sin reiniciar la app.
      */
     val settings: Flow<AppSettings> = combine(
         context.dataStore.data,
-        secureStorage.geminiApiKeyFlow()
+        secureStorage.observeString(SecureStorage.KEY_GEMINI_API_KEY)
     ) { preferences, geminiKey ->
         AppSettings(
             geminiApiKey = geminiKey,
@@ -58,10 +62,6 @@ class SettingsRepository @Inject constructor(
             showTutorials = preferences[Keys.SHOW_TUTORIALS] ?: true,
             autoBackup = preferences[Keys.AUTO_BACKUP] ?: false
         )
-    }
-
-    private fun SecureStorage.geminiApiKeyFlow(): Flow<String> = kotlinx.coroutines.flow.flow {
-        emit(getString(SecureStorage.KEY_GEMINI_API_KEY))
     }
 
     suspend fun updateGeminiApiKey(apiKey: String) {

@@ -161,9 +161,12 @@ class ChatbotViewModel @Inject constructor(
             // Gasto (factura)
             result.invoice != null && result.invoice!!.tipo != InvoiceType.INGRESO -> {
                 val invoice = result.invoice!!
-                saveInvoiceUseCase(invoice, result.products)
-                sheetsSyncManager.syncExpense(invoice)
-                sheetsSyncManager.syncProducts(result.products, invoice.proveedor)
+                val invoiceId = saveInvoiceUseCase(invoice, result.products)
+                sheetsSyncManager.upsertExpense(invoice.copy(id = invoiceId))
+                sheetsSyncManager.syncProducts(
+                    result.products.map { it.copy(invoiceId = invoiceId) },
+                    invoice.proveedor
+                )
                 replacePlaceholder("✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}")
             }
             // Ingreso detectado por OCR (factura marcada como ingreso)
@@ -179,15 +182,15 @@ class ChatbotViewModel @Inject constructor(
                     irpfPercent = invoice.irpfPercent,
                     notas = invoice.notas
                 )
-                saveIncomeUseCase(income)
-                sheetsSyncManager.syncIncome(income)
+                val incomeId = saveIncomeUseCase(income)
+                sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
                 replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
             }
             // Ingreso detectado por texto
             result.income != null -> {
                 val income = result.income!!
-                saveIncomeUseCase(income)
-                sheetsSyncManager.syncIncome(income)
+                val incomeId = saveIncomeUseCase(income)
+                sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
                 val display = if (income.totalDevengado > 0 && income.totalNeto > 0) {
                     "Devengado: ${income.totalDevengado} ${income.moneda} / Neto: ${income.totalNeto} ${income.moneda}"
                 } else {
@@ -395,12 +398,14 @@ class ChatbotViewModel @Inject constructor(
                 voiceRecognitionService.startListening().collect { voiceResult ->
                     if (voiceResult.isFinal) {
                         _uiState.update { it.copy(isListening = false) }
-                        if (voiceResult.text.isNotBlank() && !voiceResult.text.contains("Escuchando") && !voiceResult.text.contains("Error")) {
-                            sendMessage(voiceResult.text)
-                        } else if (voiceResult.text.contains("Error") || voiceResult.text.contains("no disponible")) {
-                            _uiState.update {
-                                it.copy(messages = it.messages + ChatMessage.AI("⚠️ Reconocimiento de voz no disponible. Usa el campo de texto."))
+                        when {
+                            // Errores del reconocedor (sin permisos, timeout,
+                            // "no match"...): se muestran como aviso y NUNCA
+                            // se envían al asistente como si fueran un comando.
+                            voiceResult.isError -> _uiState.update {
+                                it.copy(messages = it.messages + ChatMessage.AI("⚠️ ${voiceResult.text}. Usa el campo de texto."))
                             }
+                            voiceResult.text.isNotBlank() -> sendMessage(voiceResult.text)
                         }
                     }
                 }

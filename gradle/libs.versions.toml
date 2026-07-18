@@ -11,14 +11,10 @@ lifecycle = "2.8.7"
 activity-compose = "1.9.3"
 hilt-navigation-compose = "1.2.0"
 coroutines = "1.9.0"
-cameraX = "1.4.1"
-coil = "3.0.4"
-media-pipe = "0.10.22"
 google-generative-ai = "0.7.0"
 billing = "7.0.0"
 play-services-auth = "21.3.0"
 datastore = "1.1.1"
-serialization-json = "1.7.3"
 androidx-security-crypto = "1.1.0-alpha06"
 junit = "4.13.2"
 androidx-test-ext = "1.2.1"
@@ -65,16 +61,6 @@ coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 
-# CameraX
-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraX" }
-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "cameraX" }
-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraX" }
-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraX" }
-
-# Coil (images)
-coil-compose = { group = "io.coil-kt.coil3", name = "coil-compose", version.ref = "coil" }
-coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp", version.ref = "coil" }
-
 # Google AI
 google-generative-ai = { group = "com.google.ai.client.generativeai", name = "generativeai", version.ref = "google-generative-ai" }
 
@@ -86,7 +72,6 @@ play-services-auth = { group = "com.google.android.gms", name = "play-services-a
 
 # Google API Client (Sheets REST v4)
 google-api-client-android = { group = "com.google.api-client", name = "google-api-client-android", version = "2.7.0" }
-google-oauth-client-jetty = { group = "com.google.oauth-client", name = "google-oauth-client-jetty", version = "1.36.0" }
 google-api-services-sheets = { group = "com.google.apis", name = "google-api-services-sheets", version = "v4-rev20250616-2.0.0" }
 
 # DataStore
@@ -94,9 +79,6 @@ datastore-preferences = { group = "androidx.datastore", name = "datastore-prefer
 
 # Security
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "androidx-security-crypto" }
-
-# Serialization
-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization-json" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -110,7 +92,6 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 google-devtools-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt-android = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 room = { id = "androidx.room", version.ref = "room" }
