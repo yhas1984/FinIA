@@ -111,7 +111,7 @@ fun EditIncomeScreen(
                     expanded = showCurrencyPicker,
                     onDismissRequest = { showCurrencyPicker = false }
                 ) {
-                    listOf("EUR", "USD", "MXN", "ARS", "COP", "CLP", "PEN").forEach { currency ->
+                    com.gastos.domain.model.SUPPORTED_CURRENCIES.forEach { currency ->
                         DropdownMenuItem(
                             text = { Text(currency) },
                             onClick = {

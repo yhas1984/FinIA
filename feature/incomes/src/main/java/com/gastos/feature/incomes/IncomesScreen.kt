@@ -24,7 +24,7 @@ fun IncomesScreen(
     viewModel: IncomesViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val currencyFormat = NumberFormat.getCurrencyInstance(Locale("es", "ES"))
+    
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale("es", "ES"))
 
     Scaffold(
@@ -90,7 +90,7 @@ fun IncomesScreen(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = currencyFormat.format(totalIngresos),
+                            text = com.gastos.domain.model.formatMoney(totalIngresos, "EUR"),
                             style = MaterialTheme.typography.headlineMedium.copy(
                                 fontWeight = FontWeight.Bold
                             )
@@ -109,7 +109,6 @@ fun IncomesScreen(
                     ) { income ->
                         IncomeCard(
                             income = income,
-                            currencyFormat = currencyFormat,
                             dateFormat = dateFormat,
                             onDelete = { viewModel.deleteIncome(income) },
                             onEdit = { onNavigateToEdit(income.id) }
@@ -124,7 +123,7 @@ fun IncomesScreen(
 @Composable
 private fun IncomeCard(
     income: Income,
-    currencyFormat: NumberFormat,
+    
     dateFormat: SimpleDateFormat,
     onDelete: () -> Unit,
     onEdit: () -> Unit
@@ -160,7 +159,7 @@ private fun IncomeCard(
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "+${currencyFormat.format(income.monto)}",
+                        text = "+${com.gastos.domain.model.formatMoney(income.monto, income.moneda)}",
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold
                         ),

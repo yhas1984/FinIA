@@ -130,7 +130,7 @@ fun EditInvoiceScreen(
                     expanded = showCurrencyPicker,
                     onDismissRequest = { showCurrencyPicker = false }
                 ) {
-                    listOf("EUR", "USD", "MXN", "ARS", "COP", "CLP", "PEN").forEach { currency ->
+                    com.gastos.domain.model.SUPPORTED_CURRENCIES.forEach { currency ->
                         DropdownMenuItem(
                             text = { Text(currency) },
                             onClick = {
@@ -171,6 +171,17 @@ fun EditInvoiceScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true
                 )
+            }
+
+            // Desglose fiscal en vivo
+            form.recalcFiscal()?.let { fb ->
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("Base Imponible: ${String.format("%.2f", fb.baseImponible)} ${form.moneda}", style = MaterialTheme.typography.bodySmall)
+                        Text("Cuota IVA: +${String.format("%.2f", fb.ivaAmount)} ${form.moneda}", style = MaterialTheme.typography.bodySmall)
+                        if (fb.irpfAmount > 0) Text("Retención IRPF: -${String.format("%.2f", fb.irpfAmount)} ${form.moneda}", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
             }
 
             // NIF Emisor

@@ -32,7 +32,8 @@ fun DashboardScreen(
     onNavigateToBackup: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val currencyFormat = NumberFormat.getCurrencyInstance(Locale("es", "ES"))
+    val defaultCurrency = "EUR"  // TODO: leer de Settings cuando esté disponible
+    val fmt = { amt: Double -> com.gastos.domain.model.formatMoney(amt, defaultCurrency) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background
@@ -94,7 +95,7 @@ fun DashboardScreen(
                     )
                 )
                 Text(
-                    text = currencyFormat.format(uiState.balanceMes),
+                    text = fmt(uiState.balanceMes),
                     style = MaterialTheme.typography.displayLarge.copy(
                         fontWeight = FontWeight.Bold,
                         color = if (uiState.balanceMes >= 0)
@@ -109,8 +110,8 @@ fun DashboardScreen(
             item {
                 // Glassmorphic Cashflow Card
                 CashflowCard(
-                    totalGastos = currencyFormat.format(uiState.totalGastosMes),
-                    totalIngresos = currencyFormat.format(uiState.totalIngresosMes)
+                    totalGastos = fmt(uiState.totalGastosMes),
+                    totalIngresos = fmt(uiState.totalIngresosMes)
                 )
             }
 
@@ -158,7 +159,7 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = currencyFormat.format(uiState.totalGastosSemana),
+                            text = fmt(uiState.totalGastosSemana),
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.error
                         )
@@ -174,7 +175,7 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = currencyFormat.format(uiState.totalIngresosSemana),
+                            text = fmt(uiState.totalIngresosSemana),
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.secondary
                         )
@@ -203,7 +204,7 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = currencyFormat.format(uiState.totalGastosHoy),
+                            text = fmt(uiState.totalGastosHoy),
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.error
                         )
@@ -219,7 +220,7 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = currencyFormat.format(uiState.totalIngresosHoy),
+                            text = fmt(uiState.totalIngresosHoy),
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.secondary
                         )

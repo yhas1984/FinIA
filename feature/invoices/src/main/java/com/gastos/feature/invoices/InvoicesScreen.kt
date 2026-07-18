@@ -26,7 +26,7 @@ fun InvoicesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showFilterMenu by remember { mutableStateOf(false) }
-    val currencyFormat = NumberFormat.getCurrencyInstance(Locale("es", "ES"))
+    
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale("es", "ES"))
 
     Scaffold(
@@ -113,7 +113,6 @@ fun InvoicesScreen(
                 ) { invoice ->
                     InvoiceCard(
                         invoice = invoice,
-                        currencyFormat = currencyFormat,
                         dateFormat = dateFormat,
                         onDelete = { viewModel.deleteInvoice(invoice) },
                         onEdit = { onNavigateToEdit(invoice.id) }
@@ -127,7 +126,7 @@ fun InvoicesScreen(
 @Composable
 private fun InvoiceCard(
     invoice: Invoice,
-    currencyFormat: NumberFormat,
+    
     dateFormat: SimpleDateFormat,
     onDelete: () -> Unit,
     onEdit: () -> Unit
@@ -158,7 +157,7 @@ private fun InvoiceCard(
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = currencyFormat.format(invoice.total),
+                        text = com.gastos.domain.model.formatMoney(invoice.total, invoice.moneda),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Bold
                         ),

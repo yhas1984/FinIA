@@ -228,7 +228,7 @@ fun SettingsScreen(
                 SettingsDropdown(
                     label = "Moneda",
                     value = uiState.settings.defaultCurrency,
-                    options = listOf("EUR", "USD", "MXN", "ARS", "COP", "CLP", "PEN"),
+                    options = com.gastos.domain.model.SUPPORTED_CURRENCIES,
                     onValueChange = { viewModel.updateDefaultCurrency(it) }
                 )
                 

@@ -232,8 +232,7 @@ class AIService @Inject constructor(
             val bitmap = uriToBitmap(imageUri)
                 ?: return AIResult(success = false, message = "Error al cargar la imagen")
 
-            val fiscalCfg = currentFiscalConfig()
-            val prompt = ocrPrompt(currentFiscalCountry, fiscalCfg)
+            val prompt = UNIVERSAL_OCR_PROMPT
 
             val response = model.generateContent(
                 content {
@@ -354,7 +353,7 @@ class AIService @Inject constructor(
             if (esNomina) {
                 val empresa = json.optString("empresa", json.optString("proveedor", ""))
                     .ifBlank { "Nómina" }
-                val moneda = json.optString("moneda", "EUR")
+                val moneda = json.optString("moneda").ifBlank { "EUR" }
                 val devengado = json.optDouble("devengado", json.optDouble("total_devengado", 0.0))
                 val liquido = json.optDouble("liquido", json.optDouble("neto", json.optDouble("total_neto", 0.0)))
                 val total = json.optDouble("total", 0.0)
@@ -409,7 +408,7 @@ class AIService @Inject constructor(
                 ?: "Desconocido"
             val fechaStr = json.optString("fecha", "")
             val total = json.optDouble("total", 0.0)
-            val moneda = json.optString("moneda", "EUR")
+            val moneda = json.optString("moneda").ifBlank { "EUR" }
             val ivaPercent = json.optDouble("tipo_iva", json.optDouble("iva_percent", 0.0))
             val irpfPercent = json.optDouble("retencion_irpf", 0.0)
             val nifEmisor = json.optString("nif_emisor").ifBlank { null }
@@ -462,116 +461,6 @@ class AIService @Inject constructor(
         }
     }
 
-    /**
-     * Construye el prompt de OCR adaptado al país fiscal.
-     *
-     *  - España (ES): reglas AEAT estrictas — detecta tipo de documento,
-     *    motivos de la Orden HAC/773/2019 (NIF desglosado en país ISO +
-     *    base imponible + tipo IVA + cuota + retención IRPF + total),
-     *    nómina con devengado/neto/IRPF/Seguridad Social.
-     *  - Otro país: prompt genérico, sólo pide los básicos sin imposición
-     *    de reglas ES (cada país es diferente).
-     * Los [config] (ivaRates/etc.) se inyectan como hints para el modelo.
-     */
-    private fun ocrPrompt(country: String, config: CountryFiscalConfig?): String {
-        val es = country.equals("ES", ignoreCase = true)
-        val ivaHint = config?.ivaRates?.takeIf { it.isNotEmpty() }?.let {
-            "Posibles tipos de ${config.nombreLeyFiscal}: ${it.joinToString(", ")}%."
-        } ?: ""
-        val irpfHint = config?.irpfRate?.let { "IRPF típico ~${it}%." } ?: ""
-
-        if (es) {
-            return """
-                Eres un experto en contabilidad española (AEAT, Orden HAC/773/2019).
-                Analiza la imagen del documento y devuelve SOLO un JSON válido (sin
-                markdown, sin comentarios). Todos los importes como NÚMEROS.
-
-                CRÍTICO — PASO 1: clasifica la imagen en EXACTAMENTE uno de:
-                  "nomina"          → recibo salarial recibido por un empleado. Palabras
-                                     clave típicas: nómina, salario, sueldo, devengado,
-                                     líquido a percibir, percepciones, deducciones,
-                                     retención IRPF, base de cotización, Seguridad Social.
-                  "factura_recibida"→ factura/ticket de compra/gasto (tú eres receptor).
-                  "factura_emitida" → factura de venta (tú eres el emisor).
-                  "ticket"          → recibo simplificado de compra (sin NIF).
-                  "recibo"          → otro recibo de pago.
-
-                REGLA OBLIGATORIA: en una NÓMINA NO devuelvas "proveedor" ni "total";
-                usa "empresa" + "devengado"/"liquido". Confundir una nómina con una
-                factura produce un gasto erróneo con 0€ que rompe la contabilidad.
-
-                PASO 2 — extrae los campos del tipo correspondiente.
-
-                COMUNES:
-                  "pais":"ES", "moneda":"EUR", "fecha":"YYYY-MM-DD"
-
-                PARA "nomina" (campos EXACTOS, en bruto sin IVA):
-                  "empresa":"...", "empleado":"...",
-                  "devengado":1567.54,   // total devengado (bruto)
-                  "liquido":1212.30,     // líquido a percibir (neto)
-                  "retencion_irpf":15.0, // % IRPF aplicado
-                  "base_cotizacion":1313.46,
-                  "seguridad_social":105.90,
-                  "nif_emisor":"...NIF empresa..."
-
-                PARA factura_recibida/factura_emitida/ticket/recibo (AEAT):
-                  "proveedor":"...", "nif_emisor":"...", "nif_receptor":"...",
-                  "numero_factura":"...",
-                  "base_imponible":149.42,
-                  "tipo_iva":21.0,        // 0/4/10/21
-                  "cuota_iva":31.38,
-                  "retencion_irpf":0.0,   // sólo si aplica (profesionales)
-                  "total":180.80,
-                  "productos":[{"descripcion":"...","cantidad":1.0,"precio_unitario":0.0,
-                                "subtotal":0.0,"iva_percent":21.0}]
-
-                EJEMPLO de salida para una NÓMINA:
-                {"tipo_documento":"nomina","pais":"ES","moneda":"EUR","fecha":"2026-06-30",
-                 "empresa":"ACME S.L.","empleado":"Juan Pérez",
-                 "devengado":1567.54,"liquido":1212.30,"retencion_irpf":15.0,
-                 "base_cotizacion":1313.46,"seguridad_social":105.90,
-                 "nif_emisor":"B12345678"}
-
-                EJEMPLO de salida para una FACTURA RECIBIDA:
-                {"tipo_documento":"factura_recibida","pais":"ES","moneda":"EUR",
-                 "fecha":"2026-06-15","proveedor":"Papelería López S.L.",
-                 "nif_emisor":"B87654321","nif_receptor":"12345678Z",
-                 "numero_factura":"F-2026-0421","base_imponible":149.42,
-                 "tipo_iva":21.0,"cuota_iva":31.38,"retencion_irpf":0.0,
-                 "total":180.80,"productos":[{"descripcion":"Toner","cantidad":2.0,
-                 "precio_unitario":74.71,"subtotal":149.42,"iva_percent":21.0}]}
-
-                REGLAS ES:
-                  - NIF: rellena "nif_emisor" y/o "nif_receptor" con el NÚMERO tal cual
-                    (sin prefijo de país); el de España lleva letra final (DNI-NIF). No inventes.
-                  - IVA: elige entre 0/4/10/21. Si no es claro, 21.
-                  - Base + cuota IVA + retención IRPF deben cuadrar con total.
-                  $ivaHint
-                  $irpfHint
-
-                Si un dato no es legible, usa null. Devuelve SIEMPRE "tipo_documento".
-            """.trimIndent()
-        }
-
-        // ---- Otro país: prompt genérico (no imponer reglas ES) ----
-        return """
-            Analiza el documento (factura/recibo/nómina) y devuelve SOLO un JSON.
-            Todos los importes como NÚMEROS. Fechas "YYYY-MM-DD".
-
-            "tipo_documento":"factura_recibida|factura_emitida|nomina|ticket|recibo",
-            "pais":"$country",
-            "moneda":"...","fecha":"YYYY-MM-DD","proveedor":"...",
-            "nif_emisor":"...","nif_receptor":"...",
-            "total":0.0,"iva_percent":0.0,"retencion_irpf":0.0,
-            "productos":[{"descripcion":"...","cantidad":1.0,"precio_unitario":0.0,"subtotal":0.0,"iva_percent":0.0}]
-
-            Para nómina añade:
-            "empresa":"...","devengado":0.0,"liquido":0.0,"retencion_irpf":0.0
-            $ivaHint
-            $irpfHint
-            Devuelve solo el JSON, sin markdown.
-        """.trimIndent()
-    }
 
     private fun extractJsonFromResponse(responseText: String): JSONObject {
         val jsonMatch = Regex("""\{[\s\S]*\}""").find(responseText)
@@ -595,7 +484,7 @@ class AIService @Inject constructor(
                     val cantidad = json.optDouble("cantidad", 1.0)
                     val precioUnitario = json.optDouble("precio_unitario", 0.0)
                     val total = json.optDouble("total", json.optDouble("monto", cantidad * precioUnitario))
-                    val moneda = json.optString("moneda", "EUR")
+                    val moneda = json.optString("moneda").ifBlank { "EUR" }
                     val fechaStr = json.optString("fecha", "")
                     val fecha = parseDate(fechaStr)
 
@@ -622,7 +511,7 @@ class AIService @Inject constructor(
                     val totalDevengado = json.optDouble("total_devengado", 0.0)
                     val totalNeto = json.optDouble("total_neto", 0.0)
                     val monto = json.optDouble("monto", if (totalNeto > 0) totalNeto else totalDevengado)
-                    val moneda = json.optString("moneda", "EUR")
+                    val moneda = json.optString("moneda").ifBlank { "EUR" }
                     val fechaStr = json.optString("fecha", "")
                     val fuente = json.optString("fuente")
                     val fecha = parseDate(fechaStr)
@@ -689,6 +578,97 @@ class AIService @Inject constructor(
         const val SETTINGS_PATH = "Configuración > IA"
         const val NO_API_KEY_MESSAGE =
             "Aún no has configurado tu API key de Gemini. Ve a $SETTINGS_PATH para añadir la tuya (es gratis en Google AI Studio)."
+
+        /**
+         * Prompt OCR universal: detecta automáticamente país, moneda, IVA e
+         * identificación fiscal del documento, sin asumir un país por defecto.
+         * Funciona con facturas y nóminas de cualquier país hispanohablante.
+         */
+        private val UNIVERSAL_OCR_PROMPT = """
+            Eres un experto en contabilidad internacional. Analiza el documento
+            (factura, ticket, recibo o nómina) y devuelve SOLO un JSON válido,
+            sin markdown ni comentarios. Todos los importes como NÚMEROS.
+
+            PASO 1 — DETECTA EL PAÍS Y MONEDA automáticamente del documento:
+            - "pais": código ISO 3166 de 2 letras (ES, MX, AR, CO, CL, PE, US, etc.).
+              Basándote en: moneda mostrada, formato del NIF/RFC/CUIT/RUT, idioma,
+              estructura del documento. Si no puedes determinarlo, usa "XX".
+            - "moneda": código ISO 4217 (EUR, MXN, ARS, COP, CLP, PEN, USD, etc.).
+              Detecta del símbolo (€, $, ₱) o texto del documento. NO asumas EUR.
+            - "fecha": formato YYYY-MM-DD.
+
+            PASO 2 — CLASIFICA el documento en EXACTAMENTE uno:
+            - "nomina": recibo salarial. Palabras clave: nómina, salario, sueldo,
+              devengado, líquido, percepciones, retención.
+            - "factura_recibida": factura/ticket de compra o gasto.
+            - "factura_emitida": factura de venta o servicio prestado.
+            - "ticket": recibo simplificado sin identificación fiscal.
+            - "recibo": otro documento de pago.
+
+            REGLA CRÍTICA: en una NÓMINA NO devuelvas "proveedor" ni "total".
+            Usa "empresa" + "devengado"/"liquido". Confundir una nómina con una
+            factura produce un gasto erróneo que rompe la contabilidad.
+
+            PASO 3 — EXTRAE LOS CAMPOS. Para nómina usa campos de salario:
+              "empresa":"...", "devengado":0.0 (bruto), "liquido":0.0 (neto),
+              "retencion_irpf":0.0 (% de retención aplicado),
+              "base_cotizacion":0.0, "seguridad_social":0.0
+
+            Para facturas/tickets/recibos usa:
+              "proveedor":"...", "nif_emisor":"...", "nif_receptor":"...",
+              "base_imponible":0.0, "tipo_iva":0.0, "cuota_iva":0.0,
+              "retencion_irpf":0.0, "total":0.0,
+              "productos":[{"descripcion":"","cantidad":1.0,
+                "precio_unitario":0.0,"subtotal":0.0,"iva_percent":0.0}]
+
+            SOBRE EL IVA/IMPUESTO — lee el valor del documento, NO lo asumas:
+            Cada país tiene tasas distintas:
+            - España: IVA 0/4/10/21%
+            - México: IVA 0/8/16%
+            - Argentina: IVA 0/10.5/21/27%
+            - Colombia: IVA 0/5/19%
+            - Chile: IVA 19%
+            - Perú: IGV 18%
+            - Ecuador: IVA 12%
+            Si el documento no muestra el IVA, pon 0.
+
+            SOBRE LA IDENTIFICACIÓN FISCAL — detecta el formato del país:
+            - España: NIF (8 números + letra)
+            - México: RFC (4 letras + 6 números + 3 caracteres)
+            - Argentina: CUIT (11 dígitos con guiones)
+            - Chile: RUT (números + guión + dígito verificador)
+            - Colombia: NIT (números + guión + dígito)
+            - Perú: RUC (11 dígitos)
+
+            EJEMPLO — Factura de México:
+            {"tipo_documento":"factura_recibida","pais":"MX","moneda":"MXN",
+             "fecha":"2026-06-15","proveedor":"OXXO S.A. DE C.V.",
+             "nif_emisor":"OOXX840101AB1","total":58.00,
+             "base_imponible":50.00,"tipo_iva":16.0,"cuota_iva":8.00,
+             "retencion_irpf":0.0,
+             "productos":[{"descripcion":"Café","cantidad":1.0,
+             "precio_unitario":30.00,"subtotal":30.00,"iva_percent":16.0}]}
+
+            EJEMPLO — Nómina de España:
+            {"tipo_documento":"nomina","pais":"ES","moneda":"EUR",
+             "fecha":"2026-06-30","empresa":"ACME S.L.",
+             "devengado":1567.54,"liquido":1212.30,"retencion_irpf":15.0,
+             "base_cotizacion":1313.46,"seguridad_social":105.90,
+             "nif_emisor":"B12345678"}
+
+            EJEMPLO — Factura de Argentina:
+            {"tipo_documento":"factura_recibida","pais":"AR","moneda":"ARS",
+             "fecha":"2026-06-20","proveedor":"Supermercado COTO S.A.",
+             "nif_emisor":"30-12345678-9","total":15450.00,
+             "base_imponible":12768.60,"tipo_iva":21.0,"cuota_iva":2681.40,
+             "retencion_irpf":0.0}
+
+            REGLAS:
+            - Si un dato no es legible, usa null.
+            - Devuelve SIEMPRE "tipo_documento", "pais" y "moneda".
+            - Base + cuota IVA deben cuadrar con el total.
+            - Los precios unitarios vienen con IVA incluido en el documento.
+        """.trimIndent()
 
         /** Límites del plan gratuito. Premium los eleva vía [setPremiumLimits]. */
         const val FREE_MAX_HISTORY_TURNS = 3
