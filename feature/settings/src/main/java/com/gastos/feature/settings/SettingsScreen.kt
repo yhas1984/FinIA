@@ -307,6 +307,36 @@ fun SettingsScreen(
                 }
             }
 
+            // Sección Debug (solo visible en builds debug)
+            if (uiState.isDebug) {
+                SettingsSection(
+                    title = "Debug",
+                    icon = Icons.Outlined.BugReport
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Premium (debug)",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = "Forzar el estado Premium para probar las funciones de pago",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = uiState.isPremium,
+                            onCheckedChange = { viewModel.debugSetPremium(it) }
+                        )
+                    }
+                }
+            }
+
             // Footer
             Column(
                 modifier = Modifier
