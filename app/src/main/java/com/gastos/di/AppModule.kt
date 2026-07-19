@@ -73,6 +73,55 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+/**
+ * Migration 3 → 4: limpieza de la "v3 antigua".
+ *
+ * En su día el esquema pasó a v3 todavía CON `categories`, `exchange_rates`
+ * y `products.categoriaId` (FK a categories). Más tarde se retiraron del
+ * modelo PERO sin subir el número de versión, por lo que los dispositivos
+ * que ya tenían esa "v3 antigua" quedaron con un identity_hash distinto al
+ * de la v3 actual y Room aborta al abrir la BD ("Room cannot verify the
+ * data integrity").
+ *
+ * Esta migración rehace `products` sin `categoriaId`/FK a categories y
+ * elimina las tablas muertas, igual que MIGRATION_2_3. Es idempotente:
+ * también funciona si el dispositivo ya tiene la "v3 nueva" (el INSERT
+ * explícito no referencia `categoriaId` y los DROP usan IF EXISTS), por lo
+ * que cubre ambos estados posibles de una v3 previa.
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `products_new` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `invoiceId` INTEGER NOT NULL,
+                `descripcion` TEXT NOT NULL,
+                `cantidad` REAL NOT NULL,
+                `precioUnitario` REAL NOT NULL,
+                `subtotal` REAL NOT NULL,
+                `ivaPercent` REAL NOT NULL,
+                `ivaAmount` REAL NOT NULL,
+                `createdAt` INTEGER NOT NULL,
+                FOREIGN KEY(`invoiceId`) REFERENCES `invoices`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            INSERT INTO `products_new` (`id`, `invoiceId`, `descripcion`, `cantidad`, `precioUnitario`, `subtotal`, `ivaPercent`, `ivaAmount`, `createdAt`)
+            SELECT `id`, `invoiceId`, `descripcion`, `cantidad`, `precioUnitario`, `subtotal`, `ivaPercent`, `ivaAmount`, `createdAt` FROM `products`
+            """.trimIndent()
+        )
+        db.execSQL("DROP TABLE `products`")
+        db.execSQL("ALTER TABLE `products_new` RENAME TO `products`")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_products_invoiceId` ON `products`(`invoiceId`)")
+
+        db.execSQL("DROP TABLE IF EXISTS `categories`")
+        db.execSQL("DROP TABLE IF EXISTS `exchange_rates`")
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
@@ -85,7 +134,7 @@ object AppModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()
     }
