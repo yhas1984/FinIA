@@ -12,6 +12,7 @@ import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
+import com.gastos.repository.PremiumStatusProvider
 import com.gastos.repository.ProductRepository
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -32,6 +33,7 @@ data class BackupUiState(
     val isSignedIn: Boolean = false,
     val email: String? = null,
     val hasSheetLink: Boolean = false,
+    val isPremium: Boolean = false,
     val isLoading: Boolean = false,
     val isExporting: Boolean = false,
     val isExportingSheets: Boolean = false,
@@ -56,7 +58,8 @@ class BackupViewModel @Inject constructor(
     private val sheetsSyncManager: SheetsSyncManager,
     private val invoiceRepository: InvoiceRepository,
     private val incomeRepository: IncomeRepository,
-    private val productRepository: ProductRepository
+    private val productRepository: ProductRepository,
+    private val premiumStatus: PremiumStatusProvider
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BackupUiState())
@@ -65,6 +68,12 @@ class BackupViewModel @Inject constructor(
     init {
         checkSignInStatus()
         loadLocalBackups()
+        // Observa el estado Premium para habilitar/ocultar la sección Sheets.
+        viewModelScope.launch {
+            premiumStatus.isPremium.collect { premium ->
+                _uiState.update { it.copy(isPremium = premium) }
+            }
+        }
     }
 
     private fun checkSignInStatus() {

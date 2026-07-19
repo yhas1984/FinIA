@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
             val uiState by settingsViewModel.uiState.collectAsState()
 
             GastosEIngresosTheme(darkMode = uiState.settings.darkMode) {
-                FinAIApp()
+                FinAIApp(defaultCurrency = uiState.settings.defaultCurrency)
             }
         }
     }
@@ -80,7 +80,7 @@ object Routes {
 }
 
 @Composable
-fun FinAIApp() {
+fun FinAIApp(defaultCurrency: String = "EUR") {
     val navController = rememberNavController()
     val screens = listOf(Screen.Dashboard, Screen.Invoices, Screen.Incomes)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -123,6 +123,7 @@ fun FinAIApp() {
             // Pantallas principales (con bottom bar)
             composable(Screen.Dashboard.route) {
                 DashboardScreen(
+                    defaultCurrency = defaultCurrency,
                     onNavigateToChat = { navController.navigate(Routes.CHATBOT) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateToBackup = { navController.navigate(Routes.BACKUP) }
@@ -163,7 +164,8 @@ fun FinAIApp() {
             }
             composable(Routes.BACKUP) {
                 BackupScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToPremium = { navController.navigate(Routes.PREMIUM) }
                 )
             }
             composable("edit_invoice/{invoiceId}") { backStackEntry ->

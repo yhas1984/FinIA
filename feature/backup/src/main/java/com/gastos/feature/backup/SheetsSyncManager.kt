@@ -6,6 +6,7 @@ import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.Product
 import com.gastos.extension.SafeLog
+import com.gastos.repository.PremiumStatusProvider
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.javanet.NetHttpTransport
@@ -58,7 +59,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class SheetsSyncManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val premiumStatus: PremiumStatusProvider
 ) {
     companion object {
         private const val TAG = "SheetsSyncManager"
@@ -214,6 +216,10 @@ class SheetsSyncManager @Inject constructor(
 
     /** Añade [values] como nueva fila al final de [sheet]. */
     private fun appendRow(sheet: String, values: List<Any>) {
+        if (!premiumStatus.isPremium.value) {
+            SafeLog.d(TAG, "sync OMITIDO — Sheets es función Premium")
+            return
+        }
         val sheetId = getStoredId()
         if (sheetId.isBlank()) {
             SafeLog.w(TAG, "sync OMITIDO — sheetId vacío")
@@ -248,6 +254,10 @@ class SheetsSyncManager @Inject constructor(
      * rango a escribir (el ID es la última columna en las tres hojas).
      */
     private fun upsertRow(sheet: String, keyCol: String, key: Long, values: List<Any>) {
+        if (!premiumStatus.isPremium.value) {
+            SafeLog.d(TAG, "sync OMITIDO — Sheets es función Premium")
+            return
+        }
         val sheetId = getStoredId()
         if (sheetId.isBlank()) {
             SafeLog.w(TAG, "sync OMITIDO — sheetId vacío")
@@ -296,6 +306,10 @@ class SheetsSyncManager @Inject constructor(
      * válidos mientras se aplican.
      */
     private fun deleteRows(sheetKeyCols: Map<String, String>, key: Long) {
+        if (!premiumStatus.isPremium.value) {
+            SafeLog.d(TAG, "sync OMITIDO — Sheets es función Premium")
+            return
+        }
         val sheetId = getStoredId()
         if (sheetId.isBlank()) {
             SafeLog.w(TAG, "delete OMITIDO — sheetId vacío")

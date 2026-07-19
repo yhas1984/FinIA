@@ -25,6 +25,7 @@ import java.util.*
 @Composable
 fun BackupScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToPremium: () -> Unit = {},
     viewModel: BackupViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -155,13 +156,22 @@ fun BackupScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Exporta tus datos a un Google Sheet nuevo organizado por hojas: Gastos, Ingresos, Productos y Resumen.",
+                        text = "Exporta y sincroniza tus datos a un Google Sheet organizado por hojas: Gastos, Ingresos, Productos y Resumen. Función Premium.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    if (!uiState.isSignedIn) {
+                    if (!uiState.isPremium) {
+                        Button(
+                            onClick = onNavigateToPremium,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Desbloquear Premium para usar Sheets")
+                        }
+                    } else if (!uiState.isSignedIn) {
                         OutlinedButton(
                             onClick = { signInLauncher.launch(viewModel.getSignInIntent()) },
                             modifier = Modifier.fillMaxWidth()

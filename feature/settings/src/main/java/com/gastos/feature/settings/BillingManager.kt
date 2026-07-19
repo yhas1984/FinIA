@@ -14,6 +14,7 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.gastos.repository.PremiumStatusProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +31,7 @@ import javax.inject.Singleton
 @Singleton
 class BillingManager @Inject constructor(
     @ApplicationContext private val context: Context
-) : PurchasesUpdatedListener, BillingClientStateListener {
+) : PurchasesUpdatedListener, BillingClientStateListener, PremiumStatusProvider {
 
     companion object {
         private const val TAG = "BillingManager"
@@ -42,7 +43,7 @@ class BillingManager @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _isPremium = MutableStateFlow(prefs.getBoolean(KEY_IS_PREMIUM, false))
-    val isPremium: StateFlow<Boolean> = _isPremium.asStateFlow()
+    override val isPremium: StateFlow<Boolean> = _isPremium.asStateFlow()
 
     private val _productDetails = MutableStateFlow<ProductDetails?>(null)
     val productDetails: StateFlow<ProductDetails?> = _productDetails.asStateFlow()

@@ -151,16 +151,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.updateDefaultCurrency(currency) }
     }
 
-    fun updateDefaultCountry(country: String) {
-        viewModelScope.launch { settingsRepository.updateDefaultCountry(country) }
-    }
-
     fun updateDarkMode(mode: String) {
         viewModelScope.launch { settingsRepository.updateDarkMode(mode) }
-    }
-
-    fun updateAutoBackup(autoBackup: Boolean) {
-        viewModelScope.launch { settingsRepository.updateAutoBackup(autoBackup) }
     }
 
     // ---------------- Premium / Billing ----------------
