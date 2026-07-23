@@ -2,8 +2,6 @@
 build/
 *.iml
 .gradle
-gradlew
-gradlew.bat
 local.properties
 .idea
 .navigation

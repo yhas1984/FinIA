@@ -25,18 +25,15 @@ data class Invoice(
         fecha = fecha,
         concepto = proveedor,
         monto = total,
-        totalDevengado = if (totalDevengadoSafe > 0) totalDevengadoSafe else total,
-        totalNeto = if (totalNetoSafe > 0) totalNetoSafe else total,
+        totalDevengado = total,
+        totalNeto = total,
         moneda = moneda,
-        fuente = nifEmisor,
+        fuente = proveedor,
         ivaPercent = ivaPercent,
         irpfPercent = irpfPercent,
         imagenUri = imagenUri,
         notas = notas
     )
-
-    private val totalDevengadoSafe: Double get() = 0.0
-    private val totalNetoSafe: Double get() = 0.0
 }
 
 data class Product(

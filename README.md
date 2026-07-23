@@ -25,15 +25,15 @@
 
 | Capa | Tecnología |
 |---|---|
-| **UI** | Jetpack Compose (BOM `2024.12.01`), Material 3, Navigation Compose |
+| **UI** | Jetpack Compose (BOM `2026.06.01`), Material 3, Navigation Compose `2.9.8` |
 | **DI** | Hilt `2.52` |
-| **Persistencia** | Room `2.6.1` (SQLite), DataStore Preferences `1.1.1`, EncryptedSharedPreferences (API key) |
-| **IA** | Google Generative AI SDK `0.7.0` (Gemini) |
+| **Persistencia** | Room `2.7.2` (SQLite), DataStore Preferences `1.2.1`, EncryptedSharedPreferences (API key) |
+| **IA** | Google Generative AI SDK `0.9.0` (Gemini) |
 | **Voz** | SpeechRecognizer de Android (es-ES) |
 | **Cámara** | `ActivityResultContracts.TakePicture` (app de cámara del sistema) + FileProvider |
-| **Sheets** | Google Sheets API v4 + Google Sign-In (Play Services Auth `21.3.0`) |
-| **Monetización** | Google Play Billing `7.0.0` |
-| **Asincronía** | Kotlin Coroutines `1.9.0` |
+| **Sheets** | Google Sheets API v4 + Google Sign-In (Play Services Auth `21.6.0`) |
+| **Monetización** | Google Play Billing `9.1.0` |
+| **Asincronía** | Kotlin Coroutines `1.10.2` |
 
 ---
 
@@ -113,7 +113,7 @@ Desde **Backup** puedes vincular tu cuenta de Google:
 ## ⚙️ Requisitos
 
 - **Android 8.0 (API 26)+**
-- compileSdk / targetSdk: **API 35**
+- compileSdk / targetSdk: **API 36**
 - Java 17
 - Una API key de Google AI Studio (gratuita)
 
@@ -121,7 +121,6 @@ Desde **Backup** puedes vincular tu cuenta de Google:
 - `CAMERA` — fotografiar facturas desde el chat
 - `RECORD_AUDIO` — comandos por voz
 - `INTERNET` — llamadas a la API de Gemini y Google Sheets
-- `READ/WRITE_EXTERNAL_STORAGE` — almacenamiento (hasta API 28)
 
 ---
 
@@ -190,4 +189,4 @@ Proyecto privado. Todos los derechos reservados.
 
 ---
 
-**FinAI** · v1.0.2 · Hecho con ❤️ en Kotlin + Jetpack Compose
+**FinAI** · v1.0.3 · Hecho con ❤️ en Kotlin + Jetpack Compose

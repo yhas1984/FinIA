@@ -20,6 +20,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.InputStream
@@ -40,10 +42,13 @@ class AIService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val fiscalConfigRepository: CountryFiscalConfigRepository
 ) {
+    @Volatile
     private var generativeModel: GenerativeModel? = null
     private var chatSession: Chat? = null
+    @Volatile
     private var currentApiKey: String = ""
     private var systemInstructions: String = ""
+    private val chatMutex = Mutex()
 
     /** País fiscal usado al escanear documentos (por defecto España).
      *  La UI puede cambiarlo con [setFiscalCountry]. Esto aplica las
@@ -86,12 +91,14 @@ class AIService @Inject constructor(
      * - Premium: memoria conversacional de hasta [PREMIUM_MAX_HISTORY_TURNS] turnos.
      * - Gratuito: memoria limitada a [FREE_MAX_HISTORY_TURNS] turnos.
      */
-    fun setPremiumLimits(isPremium: Boolean) {
-        val newMax = if (isPremium) PREMIUM_MAX_HISTORY_TURNS else FREE_MAX_HISTORY_TURNS
-        if (newMax != maxHistoryTurns) {
-            maxHistoryTurns = newMax
-            trimHistory()
-            rebuildSession()
+    suspend fun setPremiumLimits(isPremium: Boolean) {
+        chatMutex.withLock {
+            val newMax = if (isPremium) PREMIUM_MAX_HISTORY_TURNS else FREE_MAX_HISTORY_TURNS
+            if (newMax != maxHistoryTurns) {
+                maxHistoryTurns = newMax
+                trimHistory()
+                rebuildSession()
+            }
         }
     }
 
@@ -100,32 +107,34 @@ class AIService @Inject constructor(
      * instrucciones del sistema (prompt base + personalizadas). Reinicia la
      * sesión de chat para aplicar las nuevas instrucciones.
      */
-    fun configureGemini(apiKey: String, systemInstructions: String) {
-        currentApiKey = apiKey
-        this.systemInstructions = systemInstructions
+    suspend fun configureGemini(apiKey: String, systemInstructions: String) {
+        chatMutex.withLock {
+            currentApiKey = apiKey
+            this.systemInstructions = systemInstructions
 
-        if (apiKey.isBlank()) {
-            generativeModel = null
-            resetChat()
-            return
+            if (apiKey.isBlank()) {
+                generativeModel = null
+                chatHistory.clear()
+                rebuildSession()
+                return@withLock
+            }
+
+            val sysContent = content { text(buildSystemPrompt(systemInstructions)) }
+            generativeModel = GenerativeModel(
+                modelName = MODEL_NAME,
+                apiKey = apiKey,
+                systemInstruction = sysContent
+            )
+            rebuildSession()
         }
-
-        val sysContent = content { text(buildSystemPrompt(systemInstructions)) }
-        generativeModel = GenerativeModel(
-            modelName = MODEL_NAME,
-            apiKey = apiKey,
-            systemInstruction = sysContent
-        )
-        // Conserva la historia existente salvo que las instrucciones cambien
-        // sustancialmente; aquí simplemente reconstruimos la sesión con la
-        // historia truncada acumulada.
-        rebuildSession()
     }
 
     /** Reinicia la memoria conversacional (historial) y la sesión de chat. */
-    fun resetChat() {
-        chatHistory.clear()
-        rebuildSession()
+    suspend fun resetChat() {
+        chatMutex.withLock {
+            chatHistory.clear()
+            rebuildSession()
+        }
     }
 
     private fun rebuildSession() {
@@ -169,15 +178,17 @@ class AIService @Inject constructor(
      * Devuelve un AIResult ya parseado.
      */
     suspend fun processCommand(command: String): AIResult {
-        val chat = chatSession ?: return notConfiguredResult()
-        return try {
-            val response = chat.sendMessage(command)
-            val responseText = response.text ?: ""
-            recordTurn(command, responseText)
-            parseCommandResponse(responseText)
-        } catch (e: Exception) {
-            SafeLog.e(TAG, "Error en processCommand", e)
-            AIResult(success = false, message = friendlyError(e))
+        return chatMutex.withLock {
+            val chat = chatSession ?: return@withLock notConfiguredResult()
+            try {
+                val response = chat.sendMessage(command)
+                val responseText = response.text ?: ""
+                recordTurn(command, responseText)
+                parseCommandResponse(responseText)
+            } catch (e: Exception) {
+                SafeLog.e(TAG, "Error en processCommand", e)
+                AIResult(success = false, message = friendlyError(e))
+            }
         }
     }
 
@@ -187,21 +198,19 @@ class AIService @Inject constructor(
      * El llamador debe parsear el texto final con [parseCommandResponse].
      */
     fun processCommandStreaming(command: String): Flow<String> {
-        val chat = chatSession
         val userMsg = command
         return flow {
-            if (chat == null) {
-                throw IllegalStateException(NO_API_KEY_MESSAGE)
-            }
-            val collected = StringBuilder()
-            chat.sendMessageStream(userMsg).collect { resp: GenerateContentResponse ->
-                resp.text?.takeIf { it.isNotEmpty() }?.let {
-                    collected.append(it)
-                    emit(it)
+            chatMutex.withLock {
+                val activeChat = chatSession ?: throw IllegalStateException(NO_API_KEY_MESSAGE)
+                val collected = StringBuilder()
+                activeChat.sendMessageStream(userMsg).collect { resp: GenerateContentResponse ->
+                    resp.text?.takeIf { it.isNotEmpty() }?.let {
+                        collected.append(it)
+                        emit(it)
+                    }
                 }
+                recordTurn(userMsg, collected.toString())
             }
-            // Registramos el turno completo tras terminar el stream.
-            recordTurn(userMsg, collected.toString())
         }.catch { e ->
             SafeLog.e(TAG, "Error en streaming", e)
             throw e
@@ -301,7 +310,9 @@ class AIService @Inject constructor(
             Respondes siempre en español, con tono amable y profesional. Hoy es $today.
 
             Tu trabajo es analizar el mensaje del usuario y decidir qué acción realizar.
-            Devuelves SIEMPRE Y SOLO un objeto JSON válido, sin markdown ni texto adicional.
+            Para registrar o consultar datos devuelves SOLO un objeto JSON válido,
+            sin markdown ni texto adicional. Para conversación general respondes
+            directamente con texto natural, nunca con JSON.
 
             Reglas de acción:
             1. CONSULTA FINANCIERA: si pregunta cuánto gastó, sus ingresos, balance, totales,
@@ -566,8 +577,19 @@ class AIService @Inject constructor(
 
     private fun uriToBitmap(uri: Uri): Bitmap? {
         return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             context.contentResolver.openInputStream(uri)?.use { input: InputStream ->
-                BitmapFactory.decodeStream(input)
+                BitmapFactory.decodeStream(input, null, bounds)
+            }
+            var sampleSize = 1
+            while (bounds.outWidth / sampleSize > MAX_IMAGE_DIMENSION ||
+                bounds.outHeight / sampleSize > MAX_IMAGE_DIMENSION
+            ) {
+                sampleSize *= 2
+            }
+            val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            context.contentResolver.openInputStream(uri)?.use { input: InputStream ->
+                BitmapFactory.decodeStream(input, null, options)
             }
         } catch (e: Exception) {
             null
@@ -577,6 +599,7 @@ class AIService @Inject constructor(
     companion object {
         private const val TAG = "AIService"
         private const val MODEL_NAME = "gemini-3.6-flash"
+        private const val MAX_IMAGE_DIMENSION = 2048
         const val SETTINGS_PATH = "Configuración > IA"
         const val NO_API_KEY_MESSAGE =
             "Aún no has configurado tu API key de Gemini. Ve a $SETTINGS_PATH para añadir la tuya (es gratis en Google AI Studio)."

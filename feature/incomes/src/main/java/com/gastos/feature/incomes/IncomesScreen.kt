@@ -11,7 +11,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.Income
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -23,9 +24,9 @@ fun IncomesScreen(
     onNavigateToEdit: (Long) -> Unit = {},
     viewModel: IncomesViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     
-    val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale("es", "ES"))
+    val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("es-ES"))
 
     Scaffold(
         topBar = {

@@ -4,7 +4,6 @@ import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import com.gastos.repository.InvoiceRepository
-import com.gastos.repository.ProductRepository
 import javax.inject.Inject
 
 /**
@@ -21,8 +20,7 @@ import javax.inject.Inject
  * los ViewModels).
  */
 class SaveInvoiceUseCase @Inject constructor(
-    private val invoiceRepository: InvoiceRepository,
-    private val productRepository: ProductRepository
+    private val invoiceRepository: InvoiceRepository
 ) {
     /**
      * @return ID de la invoice guardada.
@@ -34,12 +32,6 @@ class SaveInvoiceUseCase @Inject constructor(
         require(invoice.tipo == InvoiceType.GASTO) {
             "SaveInvoiceUseCase solo admite facturas de tipo GASTO"
         }
-        val id = invoiceRepository.insertInvoice(invoice)
-        if (products.isNotEmpty()) {
-            productRepository.insertProducts(
-                products.map { it.copy(invoiceId = id) }
-            )
-        }
-        return id
+        return invoiceRepository.insertInvoiceWithProducts(invoice, products)
     }
 }

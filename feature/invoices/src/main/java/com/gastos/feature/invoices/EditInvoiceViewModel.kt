@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.repository.InvoiceRepository
+import com.gastos.repository.ProductRepository
 import com.gastos.feature.backup.SheetsSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -94,6 +96,7 @@ data class EditInvoiceForm(
 @HiltViewModel
 class EditInvoiceViewModel @Inject constructor(
     private val invoiceRepository: InvoiceRepository,
+    private val productRepository: ProductRepository,
     private val sheetsSyncManager: SheetsSyncManager
 ) : ViewModel() {
 
@@ -196,10 +199,11 @@ class EditInvoiceViewModel @Inject constructor(
 
                 if (form.id == 0L) {
                     val invoiceId = invoiceRepository.insertInvoice(invoice)
-                    sheetsSyncManager.upsertExpense(invoice.copy(id = invoiceId))
+                    sheetsSyncManager.syncExpense(invoice.copy(id = invoiceId), emptyList())
                 } else {
                     invoiceRepository.updateInvoice(invoice)
-                    sheetsSyncManager.upsertExpense(invoice)
+                    val products = productRepository.getProductsByInvoiceId(invoice.id).first()
+                    sheetsSyncManager.syncExpense(invoice, products)
                 }
 
                 _uiState.update {

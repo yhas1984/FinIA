@@ -41,7 +41,7 @@ data class DashboardUiState(
      *  moneda por defecto (para mostrar la desglose de la conversión). */
     val convertedRecords: List<ConvertedRecord> = emptyList(),
     /** Tasa `defaultCurrency → USD` aplicada cuando es != 1.0 (para mostrarla). */
-    val defaultToUsdRate: Double = 1.0,
+    val defaultToUsdRate: Double? = null,
     /** Moneda por defecto del usuario (para mostrar junto a los registros convertidos). */
     val defaultCurrency: String = "EUR"
 )
@@ -168,7 +168,7 @@ class DashboardViewModel @Inject constructor(
         }
 
         // Tasa default→USD (para mostrarla si es != 1.0; si default es USD, no aparece).
-        val defaultToUsdRate = exchangeRateProvider.rates.value[target.uppercase()] ?: 1.0
+        val defaultToUsdRate = exchangeRateProvider.convert(1.0, target, "USD")
 
         return DashboardUiState(
             totalGastosMes = gastosMes,
@@ -215,6 +215,7 @@ class DashboardViewModel @Inject constructor(
         hoyCal.set(Calendar.HOUR_OF_DAY, 23)
         hoyCal.set(Calendar.MINUTE, 59)
         hoyCal.set(Calendar.SECOND, 59)
+        hoyCal.set(Calendar.MILLISECOND, 999)
         val hoyFin = hoyCal.timeInMillis
 
         val semanaCal = Calendar.getInstance()
@@ -238,6 +239,7 @@ class DashboardViewModel @Inject constructor(
         mesCal.set(Calendar.HOUR_OF_DAY, 23)
         mesCal.set(Calendar.MINUTE, 59)
         mesCal.set(Calendar.SECOND, 59)
+        mesCal.set(Calendar.MILLISECOND, 999)
         val mesFin = mesCal.timeInMillis
 
         return DateRanges(hoyInicio, hoyFin, semanaInicio, mesInicio, mesFin)
@@ -249,7 +251,7 @@ class DashboardViewModel @Inject constructor(
         target: String
     ): List<DayData> {
         val data = mutableListOf<DayData>()
-        val dayFormat = SimpleDateFormat("EEE", Locale("es", "ES"))
+        val dayFormat = SimpleDateFormat("EEE", Locale.forLanguageTag("es-ES"))
 
         repeat(7) { i ->
             val dayCal = Calendar.getInstance()
@@ -257,11 +259,13 @@ class DashboardViewModel @Inject constructor(
             dayCal.set(Calendar.HOUR_OF_DAY, 0)
             dayCal.set(Calendar.MINUTE, 0)
             dayCal.set(Calendar.SECOND, 0)
+            dayCal.set(Calendar.MILLISECOND, 0)
             val dayStart = dayCal.timeInMillis
 
             dayCal.set(Calendar.HOUR_OF_DAY, 23)
             dayCal.set(Calendar.MINUTE, 59)
             dayCal.set(Calendar.SECOND, 59)
+            dayCal.set(Calendar.MILLISECOND, 999)
             val dayEnd = dayCal.timeInMillis
 
             val gastos = invoices
