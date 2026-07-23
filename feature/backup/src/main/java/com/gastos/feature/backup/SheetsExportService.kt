@@ -76,6 +76,11 @@ class SheetsExportService @Inject constructor(
     /** Intent para lanzar el flujo de Sign-In con permisos de Sheets. */
     fun getSignInIntent(): Intent = getSignInClient().signInIntent
 
+    /** Cierra la misma sesión/scopes utilizados por el flujo de Sheets. */
+    fun signOut() {
+        getSignInClient().signOut()
+    }
+
     /** ¿Hay una cuenta Google con permisos de Sheets concedidos? */
     fun isSignedIn(): Boolean {
         val account = GoogleSignIn.getLastSignedInAccount(context)

@@ -8,7 +8,14 @@ import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.IncomeRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -21,6 +28,7 @@ data class IncomesUiState(
     val error: String? = null
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class IncomesViewModel @Inject constructor(
     private val incomeRepository: IncomeRepository,
@@ -33,33 +41,30 @@ class IncomesViewModel @Inject constructor(
     val uiState: StateFlow<IncomesUiState> = _uiState.asStateFlow()
 
     init {
-        loadIncomes()
-        // Recalcula el total convertido cuando llegan tasas o cambia la moneda por defecto.
+        // Una sola cadena reactiva: ingresos + moneda destino + tasas.
         viewModelScope.launch {
-            combine(
-                exchangeRateProvider.rates,
-                currencyPreference.defaultCurrency
-            ) { _, target -> target }.collect { target ->
-                recomputeTotal(target)
-            }
-        }
-    }
-
-    fun loadIncomes() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-
             incomeRepository.getAllIncomes()
+                .combine(currencyPreference.defaultCurrency) { incomes, target ->
+                    incomes to target
+                }
+                .combine(exchangeRateProvider.rates) { (incomes, target), _ ->
+                    Triple(incomes, target, recomputeTotal(incomes, target))
+                }
                 .catch { e ->
                     _uiState.update {
                         it.copy(error = e.message ?: "Error al cargar ingresos", isLoading = false)
                     }
                 }
-                .collect { incomes ->
+                .collect { (incomes, target, total) ->
                     _uiState.update {
-                        it.copy(incomes = incomes, isLoading = false, error = null)
+                        it.copy(
+                            incomes = incomes,
+                            isLoading = false,
+                            error = null,
+                            totalIngresosConvertido = total,
+                            defaultCurrency = target
+                        )
                     }
-                    recomputeTotal(currencyPreference.defaultCurrency.value)
                 }
         }
     }
@@ -69,22 +74,15 @@ class IncomesViewModel @Inject constructor(
      * Si falta la tasa de alguna moneda, su importe se excluye del total
      * (no se suma como si fuera la moneda por defecto).
      */
-    private fun recomputeTotal(target: String) {
-        val incomes = _uiState.value.incomes
+    private fun recomputeTotal(incomes: List<Income>, target: String): Double? {
+        if (incomes.isEmpty()) return 0.0
         val converted = incomes.sumOf { income ->
-            // Cast explícito a Double (0.0 si no hay tasa): evita ambigüedad entre
-            // sumOf((T)->Double) y sumOf((T)->Double?).
-            (exchangeRateProvider.convert(income.monto, income.moneda, target) ?: 0.0)
+            exchangeRateProvider.convert(income.monto, income.moneda, target) ?: 0.0
         }
-        // Si TODOS los convertibles están null (sin tasas), el total es null → UI muestra "—".
-        val allConvertibleMissing = incomes.isNotEmpty() &&
-            incomes.all { exchangeRateProvider.convert(it.monto, it.moneda, target) == null }
-        _uiState.update {
-            it.copy(
-                totalIngresosConvertido = if (allConvertibleMissing) null else converted,
-                defaultCurrency = target
-            )
+        val allMissing = incomes.all {
+            exchangeRateProvider.convert(it.monto, it.moneda, target) == null
         }
+        return if (allMissing) null else converted
     }
 
     fun deleteIncome(income: Income) {

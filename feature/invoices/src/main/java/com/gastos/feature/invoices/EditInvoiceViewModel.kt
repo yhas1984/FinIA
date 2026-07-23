@@ -2,10 +2,8 @@ package com.gastos.feature.invoices
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
-import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import com.gastos.feature.backup.SheetsSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,11 +22,16 @@ data class EditInvoiceUiState(
     val error: String? = null
 )
 
+/**
+ * Form de edición de FACTURA (siempre un GASTO).
+ *
+ * El tipo "Ingreso" se quitó de esta pantalla porque los ingresos tienen su
+ * propia edición en la pestaña Ingresos.
+ */
 data class EditInvoiceForm(
     val id: Long = 0,
     val fecha: Long = System.currentTimeMillis(),
     val proveedor: String = "",
-    val tipo: InvoiceType = InvoiceType.GASTO,
     val moneda: String = "EUR",
     val total: String = "",
     val ivaPercent: String = "21.0",
@@ -91,8 +94,7 @@ data class EditInvoiceForm(
 @HiltViewModel
 class EditInvoiceViewModel @Inject constructor(
     private val invoiceRepository: InvoiceRepository,
-    private val sheetsSyncManager: SheetsSyncManager,
-    private val incomeRepository: IncomeRepository
+    private val sheetsSyncManager: SheetsSyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(EditInvoiceUiState())
@@ -101,18 +103,20 @@ class EditInvoiceViewModel @Inject constructor(
     private val _form = MutableStateFlow(EditInvoiceForm())
     val form: StateFlow<EditInvoiceForm> = _form.asStateFlow()
 
+    private var originalInvoice: Invoice? = null
+
     fun loadInvoice(id: Long) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val invoice = invoiceRepository.getInvoiceById(id)
                 if (invoice != null) {
+                    originalInvoice = invoice
                     _form.update {
                         EditInvoiceForm(
                             id = invoice.id,
                             fecha = invoice.fecha,
                             proveedor = invoice.proveedor,
-                            tipo = invoice.tipo,
                             moneda = invoice.moneda,
                             total = invoice.total.toString(),
                             ivaPercent = invoice.ivaPercent.toString(),
@@ -139,7 +143,6 @@ class EditInvoiceViewModel @Inject constructor(
 
     fun updateProveedor(value: String) { _form.update { it.copy(proveedor = value) } }
     fun updateFecha(value: Long) { _form.update { it.copy(fecha = value) } }
-    fun updateTipo(value: InvoiceType) { _form.update { it.copy(tipo = value) } }
     fun updateMoneda(value: String) { _form.update { it.copy(moneda = value) } }
     fun updateTotal(value: String) { _form.update { it.copy(total = value) } }
     fun updateIvaPercent(value: String) { _form.update { it.copy(ivaPercent = value) } }
@@ -165,11 +168,18 @@ class EditInvoiceViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true, saveResult = null) }
 
             try {
+                // Las facturas son siempre GASTO (los ingresos se editan en su
+                // propia pestaña). Forzamos el tipo aquí por si el registro
+                // antiguo era INGRESO y se ha migrado al tab de Ingresos.
+                // Conserva campos no editables (createdAt, imagenUri,
+                // ocrRawText) del registro original para no perder la foto
+                // ni el texto OCR al guardar.
+                val original = originalInvoice
                 val invoice = Invoice(
                     id = form.id,
                     fecha = form.fecha,
                     proveedor = form.proveedor.trim(),
-                    tipo = form.tipo,
+                    tipo = InvoiceType.GASTO,
                     moneda = form.moneda,
                     total = total,
                     ivaPercent = form.ivaPercent.toDoubleOrNull() ?: 0.0,
@@ -177,49 +187,25 @@ class EditInvoiceViewModel @Inject constructor(
                     paisCodigo = form.paisCodigo,
                     nifEmisor = form.nifEmisor.trim().takeIf { it.isNotBlank() },
                     nifReceptor = form.nifReceptor.trim().takeIf { it.isNotBlank() },
+                    imagenUri = original?.imagenUri,
+                    ocrRawText = original?.ocrRawText,
                     notas = form.notas.trim().takeIf { it.isNotBlank() },
+                    createdAt = original?.createdAt ?: System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis()
                 )
 
-                val saveMessage: String
                 if (form.id == 0L) {
-                    if (invoice.tipo == InvoiceType.INGRESO) {
-                        // Un INGRESO se persiste en la tabla `incomes` (mismo
-                        // criterio que el chatbot/OCR). Guardarlo en `invoices`
-                        // lo dejaría fuera de los totales de ingresos del
-                        // dashboard y lo sincronizaría a Sheets como gasto.
-                        val income = invoice.toIncome()
-                        val incomeId = incomeRepository.insertIncome(income)
-                        sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
-                        saveMessage = "Ingreso guardado correctamente"
-                    } else {
-                        val invoiceId = invoiceRepository.insertInvoice(invoice)
-                        sheetsSyncManager.upsertExpense(invoice.copy(id = invoiceId))
-                        saveMessage = "Factura guardada correctamente"
-                    }
+                    val invoiceId = invoiceRepository.insertInvoice(invoice)
+                    sheetsSyncManager.upsertExpense(invoice.copy(id = invoiceId))
                 } else {
-                    if (form.tipo == InvoiceType.INGRESO) {
-                        // Cambio GASTO→INGRESO al editar: el registro se MUEVE
-                        // a la tabla incomes (convención de la app) y en Sheets
-                        // se borra la fila de gasto (y sus productos) y se
-                        // escribe como ingreso.
-                        invoiceRepository.deleteInvoice(invoice)
-                        val income = invoice.toIncome()
-                        val incomeId = incomeRepository.insertIncome(income)
-                        sheetsSyncManager.deleteExpense(invoice.id)
-                        sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
-                        saveMessage = "Ingreso guardado correctamente"
-                    } else {
-                        invoiceRepository.updateInvoice(invoice)
-                        sheetsSyncManager.upsertExpense(invoice)
-                        saveMessage = "Factura guardada correctamente"
-                    }
+                    invoiceRepository.updateInvoice(invoice)
+                    sheetsSyncManager.upsertExpense(invoice)
                 }
 
                 _uiState.update {
                     it.copy(
                         isSaving = false,
-                        saveResult = saveMessage
+                        saveResult = "Factura guardada correctamente"
                     )
                 }
             } catch (e: Exception) {

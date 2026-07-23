@@ -298,17 +298,29 @@ class ChatbotViewModel @Inject constructor(
         val periodIncomes = incomes.filter { it.fecha in start..end }
         val periodInvoiceIds = periodInvoices.map { it.id }.toSet()
         val periodProducts = allProducts.filter { it.invoiceId in periodInvoiceIds }
+        val invoiceById = periodInvoices.associateBy { it.id }
+
+        fun convertedInvoiceAmount(invoice: com.gastos.domain.model.Invoice): Double =
+            exchangeRateProvider.convert(invoice.total, invoice.moneda, target) ?: 0.0
+
+        fun convertedIncomeAmount(income: Income): Double =
+            exchangeRateProvider.convert(income.monto, income.moneda, target) ?: 0.0
+
+        fun convertedProductAmount(product: com.gastos.domain.model.Product): Double {
+            val currency = invoiceById[product.invoiceId]?.moneda ?: return 0.0
+            return exchangeRateProvider.convert(product.subtotal, currency, target) ?: 0.0
+        }
 
         // Totales convertidos a la moneda por defecto del usuario (mismo
         // mecanismo que el Dashboard): si falta la tasa de una moneda, su
         // importe se excluye y no se suma como si fuera la moneda destino.
         val totalGastos = periodInvoices
             .filter { it.tipo == InvoiceType.GASTO }
-            .sumOf { exchangeRateProvider.convert(it.total, it.moneda, target) ?: 0.0 }
+            .sumOf(::convertedInvoiceAmount)
         val totalIngresos = periodInvoices
                 .filter { it.tipo == InvoiceType.INGRESO }
-                .sumOf { exchangeRateProvider.convert(it.total, it.moneda, target) ?: 0.0 } +
-            periodIncomes.sumOf { exchangeRateProvider.convert(it.monto, it.moneda, target) ?: 0.0 }
+                .sumOf(::convertedInvoiceAmount) +
+            periodIncomes.sumOf(::convertedIncomeAmount)
         val countGastos = periodInvoices.count { it.tipo == InvoiceType.GASTO }
         val countIngresos = periodInvoices.count { it.tipo == InvoiceType.INGRESO } + periodIncomes.size
 
@@ -322,7 +334,7 @@ class ChatbotViewModel @Inject constructor(
                 if (periodInvoices.isNotEmpty()) {
                     val byProvider = periodInvoices.filter { it.tipo == InvoiceType.GASTO }
                         .groupBy { it.proveedor }
-                        .mapValues { it.value.sumOf { inv -> inv.total } }
+                        .mapValues { (_, values) -> values.sumOf(::convertedInvoiceAmount) }
                         .toList().sortedByDescending { it.second }.take(5)
                     if (byProvider.isNotEmpty()) {
                         sb.append("\n📋 Top proveedores:\n")
@@ -339,7 +351,7 @@ class ChatbotViewModel @Inject constructor(
                 sb.append("• Cantidad: $countIngresos transacciones\n")
                 if (periodIncomes.isNotEmpty()) {
                     val bySource = periodIncomes.groupBy { it.fuente ?: it.concepto }
-                        .mapValues { it.value.sumOf { inc -> inc.monto } }
+                        .mapValues { (_, values) -> values.sumOf(::convertedIncomeAmount) }
                         .toList().sortedByDescending { it.second }.take(5)
                     if (bySource.isNotEmpty()) {
                         sb.append("\n📋 Fuentes principales:\n")
@@ -362,7 +374,10 @@ class ChatbotViewModel @Inject constructor(
                 val sb = StringBuilder("📦 Productos del $periodo:\n")
                 // Most bought by frequency
                 val byFrequency = periodProducts.groupBy { it.descripcion.lowercase().trim() }
-                    .mapValues { it.value.sumOf { p -> p.cantidad }.toInt() to it.value.sumOf { p -> p.subtotal } }
+                    .mapValues { (_, values) ->
+                        values.sumOf { p -> p.cantidad }.toInt() to
+                            values.sumOf(::convertedProductAmount)
+                    }
                     .toList().sortedByDescending { it.second.first }.take(5)
 
                 sb.append("\n🏆 Más comprados (por frecuencia):\n")
@@ -372,7 +387,7 @@ class ChatbotViewModel @Inject constructor(
 
                 // Most expensive
                 val byAmount = periodProducts.groupBy { it.descripcion.lowercase().trim() }
-                    .mapValues { it.value.sumOf { p -> p.subtotal } }
+                    .mapValues { (_, values) -> values.sumOf(::convertedProductAmount) }
                     .toList().sortedByDescending { it.second }.take(5)
 
                 sb.append("\n💸 Mayor gasto por producto:\n")
@@ -380,7 +395,7 @@ class ChatbotViewModel @Inject constructor(
                     sb.append("  ${i + 1}. ${name.replaceFirstChar { it.uppercase() }}: ${fmt.format(total)}\n")
                 }
 
-                sb.append("\n📊 Total productos: ${periodProducts.size} items - ${fmt.format(periodProducts.sumOf { it.subtotal })}")
+                sb.append("\n📊 Total productos: ${periodProducts.size} items - ${fmt.format(periodProducts.sumOf(::convertedProductAmount))}")
                 sb.toString().trimEnd()
             }
             else -> {

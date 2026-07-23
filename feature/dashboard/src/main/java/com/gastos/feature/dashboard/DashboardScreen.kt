@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.gastos.domain.model.formatMoney
 import java.text.NumberFormat
 import java.util.*
 import kotlin.math.max
@@ -113,6 +114,35 @@ fun DashboardScreen(
                     totalGastos = fmt(uiState.totalGastosMes),
                     totalIngresos = fmt(uiState.totalIngresosMes)
                 )
+            }
+
+            // Sección "Conversión aplicada": solo si hay registros con
+            // moneda distinta a la default en el mes.
+            if (uiState.convertedRecords.isNotEmpty()) {
+                item {
+                    GlassCard {
+                        Text(
+                            text = "Conversión de moneda",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        Text(
+                            text = if (uiState.defaultToUsdRate != 1.0)
+                                "1 ${uiState.defaultCurrency} ≈ ${"%.6f".format(uiState.defaultToUsdRate)} USD"
+                            else
+                                "1 ${uiState.defaultCurrency} = 1 ${uiState.defaultCurrency}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        uiState.convertedRecords.forEach { rec ->
+                            ConversionRow(rec = rec, defaultCurrency = uiState.defaultCurrency, fmt = fmt)
+                        }
+                    }
+                }
             }
 
             // Weekly summary card
@@ -339,6 +369,38 @@ fun CashflowCard(totalGastos: String, totalIngresos: String) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ConversionRow(
+    rec: ConvertedRecord,
+    defaultCurrency: String,
+    fmt: (Double) -> String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = rec.descripcion,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+            Text(
+                text = "${formatMoney(rec.montoOriginal, rec.monedaOriginal)} · 1 ${rec.monedaOriginal} = ${"%.6f".format(rec.rateApplied)} $defaultCurrency",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Text(
+            text = fmt(rec.montoConvertido),
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+        )
     }
 }
 

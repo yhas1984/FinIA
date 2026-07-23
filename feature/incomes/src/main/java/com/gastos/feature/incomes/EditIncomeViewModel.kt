@@ -47,12 +47,15 @@ class EditIncomeViewModel @Inject constructor(
     private val _form = MutableStateFlow(EditIncomeForm())
     val form: StateFlow<EditIncomeForm> = _form.asStateFlow()
 
+    private var originalIncome: Income? = null
+
     fun loadIncome(id: Long) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val income = incomeRepository.getIncomeById(id)
                 if (income != null) {
+                    originalIncome = income
                     _form.update {
                         EditIncomeForm(
                             id = income.id,
@@ -111,6 +114,9 @@ class EditIncomeViewModel @Inject constructor(
             try {
                 val devengado = form.totalDevengado.toDoubleOrNull() ?: 0.0
                 val neto = form.totalNeto.toDoubleOrNull() ?: 0.0
+                // Conserva la imagen y la fecha de creación del registro
+                // original (no se editan desde el formulario).
+                val original = originalIncome
                 val income = Income(
                     id = form.id,
                     fecha = form.fecha,
@@ -122,7 +128,9 @@ class EditIncomeViewModel @Inject constructor(
                     fuente = form.fuente.trim().takeIf { it.isNotBlank() },
                     ivaPercent = form.ivaPercent.toDoubleOrNull() ?: 0.0,
                     irpfPercent = form.irpfPercent.toDoubleOrNull() ?: 0.0,
+                    imagenUri = original?.imagenUri,
                     notas = form.notas.trim().takeIf { it.isNotBlank() },
+                    createdAt = original?.createdAt ?: System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis()
                 )
 

@@ -36,7 +36,29 @@ data class DashboardUiState(
     val dailyData: List<DayData> = emptyList(),
     val isLoading: Boolean = true,
     val totalFacturas: Int = 0,
-    val totalIngresosCount: Int = 0
+    val totalIngresosCount: Int = 0,
+    /** Registros del mes que se convirtieron desde una moneda distinta a la
+     *  moneda por defecto (para mostrar la desglose de la conversión). */
+    val convertedRecords: List<ConvertedRecord> = emptyList(),
+    /** Tasa `defaultCurrency → USD` aplicada cuando es != 1.0 (para mostrarla). */
+    val defaultToUsdRate: Double = 1.0,
+    /** Moneda por defecto del usuario (para mostrar junto a los registros convertidos). */
+    val defaultCurrency: String = "EUR"
+)
+
+/**
+ * Resumen de un registro que se convirtió desde una moneda distinta a la
+ * moneda por defecto del usuario (para mostrar el desglose en la UI).
+ */
+data class ConvertedRecord(
+    val descripcion: String,
+    val monedaOriginal: String,
+    val montoOriginal: Double,
+    val montoConvertido: Double,
+    /** Tasa usada: 1 unidad de `monedaOriginal` = `rateApplied` unidades de destino. */
+    val rateApplied: Double,
+    /** Epoch ms de la tasa usada. */
+    val asOf: Long?
 )
 
 @HiltViewModel
@@ -114,6 +136,40 @@ class DashboardViewModel @Inject constructor(
 
         SafeLog.d(TAG, "Dashboard convertido a '$target': gastosMes=$gastosMes, ingresosMes=$ingresosMes")
 
+        // Registros del mes con moneda distinta a la por defecto (para la UI
+        // de "conversión aplicada"). Cada uno lleva su tasa + fecha de tasa.
+        val converted = mutableListOf<ConvertedRecord>()
+        invoices.filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.mesInicio..ranges.mesFin }
+            .forEach { inv ->
+                val r = exchangeRateProvider.convertWithMeta(inv.total, inv.moneda, target)
+                if (r != null && !r.wasNative) {
+                    converted.add(ConvertedRecord(
+                        descripcion = inv.proveedor,
+                        monedaOriginal = inv.moneda,
+                        montoOriginal = inv.total,
+                        montoConvertido = r.amount,
+                        rateApplied = r.rateApplied,
+                        asOf = r.asOf
+                    ))
+                }
+            }
+        incomes.filter { it.fecha in ranges.mesInicio..ranges.mesFin }.forEach { inc ->
+            val r = exchangeRateProvider.convertWithMeta(inc.monto, inc.moneda, target)
+            if (r != null && !r.wasNative) {
+                converted.add(ConvertedRecord(
+                    descripcion = inc.concepto,
+                    monedaOriginal = inc.moneda,
+                    montoOriginal = inc.monto,
+                    montoConvertido = r.amount,
+                    rateApplied = r.rateApplied,
+                    asOf = r.asOf
+                ))
+            }
+        }
+
+        // Tasa default→USD (para mostrarla si es != 1.0; si default es USD, no aparece).
+        val defaultToUsdRate = exchangeRateProvider.rates.value[target.uppercase()] ?: 1.0
+
         return DashboardUiState(
             totalGastosMes = gastosMes,
             totalIngresosMes = ingresosMes,
@@ -125,7 +181,10 @@ class DashboardViewModel @Inject constructor(
             dailyData = computeDailyData(invoices, incomes, target),
             isLoading = false,
             totalFacturas = invoices.count { it.tipo == InvoiceType.GASTO },
-            totalIngresosCount = incomes.size
+            totalIngresosCount = incomes.size,
+            convertedRecords = converted,
+            defaultToUsdRate = defaultToUsdRate,
+            defaultCurrency = target
         )
     }
 

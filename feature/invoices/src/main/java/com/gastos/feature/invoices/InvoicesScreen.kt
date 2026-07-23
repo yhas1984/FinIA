@@ -102,21 +102,56 @@ fun InvoicesScreen(
                 }
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(
-                    items = uiState.invoices,
-                    key = { it.id }
-                ) { invoice ->
-                    InvoiceCard(
-                        invoice = invoice,
-                        dateFormat = dateFormat,
-                        onDelete = { viewModel.deleteInvoice(invoice) },
-                        onEdit = { onNavigateToEdit(invoice.id) }
+            // Resumen total (convertido a la moneda por defecto del usuario).
+            val total = uiState.totalGastosConvertido
+            val target = uiState.defaultCurrency
+
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
                     )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Total Gastos",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = if (total != null) {
+                                com.gastos.domain.model.formatMoney(total, target)
+                            } else {
+                                "— ($target)"
+                            },
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(
+                        items = uiState.invoices,
+                        key = { it.id }
+                    ) { invoice ->
+                        InvoiceCard(
+                            invoice = invoice,
+                            dateFormat = dateFormat,
+                            onDelete = { viewModel.deleteInvoice(invoice) },
+                            onEdit = { onNavigateToEdit(invoice.id) }
+                        )
+                    }
                 }
             }
         }

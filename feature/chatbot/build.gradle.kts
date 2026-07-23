@@ -56,4 +56,10 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":feature:ai"))
     implementation(project(":feature:voice"))
+
+    // Testing
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.turbine)
 }

@@ -14,7 +14,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.gastos.domain.model.InvoiceType
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -74,23 +73,6 @@ fun EditInvoiceScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Tipo de factura
-            Text("Tipo", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
-                    selected = form.tipo == InvoiceType.GASTO,
-                    onClick = { viewModel.updateTipo(InvoiceType.GASTO) },
-                    label = { Text("Gasto") },
-                    modifier = Modifier.weight(1f)
-                )
-                FilterChip(
-                    selected = form.tipo == InvoiceType.INGRESO,
-                    onClick = { viewModel.updateTipo(InvoiceType.INGRESO) },
-                    label = { Text("Ingreso") },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
             // Proveedor
             OutlinedTextField(
                 value = form.proveedor,
