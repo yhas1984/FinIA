@@ -1,8 +1,9 @@
+@file:Suppress("DEPRECATION")
+
 package com.gastos.feature.settings
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.Module
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import com.gastos.extension.SafeLog
 
 /**
  * Almacenamiento cifrado para datos sensibles (API keys, tokens OAuth, etc.)
@@ -61,7 +63,7 @@ class SecureStorage @Inject constructor(
             // AndroidX Security 1.0 → 1.1), se borra y se recrea. Esto
             // implica perder los valores almacenados — el usuario deberá
             // reintroducir la API key de Gemini.
-            Log.w(TAG, "EncryptedSharedPreferences corrupto, reseteando", e)
+            SafeLog.w(TAG, "EncryptedSharedPreferences corrupto, reseteando", e)
             try {
                 context.deleteSharedPreferences(PREFS_NAME)
             } catch (_: Exception) {}
@@ -76,7 +78,9 @@ class SecureStorage @Inject constructor(
     }
 
     suspend fun putString(key: String, value: String) = withContext(Dispatchers.IO) {
-        prefs.edit().putString(key, value).apply()
+        check(prefs.edit().putString(key, value).commit()) {
+            "No se pudo guardar el valor cifrado"
+        }
     }
 
     /**
@@ -103,11 +107,15 @@ class SecureStorage @Inject constructor(
     }
 
     suspend fun remove(key: String) = withContext(Dispatchers.IO) {
-        prefs.edit().remove(key).apply()
+        check(prefs.edit().remove(key).commit()) {
+            "No se pudo eliminar el valor cifrado"
+        }
     }
 
     suspend fun clear() = withContext(Dispatchers.IO) {
-        prefs.edit().clear().apply()
+        check(prefs.edit().clear().commit()) {
+            "No se pudo limpiar el almacenamiento cifrado"
+        }
     }
 }
 

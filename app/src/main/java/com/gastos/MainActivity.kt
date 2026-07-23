@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -39,7 +40,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val settingsViewModel: SettingsViewModel = viewModel()
-            val uiState by settingsViewModel.uiState.collectAsState()
+            val uiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
 
             GastosEIngresosTheme(darkMode = uiState.settings.darkMode) {
                 FinAIApp(defaultCurrency = uiState.settings.defaultCurrency)

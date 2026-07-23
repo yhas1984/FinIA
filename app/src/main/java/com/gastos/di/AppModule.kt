@@ -122,6 +122,49 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+/**
+ * Migration 4 → 5: mueve los ingresos legacy que aún vivían en `invoices`
+ * a su tabla definitiva. Las líneas asociadas se conservan como texto en
+ * notas antes de borrar la factura; el borrado limpia después los productos
+ * mediante la FK ON DELETE CASCADE.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            INSERT INTO `incomes` (
+                `fecha`, `concepto`, `monto`, `totalDevengado`, `totalNeto`,
+                `moneda`, `fuente`, `ivaPercent`, `irpfPercent`, `imagenUri`,
+                `notas`, `createdAt`, `updatedAt`
+            )
+            SELECT
+                i.`fecha`, i.`proveedor`, i.`total`, i.`total`, i.`total`,
+                i.`moneda`, i.`proveedor`, i.`ivaPercent`, i.`irpfPercent`,
+                i.`imagenUri`,
+                CASE
+                    WHEN EXISTS (SELECT 1 FROM `products` p WHERE p.`invoiceId` = i.`id`)
+                    THEN
+                        CASE
+                            WHEN i.`notas` IS NULL OR TRIM(i.`notas`) = '' THEN ''
+                            ELSE i.`notas` || CHAR(10) || CHAR(10)
+                        END ||
+                        'Líneas migradas de la factura original:' || CHAR(10) ||
+                        (SELECT GROUP_CONCAT(
+                            '- ' || p.`descripcion` || ' x' || p.`cantidad` ||
+                            ' (' || p.`subtotal` || ' ' || i.`moneda` || ')',
+                            CHAR(10)
+                        ) FROM `products` p WHERE p.`invoiceId` = i.`id`)
+                    ELSE i.`notas`
+                END,
+                i.`createdAt`, i.`updatedAt`
+            FROM `invoices` i
+            WHERE i.`tipo` = 'INGRESO'
+            """.trimIndent()
+        )
+        db.execSQL("DELETE FROM `invoices` WHERE `tipo` = 'INGRESO'")
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
@@ -134,8 +177,8 @@ object AppModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
-            .fallbackToDestructiveMigrationOnDowngrade()
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()
     }
 

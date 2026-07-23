@@ -38,7 +38,7 @@ fun currencySymbol(code: String): String = when (code.uppercase()) {
  */
 fun formatMoney(amount: Double, currencyCode: String): String {
     return try {
-        val fmt = NumberFormat.getCurrencyInstance(Locale("es", "ES"))
+        val fmt = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-ES"))
         fmt.currency = Currency.getInstance(currencyCode)
         fmt.format(amount)
     } catch (_: Exception) {

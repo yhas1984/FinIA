@@ -4,6 +4,7 @@ import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,7 @@ class EditInvoiceViewModelTest {
     fun `saveInvoice preserva imagenUri y ocrRawText del registro original`() =
         runTest(dispatcher) {
             val repo = mockk<com.gastos.repository.InvoiceRepository>()
+            val productRepo = mockk<com.gastos.repository.ProductRepository>()
             val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
             val original = Invoice(
                 id = 5L,
@@ -50,8 +52,9 @@ class EditInvoiceViewModelTest {
             )
             coEvery { repo.getInvoiceById(5L) } returns original
             coEvery { repo.updateInvoice(any()) } returns Unit
+            every { productRepo.getProductsByInvoiceId(5L) } returns kotlinx.coroutines.flow.flowOf(emptyList())
 
-            val vm = EditInvoiceViewModel(repo, sync)
+            val vm = EditInvoiceViewModel(repo, productRepo, sync)
             vm.loadInvoice(5L)
             advanceUntilIdle()
             vm.updateProveedor("Acme Editado")

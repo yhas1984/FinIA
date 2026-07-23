@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.gastos.common"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 24

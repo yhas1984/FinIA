@@ -22,7 +22,6 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 data class AppSettings(
     val geminiApiKey: String = "",
     val systemInstructions: String = "",
-    val sheetId: String = "",
     val defaultCurrency: String = "EUR",
     val defaultCountry: String = "ES",
     val darkMode: String = "system",
@@ -42,7 +41,6 @@ class SettingsRepository @Inject constructor(
 
     private object Keys {
         val SYSTEM_INSTRUCTIONS = stringPreferencesKey("system_instructions")
-        val SHEET_ID = stringPreferencesKey("sheet_id")
         val DEFAULT_CURRENCY = stringPreferencesKey("default_currency")
         val DEFAULT_COUNTRY = stringPreferencesKey("default_country")
         val DARK_MODE = stringPreferencesKey("dark_mode")
@@ -65,7 +63,6 @@ class SettingsRepository @Inject constructor(
         AppSettings(
             geminiApiKey = geminiKey,
             systemInstructions = preferences[Keys.SYSTEM_INSTRUCTIONS] ?: "",
-            sheetId = preferences[Keys.SHEET_ID] ?: "",
             defaultCurrency = preferences[Keys.DEFAULT_CURRENCY] ?: "EUR",
             defaultCountry = preferences[Keys.DEFAULT_COUNTRY] ?: "ES",
             darkMode = preferences[Keys.DARK_MODE] ?: "system",
@@ -123,9 +120,4 @@ class SettingsRepository @Inject constructor(
         }
     }
 
-    suspend fun updateSheetId(sheetId: String) {
-        context.dataStore.edit { preferences ->
-            preferences[Keys.SHEET_ID] = sheetId
-        }
-    }
 }

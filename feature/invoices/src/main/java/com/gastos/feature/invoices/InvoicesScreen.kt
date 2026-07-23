@@ -11,7 +11,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import java.text.NumberFormat
@@ -24,10 +25,10 @@ fun InvoicesScreen(
     onNavigateToEdit: (Long) -> Unit = {},
     viewModel: InvoicesViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showFilterMenu by remember { mutableStateOf(false) }
     
-    val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale("es", "ES"))
+    val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("es-ES"))
 
     Scaffold(
         topBar = {
@@ -56,13 +57,6 @@ fun InvoicesScreen(
                             text = { Text("Solo Gastos") },
                             onClick = {
                                 viewModel.filterByType(InvoiceType.GASTO)
-                                showFilterMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Solo Ingresos") },
-                            onClick = {
-                                viewModel.filterByType(InvoiceType.INGRESO)
                                 showFilterMenu = false
                             }
                         )

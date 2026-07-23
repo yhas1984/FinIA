@@ -1,10 +1,14 @@
 package com.gastos.repository.impl
 
+import androidx.room.withTransaction
 import com.gastos.data.local.entity.toDomain
 import com.gastos.data.local.entity.toEntity
 import com.gastos.local.dao.InvoiceDao
+import com.gastos.local.dao.ProductDao
+import com.gastos.local.database.AppDatabase
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
+import com.gastos.domain.model.Product
 import com.gastos.repository.InvoiceRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -13,7 +17,9 @@ import javax.inject.Singleton
 
 @Singleton
 class InvoiceRepositoryImpl @Inject constructor(
-    private val invoiceDao: InvoiceDao
+    private val invoiceDao: InvoiceDao,
+    private val productDao: ProductDao,
+    private val database: AppDatabase
 ) : InvoiceRepository {
 
     override fun getAllInvoices(): Flow<List<Invoice>> =
@@ -33,6 +39,17 @@ class InvoiceRepositoryImpl @Inject constructor(
 
     override suspend fun insertInvoice(invoice: Invoice): Long =
         invoiceDao.insertInvoice(invoice.toEntity().copy(updatedAt = System.currentTimeMillis()))
+
+    override suspend fun insertInvoiceWithProducts(invoice: Invoice, products: List<Product>): Long =
+        database.withTransaction {
+            val invoiceId = invoiceDao.insertInvoice(
+                invoice.toEntity().copy(updatedAt = System.currentTimeMillis())
+            )
+            if (products.isNotEmpty()) {
+                productDao.insertProducts(products.map { it.copy(invoiceId = invoiceId).toEntity() })
+            }
+            invoiceId
+        }
 
     override suspend fun updateInvoice(invoice: Invoice) =
         invoiceDao.updateInvoice(invoice.toEntity().copy(updatedAt = System.currentTimeMillis()))

@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.gastos.feature.backup
 
 import android.content.Context
@@ -23,6 +25,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -81,6 +85,7 @@ class SheetsSyncManager @Inject constructor(
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val syncMutex = Mutex()
     private val df = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -104,27 +109,33 @@ class SheetsSyncManager @Inject constructor(
      *   IVA % | Cuota | Recargo Eq. | IRPF | Total | Moneda | Notas | ID
      */
     fun upsertExpense(invoice: Invoice) {
+        upsertRow(
+            SHEET_RECIBIDAS,
+            COL_ID_RECIBIDAS,
+            invoice.id,
+            expenseValues(invoice)
+        )
+    }
+
+    private fun expenseValues(invoice: Invoice): List<Any> {
         val base = if (invoice.ivaPercent > 0) invoice.total / (1 + invoice.ivaPercent / 100.0) else invoice.total
         val cuota = invoice.total - base
         val numFactura = extractFromOcr(invoice.ocrRawText, "numero_factura")
-        upsertRow(
-            SHEET_RECIBIDAS, COL_ID_RECIBIDAS, invoice.id,
-            listOf(
-                numFactura,                               // Nº Factura (extraído del OCR)
-                df.format(Date(invoice.fecha)),           // Fecha dd/MM/yyyy
-                invoice.paisCodigo,                       // NIF País (ISO)
-                invoice.nifEmisor ?: "",                  // NIF Emisor
-                invoice.proveedor,                        // Emisor (Razón Social)
-                round2(base),                             // Base Imponible
-                invoice.ivaPercent,                       // Tipo IVA
-                round2(cuota),                            // Cuota IVA
-                0.0,                                      // Recargo Eq. (no capturado)
-                invoice.irpfPercent,                      // IRPF %
-                invoice.total,                            // Total
-                invoice.moneda,                           // Moneda
-                invoice.notas ?: "",                      // Notas
-                invoice.id                                // ID (clave de sync)
-            )
+        return listOf(
+            numFactura,
+            df.format(Date(invoice.fecha)),
+            invoice.paisCodigo,
+            invoice.nifEmisor ?: "",
+            invoice.proveedor,
+            round2(base),
+            invoice.ivaPercent,
+            round2(cuota),
+            0.0,
+            invoice.irpfPercent,
+            invoice.total,
+            invoice.moneda,
+            invoice.notas ?: "",
+            invoice.id
         )
     }
 
@@ -170,6 +181,61 @@ class SheetsSyncManager @Inject constructor(
                     p.invoiceId
                 )
             )
+        }
+    }
+
+    /**
+     * Sincroniza una factura y sustituye sus productos en una sola sección
+     * crítica. Así una edición de proveedor o productos no deja filas antiguas
+     * ni compite con otros upserts lanzados al mismo tiempo.
+     */
+    fun syncExpense(invoice: Invoice, products: List<Product>) {
+        if (!premiumStatus.isPremium.value || getStoredId().isBlank()) return
+        val spreadsheetId = getStoredId()
+        scope.launch {
+            syncMutex.withLock {
+                try {
+                    val sheets = getSheetsService()
+                    if (sheets == null) {
+                        SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
+                        return@withLock
+                    }
+                    upsertRowNow(
+                        sheets,
+                        spreadsheetId,
+                        SHEET_RECIBIDAS,
+                        COL_ID_RECIBIDAS,
+                        invoice.id,
+                        expenseValues(invoice)
+                    )
+                    deleteRowsNow(
+                        sheets,
+                        spreadsheetId,
+                        mapOf(SHEET_PRODUCTOS to COL_ID_PRODUCTOS),
+                        invoice.id
+                    )
+                    products.forEach { product ->
+                        val totalConIva = product.subtotal * (1 + product.ivaPercent / 100.0)
+                        appendRowNow(
+                            sheets,
+                            spreadsheetId,
+                            SHEET_PRODUCTOS,
+                            listOf(
+                                product.descripcion,
+                                product.cantidad,
+                                product.precioUnitario,
+                                product.subtotal,
+                                product.ivaPercent,
+                                round2(totalConIva),
+                                invoice.proveedor,
+                                invoice.id
+                            )
+                        )
+                    }
+                } catch (e: Exception) {
+                    SafeLog.e(TAG, "syncExpense FALLO id=${invoice.id}", e)
+                }
+            }
         }
     }
 
@@ -228,23 +294,29 @@ class SheetsSyncManager @Inject constructor(
         // Los valores contienen importes: solo se loggean en builds de debug.
         SafeLog.d(TAG, "append → hoja='$sheet' valores=$values sheetId=${sheetId.take(8)}…")
         scope.launch {
-            try {
-                val sheets = getSheetsService()
-                if (sheets == null) {
-                    SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
-                    return@launch
+            syncMutex.withLock {
+                try {
+                    val sheets = getSheetsService()
+                    if (sheets == null) {
+                        SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
+                        return@withLock
+                    }
+                    appendRowNow(sheets, sheetId, sheet, values)
+                } catch (e: Exception) {
+                    SafeLog.e(TAG, "append FALLO hoja='$sheet'", e)
+                    SafeLog.d(TAG, "append FALLO valores=$values")
                 }
-                val resp = sheets.spreadsheets().values()
-                    .append(sheetId, "'$sheet'!A:A", ValueRange().setValues(listOf(values)))
-                    .setValueInputOption("USER_ENTERED")
-                    .setInsertDataOption("INSERT_ROWS")
-                    .execute()
-                SafeLog.d(TAG, "append OK → hoja='$sheet' updRange=${resp.updates?.updatedRange}")
-            } catch (e: Exception) {
-                SafeLog.e(TAG, "append FALLO hoja='$sheet'", e)
-                SafeLog.d(TAG, "append FALLO valores=$values")
             }
         }
+    }
+
+    private fun appendRowNow(sheets: Sheets, spreadsheetId: String, sheet: String, values: List<Any>) {
+        val response = sheets.spreadsheets().values()
+            .append(spreadsheetId, "'$sheet'!A:A", ValueRange().setValues(listOf(values)))
+            .setValueInputOption("RAW")
+            .setInsertDataOption("INSERT_ROWS")
+            .execute()
+        SafeLog.d(TAG, "append OK → hoja='$sheet' updRange=${response.updates?.updatedRange}")
     }
 
     /**
@@ -265,36 +337,43 @@ class SheetsSyncManager @Inject constructor(
         }
         SafeLog.d(TAG, "upsert → hoja='$sheet' id=$key valores=$values sheetId=${sheetId.take(8)}…")
         scope.launch {
-            try {
-                val sheets = getSheetsService()
-                if (sheets == null) {
-                    SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
-                    return@launch
+            syncMutex.withLock {
+                try {
+                    val sheets = getSheetsService()
+                    if (sheets == null) {
+                        SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
+                        return@withLock
+                    }
+                    upsertRowNow(sheets, sheetId, sheet, keyCol, key, values)
+                } catch (e: Exception) {
+                    SafeLog.e(TAG, "upsert FALLO hoja='$sheet' id=$key", e)
+                    SafeLog.d(TAG, "upsert FALLO valores=$values")
                 }
-                val existingRow = findRowsByKey(sheets, sheetId, sheet, keyCol, key).firstOrNull()
-                if (existingRow != null) {
-                    // Actualización en sitio de la fila existente.
-                    sheets.spreadsheets().values()
-                        .update(
-                            sheetId,
-                            "'$sheet'!A$existingRow:$keyCol$existingRow",
-                            ValueRange().setValues(listOf(values))
-                        )
-                        .setValueInputOption("USER_ENTERED")
-                        .execute()
-                    SafeLog.d(TAG, "upsert UPDATE OK → hoja='$sheet' fila=$existingRow")
-                } else {
-                    val resp = sheets.spreadsheets().values()
-                        .append(sheetId, "'$sheet'!A:A", ValueRange().setValues(listOf(values)))
-                        .setValueInputOption("USER_ENTERED")
-                        .setInsertDataOption("INSERT_ROWS")
-                        .execute()
-                    SafeLog.d(TAG, "upsert APPEND OK → hoja='$sheet' updRange=${resp.updates?.updatedRange}")
-                }
-            } catch (e: Exception) {
-                SafeLog.e(TAG, "upsert FALLO hoja='$sheet' id=$key", e)
-                SafeLog.d(TAG, "upsert FALLO valores=$values")
             }
+        }
+    }
+
+    private fun upsertRowNow(
+        sheets: Sheets,
+        spreadsheetId: String,
+        sheet: String,
+        keyCol: String,
+        key: Long,
+        values: List<Any>
+    ) {
+        val existingRow = findRowsByKey(sheets, spreadsheetId, sheet, keyCol, key).firstOrNull()
+        if (existingRow != null) {
+            sheets.spreadsheets().values()
+                .update(
+                    spreadsheetId,
+                    "'$sheet'!A$existingRow:$keyCol$existingRow",
+                    ValueRange().setValues(listOf(values))
+                )
+                .setValueInputOption("RAW")
+                .execute()
+            SafeLog.d(TAG, "upsert UPDATE OK → hoja='$sheet' fila=$existingRow")
+        } else {
+            appendRowNow(sheets, spreadsheetId, sheet, values)
         }
     }
 
@@ -317,56 +396,60 @@ class SheetsSyncManager @Inject constructor(
         }
         SafeLog.d(TAG, "delete → hojas=${sheetKeyCols.keys} id=$key sheetId=${sheetId.take(8)}…")
         scope.launch {
-            try {
-                val sheets = getSheetsService()
-                if (sheets == null) {
-                    SafeLog.w(TAG, "delete OMITIDO — cuenta Google no autenticada")
-                    return@launch
-                }
-
-                // Grid IDs numéricos por título (DeleteDimensionRequest los requiere).
-                val meta = sheets.spreadsheets().get(sheetId).setIncludeGridData(false).execute()
-                val gridIdByTitle = meta.sheets.associate {
-                    (it.properties.title as String) to (it.properties.sheetId as Int)
-                }
-
-                val requests = mutableListOf<Request>()
-                sheetKeyCols.forEach { (title, keyCol) ->
-                    val gridId = gridIdByTitle[title]
-                    if (gridId == null) {
-                        SafeLog.w(TAG, "delete: hoja '$title' no existe en el sheet")
-                        return@forEach
+            syncMutex.withLock {
+                try {
+                    val sheets = getSheetsService()
+                    if (sheets == null) {
+                        SafeLog.w(TAG, "delete OMITIDO — cuenta Google no autenticada")
+                        return@withLock
                     }
-                    findRowsByKey(sheets, sheetId, title, keyCol, key)
-                        .sortedDescending() // borrar de abajo arriba
-                        .forEach { row ->
-                            requests.add(
-                                Request().setDeleteDimension(
-                                    DeleteDimensionRequest().setRange(
-                                        DimensionRange()
-                                            .setSheetId(gridId)
-                                            .setDimension("ROWS")
-                                            .setStartIndex(row - 1) // 0-based, inclusivo
-                                            .setEndIndex(row)       // exclusivo
-                                    )
-                                )
-                            )
-                        }
+                    deleteRowsNow(sheets, sheetId, sheetKeyCols, key)
+                } catch (e: Exception) {
+                    SafeLog.e(TAG, "delete FALLO id=$key", e)
                 }
-
-                if (requests.isEmpty()) {
-                    SafeLog.d(TAG, "delete: sin filas con id=$key (nada que borrar)")
-                    return@launch
-                }
-                sheets.spreadsheets().batchUpdate(
-                    sheetId,
-                    BatchUpdateSpreadsheetRequest().setRequests(requests)
-                ).execute()
-                SafeLog.d(TAG, "delete OK → id=$key filas=${requests.size}")
-            } catch (e: Exception) {
-                SafeLog.e(TAG, "delete FALLO id=$key", e)
             }
         }
+    }
+
+    private fun deleteRowsNow(
+        sheets: Sheets,
+        spreadsheetId: String,
+        sheetKeyCols: Map<String, String>,
+        key: Long
+    ) {
+        val meta = sheets.spreadsheets().get(spreadsheetId).setIncludeGridData(false).execute()
+        val gridIdByTitle = meta.sheets.associate {
+            (it.properties.title as String) to (it.properties.sheetId as Int)
+        }
+        val requests = mutableListOf<Request>()
+        sheetKeyCols.forEach { (title, keyCol) ->
+            val gridId = gridIdByTitle[title]
+            if (gridId == null) {
+                SafeLog.w(TAG, "delete: hoja '$title' no existe en el sheet")
+                return@forEach
+            }
+            findRowsByKey(sheets, spreadsheetId, title, keyCol, key)
+                .sortedDescending()
+                .forEach { row ->
+                    requests.add(
+                        Request().setDeleteDimension(
+                            DeleteDimensionRequest().setRange(
+                                DimensionRange()
+                                    .setSheetId(gridId)
+                                    .setDimension("ROWS")
+                                    .setStartIndex(row - 1)
+                                    .setEndIndex(row)
+                            )
+                        )
+                    )
+                }
+        }
+        if (requests.isEmpty()) return
+        sheets.spreadsheets().batchUpdate(
+            spreadsheetId,
+            BatchUpdateSpreadsheetRequest().setRequests(requests)
+        ).execute()
+        SafeLog.d(TAG, "delete OK → id=$key filas=${requests.size}")
     }
 
     /**
@@ -382,27 +465,19 @@ class SheetsSyncManager @Inject constructor(
         keyCol: String,
         key: Long
     ): List<Int> {
-        return try {
-            val resp = sheets.spreadsheets().values()
-                .get(spreadsheetId, "'$sheet'!${keyCol}2:$keyCol")
-                .execute()
-            val values = resp.getValues() ?: return emptyList()
-            val rows = mutableListOf<Int>()
-            values.forEachIndexed { index, row ->
-                val cell = row.firstOrNull()?.toString()?.trim().orEmpty()
-                val asNumber = cell.toDoubleOrNull()?.toLong()
-                if (cell == key.toString() || (asNumber != null && asNumber == key)) {
-                    rows.add(index + 2) // +2: índice 0 ↔ fila 2 (fila 1 = cabecera)
-                }
+        val response = sheets.spreadsheets().values()
+            .get(spreadsheetId, "'$sheet'!${keyCol}2:$keyCol")
+            .execute()
+        val values = response.getValues() ?: return emptyList()
+        val rows = mutableListOf<Int>()
+        values.forEachIndexed { index, row ->
+            val cell = row.firstOrNull()?.toString()?.trim().orEmpty()
+            val asNumber = cell.toDoubleOrNull()?.toLong()
+            if (cell == key.toString() || (asNumber != null && asNumber == key)) {
+                rows.add(index + 2)
             }
-            rows
-        } catch (e: Exception) {
-            // Hoja inexistente, rango inválido (sheet viejo sin columna
-            // de ID) o error de red → se trata como "sin coincidencias":
-            // el upsert hará append y el delete no tocará nada.
-            SafeLog.w(TAG, "findRowsByKey: fallo leyendo '$sheet': ${e.message}")
-            emptyList()
         }
+        return rows
     }
 
     private fun getSheetsService(): Sheets? {

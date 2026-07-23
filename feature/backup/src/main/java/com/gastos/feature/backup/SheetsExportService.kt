@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package com.gastos.feature.backup
 
 import android.content.Context
@@ -223,7 +225,7 @@ class SheetsExportService @Inject constructor(
         }
         sheets.spreadsheets().values()
             .update(id, "'Facturas Recibidas'!A1", ValueRange().setValues(values))
-            .setValueInputOption("USER_ENTERED")
+            .setValueInputOption("RAW")
             .execute()
     }
 
@@ -276,7 +278,7 @@ class SheetsExportService @Inject constructor(
         }
         sheets.spreadsheets().values()
             .update(id, "Nóminas!A1", ValueRange().setValues(values))
-            .setValueInputOption("USER_ENTERED")
+            .setValueInputOption("RAW")
             .execute()
     }
 
@@ -330,7 +332,7 @@ class SheetsExportService @Inject constructor(
         }
         sheets.spreadsheets().values()
             .update(id, "Productos!A1", ValueRange().setValues(values))
-            .setValueInputOption("USER_ENTERED")
+            .setValueInputOption("RAW")
             .execute()
     }
 

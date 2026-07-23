@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -12,7 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gastos.extension.fromDatePickerUtcMillis
+import com.gastos.extension.toDatePickerUtcMillis
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -23,8 +27,8 @@ fun EditIncomeScreen(
     onNavigateBack: () -> Unit,
     viewModel: EditIncomeViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val form by viewModel.form.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val form by viewModel.form.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     var showDatePicker by remember { mutableStateOf(false) }
     var showCurrencyPicker by remember { mutableStateOf(false) }
@@ -49,7 +53,7 @@ fun EditIncomeScreen(
                 title = { Text(if (incomeId > 0) "Editar Ingreso" else "Nuevo Ingreso") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 actions = {
@@ -105,7 +109,9 @@ fun EditIncomeScreen(
                     label = { Text("Moneda") },
                     readOnly = true,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCurrencyPicker) },
-                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                    modifier = Modifier
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                        .fillMaxWidth()
                 )
                 ExposedDropdownMenu(
                     expanded = showCurrencyPicker,
@@ -241,7 +247,7 @@ fun EditIncomeScreen(
             confirmButton = { /* handled by state */ }
         ) {
             val datePickerState = rememberDatePickerState(
-                initialSelectedDateMillis = form.fecha
+                initialSelectedDateMillis = form.fecha.toDatePickerUtcMillis()
             )
             androidx.compose.material3.DatePicker(
                 state = datePickerState
@@ -250,7 +256,9 @@ fun EditIncomeScreen(
                 TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") }
                 TextButton(
                     onClick = {
-                        datePickerState.selectedDateMillis?.let { viewModel.updateFecha(it) }
+                        datePickerState.selectedDateMillis?.let {
+                            viewModel.updateFecha(it.fromDatePickerUtcMillis())
+                        }
                         showDatePicker = false
                     }
                 ) { Text("OK") }

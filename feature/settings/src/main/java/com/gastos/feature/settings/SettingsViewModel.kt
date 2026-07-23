@@ -178,6 +178,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun clearGeminiApiKey() {
+        viewModelScope.launch {
+            settingsRepository.updateGeminiApiKey("")
+            _uiState.update { it.copy(apiKeyValidation = ApiKeyValidation.None) }
+        }
+    }
+
     fun updateSystemInstructions(instructions: String) {
         viewModelScope.launch {
             settingsRepository.updateSystemInstructions(instructions)

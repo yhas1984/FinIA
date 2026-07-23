@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +27,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 
 sealed class ChatMessage {
@@ -41,7 +43,7 @@ fun ChatbotScreen(
     onNavigateBack: () -> Unit = {},
     viewModel: ChatbotViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var textInput by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -122,7 +124,7 @@ fun ChatbotScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
                 actions = {
@@ -163,7 +165,7 @@ fun ChatbotScreen(
                                 }
                             },
                             modifier = Modifier.weight(1f),
-                            enabled = voiceAvailable,
+                            enabled = voiceAvailable && !uiState.isProcessing,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             if (uiState.isListening) {
@@ -181,6 +183,7 @@ fun ChatbotScreen(
                         OutlinedButton(
                             onClick = { showScanMenu = true },
                             modifier = Modifier.weight(1f),
+                            enabled = !uiState.isProcessing,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -232,24 +235,25 @@ fun ChatbotScreen(
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                             keyboardActions = androidx.compose.foundation.text.KeyboardActions(
                                 onSend = {
-                                    if (textInput.isNotBlank()) {
+                                    if (textInput.isNotBlank() && !uiState.isProcessing) {
                                         viewModel.sendMessage(textInput)
                                         textInput = ""
                                     }
                                 }
                             ),
-                            shape = RoundedCornerShape(24.dp)
+                            shape = RoundedCornerShape(24.dp),
+                            enabled = !uiState.isProcessing
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         FloatingActionButton(
                             onClick = {
-                                if (textInput.isNotBlank()) {
+                                if (textInput.isNotBlank() && !uiState.isProcessing) {
                                     viewModel.sendMessage(textInput)
                                     textInput = ""
                                 }
                             },
                             modifier = Modifier.size(48.dp),
-                            containerColor = if (textInput.isNotBlank()) 
+                            containerColor = if (textInput.isNotBlank() && !uiState.isProcessing)
                                 MaterialTheme.colorScheme.primary 
                             else 
                                 MaterialTheme.colorScheme.surfaceVariant
@@ -257,7 +261,7 @@ fun ChatbotScreen(
                             Icon(
                                 Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Enviar",
-                                tint = if (textInput.isNotBlank())
+                                tint = if (textInput.isNotBlank() && !uiState.isProcessing)
                                     MaterialTheme.colorScheme.onPrimary
                                 else
                                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -309,7 +313,8 @@ fun ChatbotScreen(
                         "¿Cuál es mi balance?"
                     ).forEach { suggestion ->
                         SuggestionChip(
-                            onClick = { viewModel.sendMessage(suggestion) },
+                            onClick = { if (!uiState.isProcessing) viewModel.sendMessage(suggestion) },
+                            enabled = !uiState.isProcessing,
                             label = { Text(suggestion) },
                             modifier = Modifier.padding(vertical = 4.dp)
                         )
@@ -418,7 +423,8 @@ private fun launchCamera(
     context: android.content.Context,
     onUriReady: (Uri) -> Unit
 ) {
-    val photoFile = File.createTempFile("invoice_", ".jpg", context.cacheDir)
+    val cameraDir = File(context.cacheDir, "camera").apply { mkdirs() }
+    val photoFile = File.createTempFile("invoice_", ".jpg", cameraDir)
     val photoUri = FileProvider.getUriForFile(
         context,
         "${context.packageName}.fileprovider",

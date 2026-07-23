@@ -9,7 +9,7 @@ fun Long.toFormattedDate(pattern: String = "dd/MM/yyyy"): String {
     return sdf.format(Date(this))
 }
 
-fun Double.toCurrency(locale: Locale = Locale("es", "ES")): String {
+fun Double.toCurrency(locale: Locale = Locale.forLanguageTag("es-ES")): String {
     return NumberFormat.getCurrencyInstance(locale).format(this)
 }
 
@@ -31,6 +31,26 @@ fun Long.toEndOfDay(): Long {
     calendar.set(Calendar.SECOND, 59)
     calendar.set(Calendar.MILLISECOND, 999)
     return calendar.timeInMillis
+}
+
+/** Convierte una fecha local al instante UTC que espera Material DatePicker. */
+fun Long.toDatePickerUtcMillis(): Long {
+    val local = Calendar.getInstance().apply { timeInMillis = this@toDatePickerUtcMillis }
+    return Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+        clear()
+        set(local.get(Calendar.YEAR), local.get(Calendar.MONTH), local.get(Calendar.DAY_OF_MONTH))
+    }.timeInMillis
+}
+
+/** Convierte el instante UTC de Material DatePicker al inicio del día local. */
+fun Long.fromDatePickerUtcMillis(): Long {
+    val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+        timeInMillis = this@fromDatePickerUtcMillis
+    }
+    return Calendar.getInstance().apply {
+        clear()
+        set(utc.get(Calendar.YEAR), utc.get(Calendar.MONTH), utc.get(Calendar.DAY_OF_MONTH))
+    }.timeInMillis
 }
 
 fun Long.toStartOfMonth(): Long {

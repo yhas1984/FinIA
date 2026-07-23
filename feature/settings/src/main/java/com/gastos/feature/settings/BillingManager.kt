@@ -3,7 +3,6 @@ package com.gastos.feature.settings
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ApplicationInfo
-import android.util.Log
 import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.AcknowledgePurchaseResponseListener
 import com.android.billingclient.api.BillingClient
@@ -17,6 +16,7 @@ import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
 import com.gastos.repository.PremiumStatusProvider
+import com.gastos.extension.SafeLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -87,16 +87,17 @@ class BillingManager @Inject constructor(
     override fun onBillingSetupFinished(billingResult: BillingResult) {
         _isConnecting.value = false
         if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
-            Log.d(TAG, "BillingClient conectado")
+            SafeLog.d(TAG, "BillingClient conectado")
             queryProductDetails()
             queryPurchases()
         } else {
-            Log.e(TAG, "Error conectando billing: ${billingResult.responseCode}")
+            SafeLog.e(TAG, "Error conectando billing: ${billingResult.responseCode}")
+            _purchaseError.value = "No se pudo conectar con Google Play (código ${billingResult.responseCode})."
         }
     }
 
     override fun onBillingServiceDisconnected() {
-        Log.w(TAG, "BillingClient desconectado")
+        SafeLog.w(TAG, "BillingClient desconectado")
         _isConnecting.value = false
     }
 
@@ -122,10 +123,10 @@ class BillingManager @Inject constructor(
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 _productDetails.value = queryResult.productDetailsList.firstOrNull { it.productId == PREMIUM_SKU }
                 if (_productDetails.value == null) {
-                    Log.w(TAG, "Producto $PREMIUM_SKU no encontrado en Play Console")
+                    SafeLog.w(TAG, "Producto $PREMIUM_SKU no encontrado en Play Console")
                 }
             } else {
-                Log.e(TAG, "Error consultando producto: ${result.responseCode}")
+                SafeLog.e(TAG, "Error consultando producto: ${result.responseCode}")
             }
         }
     }
@@ -187,7 +188,9 @@ class BillingManager @Inject constructor(
 
     /** Confirma (acknowledge) una compra y marca Premium como activo. */
     private fun handlePurchase(purchase: Purchase) {
-        if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
+        if (purchase.products.contains(PREMIUM_SKU) &&
+            purchase.purchaseState == Purchase.PurchaseState.PURCHASED
+        ) {
             // Marca premium inmediatamente.
             setPremium(true)
 
@@ -199,7 +202,8 @@ class BillingManager @Inject constructor(
                     .build()
                 client.acknowledgePurchase(params, AcknowledgePurchaseResponseListener { result ->
                     if (result.responseCode != BillingClient.BillingResponseCode.OK) {
-                        Log.w(TAG, "Error acknowledge: ${result.responseCode}")
+                        SafeLog.w(TAG, "Error acknowledge: ${result.responseCode}")
+                        _purchaseError.value = "La compra está activa, pero falta confirmarla con Google Play. Se reintentará."
                     }
                 })
             }
@@ -215,12 +219,22 @@ class BillingManager @Inject constructor(
             .setProductType(BillingClient.ProductType.INAPP)
             .build()
 
-        client.queryPurchasesAsync(params) { _, purchasesList ->
+        client.queryPurchasesAsync(params) { result, purchasesList ->
+            if (result.responseCode != BillingClient.BillingResponseCode.OK) {
+                SafeLog.w(TAG, "No se pudieron consultar compras: ${result.responseCode}")
+                _purchaseError.value = "No se pudo verificar Premium con Google Play. Se conserva el estado actual."
+                return@queryPurchasesAsync
+            }
+            _purchaseError.value = null
             val owns = purchasesList.any {
                 it.products.contains(PREMIUM_SKU) &&
                     it.purchaseState == Purchase.PurchaseState.PURCHASED
             }
-            setPremium(owns)
+            if (owns) {
+                purchasesList.forEach(::handlePurchase)
+            } else {
+                setPremium(false)
+            }
         }
     }
 

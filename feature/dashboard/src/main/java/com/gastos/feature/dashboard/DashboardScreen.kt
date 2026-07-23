@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,7 +19,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.formatMoney
 import java.text.NumberFormat
 import java.util.*
@@ -33,7 +35,7 @@ fun DashboardScreen(
     onNavigateToSettings: () -> Unit = {},
     onNavigateToBackup: () -> Unit = {}
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val fmt = { amt: Double -> com.gastos.domain.model.formatMoney(amt, defaultCurrency) }
 
     Scaffold(
@@ -130,10 +132,13 @@ fun DashboardScreen(
                             modifier = Modifier.padding(bottom = 12.dp)
                         )
                         Text(
-                            text = if (uiState.defaultToUsdRate != 1.0)
-                                "1 ${uiState.defaultCurrency} ≈ ${"%.6f".format(uiState.defaultToUsdRate)} USD"
-                            else
-                                "1 ${uiState.defaultCurrency} = 1 ${uiState.defaultCurrency}",
+                            text = when {
+                                uiState.defaultCurrency.equals("USD", ignoreCase = true) ->
+                                    "1 USD = 1 USD"
+                                uiState.defaultToUsdRate != null ->
+                                    "1 ${uiState.defaultCurrency} ≈ ${"%.6f".format(uiState.defaultToUsdRate)} USD"
+                                else -> "Tasa ${uiState.defaultCurrency} → USD no disponible"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 8.dp)
@@ -289,7 +294,7 @@ fun DashboardScreen(
                             )
                         }
                         Icon(
-                            Icons.Default.Chat,
+                            Icons.AutoMirrored.Filled.Chat,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(32.dp)

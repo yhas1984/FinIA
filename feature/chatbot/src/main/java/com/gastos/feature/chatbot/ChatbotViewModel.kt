@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.*
 import javax.inject.Inject
+import com.gastos.domain.model.SUPPORTED_CURRENCIES
 
 private const val TAG = "ChatbotVM"
 
@@ -54,12 +55,8 @@ class ChatbotViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ChatbotUiState())
     val uiState: StateFlow<ChatbotUiState> = _uiState.asStateFlow()
 
-    init {
-        addSystemMessage("¡Hola! Soy FinAI, tu asistente financiero personal.")
-    }
-
     fun sendMessage(text: String) {
-        if (text.isBlank()) return
+        if (text.isBlank() || _uiState.value.isProcessing) return
 
         _uiState.update {
             it.copy(messages = it.messages + ChatMessage.User(text), isProcessing = true)
@@ -161,15 +158,20 @@ class ChatbotViewModel @Inject constructor(
             }
         }
 
+        validateAction(result)?.let { message ->
+            replacePlaceholder("❌ $message")
+            return
+        }
+
         when {
             // Gasto (factura)
             result.invoice != null && result.invoice!!.tipo != InvoiceType.INGRESO -> {
                 val invoice = result.invoice!!
                 val invoiceId = saveInvoiceUseCase(invoice, result.products)
-                sheetsSyncManager.upsertExpense(invoice.copy(id = invoiceId))
-                sheetsSyncManager.syncProducts(
-                    result.products.map { it.copy(invoiceId = invoiceId) },
-                    invoice.proveedor
+                val savedInvoice = invoice.copy(id = invoiceId)
+                sheetsSyncManager.syncExpense(
+                    savedInvoice,
+                    result.products.map { it.copy(invoiceId = invoiceId) }
                 )
                 replacePlaceholder("✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}")
             }
@@ -224,6 +226,27 @@ class ChatbotViewModel @Inject constructor(
         }
     }
 
+    private fun validateAction(result: AIResult): String? {
+        result.invoice?.let { invoice ->
+            if (invoice.total <= 0.0) return "El importe detectado debe ser mayor que cero."
+            if (invoice.proveedor.isBlank()) return "No se detectó un proveedor o concepto válido."
+            if (invoice.moneda.uppercase() !in SUPPORTED_CURRENCIES) {
+                return "La moneda ${invoice.moneda} no está soportada."
+            }
+        }
+        result.income?.let { income ->
+            if (income.monto <= 0.0) return "El importe detectado debe ser mayor que cero."
+            if (income.concepto.isBlank()) return "No se detectó un concepto válido."
+            if (income.moneda.uppercase() !in SUPPORTED_CURRENCIES) {
+                return "La moneda ${income.moneda} no está soportada."
+            }
+        }
+        if (result.products.any { it.descripcion.isBlank() || it.cantidad <= 0.0 || it.subtotal < 0.0 }) {
+            return "Las líneas de producto detectadas contienen valores inválidos."
+        }
+        return null
+    }
+
     private fun getDateRange(periodo: String): Pair<Long, Long> {
         val hoyCal = Calendar.getInstance()
         hoyCal.set(Calendar.HOUR_OF_DAY, 0)
@@ -234,6 +257,7 @@ class ChatbotViewModel @Inject constructor(
         hoyCal.set(Calendar.HOUR_OF_DAY, 23)
         hoyCal.set(Calendar.MINUTE, 59)
         hoyCal.set(Calendar.SECOND, 59)
+        hoyCal.set(Calendar.MILLISECOND, 999)
         val hoyEnd = hoyCal.timeInMillis
 
         val semCal = Calendar.getInstance()
@@ -244,8 +268,9 @@ class ChatbotViewModel @Inject constructor(
         semCal.set(Calendar.SECOND, 0)
         semCal.set(Calendar.MILLISECOND, 0)
         val semanaStart = semCal.timeInMillis
-        // Fin de la semana = inicio + 7 días - 1 ms (fin del domingo)
-        val semanaEnd = semanaStart + (7L * 24 * 60 * 60 * 1000) - 1
+        val semanaFinCal = semCal.clone() as Calendar
+        semanaFinCal.add(Calendar.DAY_OF_YEAR, 7)
+        val semanaEnd = semanaFinCal.timeInMillis - 1
 
         val mesCal = Calendar.getInstance()
         mesCal.set(Calendar.DAY_OF_MONTH, 1)
@@ -258,6 +283,7 @@ class ChatbotViewModel @Inject constructor(
         mesCal.set(Calendar.HOUR_OF_DAY, 23)
         mesCal.set(Calendar.MINUTE, 59)
         mesCal.set(Calendar.SECOND, 59)
+        mesCal.set(Calendar.MILLISECOND, 999)
         val mesEnd = mesCal.timeInMillis
 
         val anoCal = Calendar.getInstance()
@@ -271,6 +297,7 @@ class ChatbotViewModel @Inject constructor(
         anoCal.set(Calendar.HOUR_OF_DAY, 23)
         anoCal.set(Calendar.MINUTE, 59)
         anoCal.set(Calendar.SECOND, 59)
+        anoCal.set(Calendar.MILLISECOND, 999)
         val anoEnd = anoCal.timeInMillis
 
         return when (periodo.lowercase()) {
@@ -285,7 +312,7 @@ class ChatbotViewModel @Inject constructor(
     private suspend fun executeQuery(queryType: String, periodo: String, categoria: String?, item: String?): String {
         val (start, end) = getDateRange(periodo)
         val target = currencyPreference.defaultCurrency.value
-        val fmt = java.text.NumberFormat.getCurrencyInstance(Locale("es", "ES")).apply {
+        val fmt = java.text.NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-ES")).apply {
             try { currency = java.util.Currency.getInstance(target) } catch (_: Exception) { /* fallback al locale */ }
         }
 
@@ -420,6 +447,7 @@ class ChatbotViewModel @Inject constructor(
     }
 
     fun startVoiceInput() {
+        if (_uiState.value.isProcessing) return
         _uiState.update { it.copy(isListening = true) }
 
         viewModelScope.launch {
@@ -455,6 +483,7 @@ class ChatbotViewModel @Inject constructor(
     }
 
     fun processImage(uri: Uri) {
+        if (_uiState.value.isProcessing) return
         _uiState.update {
             it.copy(messages = it.messages + ChatMessage.User("📷 Escaneando imagen..."), isProcessing = true)
         }
@@ -481,14 +510,9 @@ class ChatbotViewModel @Inject constructor(
     }
 
     fun clearChat() {
-        aiService.resetChat()
-        _uiState.update { it.copy(messages = emptyList()) }
-        addSystemMessage("Chat limpiado. ¿En qué puedo ayudarte?")
-    }
-
-    private fun addSystemMessage(text: String) {
-        _uiState.update {
-            it.copy(messages = it.messages + ChatMessage.System(text))
+        viewModelScope.launch {
+            aiService.resetChat()
+            _uiState.update { it.copy(messages = emptyList(), isProcessing = false) }
         }
     }
 
