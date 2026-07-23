@@ -47,6 +47,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.coroutines.android)
 
+    // Room types used by BackupService through AppDatabase
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
+
     // Google Sign In (Drive backup)
     implementation(libs.play.services.auth)
 
@@ -58,4 +62,10 @@ dependencies {
     implementation(project(":core:domain"))
     implementation(project(":core:data"))
     implementation(project(":core:common"))
+
+    // Testing
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.turbine)
 }

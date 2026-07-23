@@ -70,7 +70,7 @@ fun SettingsScreen(
                 icon = Icons.Outlined.SmartToy
             ) {
                 Text(
-                    text = "FinAI usa Gemini 3.5 Flash a través de la API gratuita de Google AI Studio.",
+                    text = "FinAI usa Gemini 3.6 Flash a través de la API gratuita de Google AI Studio.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -110,7 +110,7 @@ fun SettingsScreen(
                             text = when {
                                 uiState.isApiKeyValidating -> "Validando API key..."
                                 uiState.settings.geminiApiKey.isEmpty() -> "API key no configurada"
-                                else -> "API key configurada (Gemini 3.5 Flash)"
+                                else -> "API key configurada (Gemini 3.6 Flash)"
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
@@ -470,7 +470,7 @@ fun SettingsScreen(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "💡 Gemini 3.5 Flash tiene un plan gratuito suficiente para uso personal (aprox. 10 solicitudes/min y 1500/día). Consulta tus límites exactos en AI Studio.",
+                        text = "💡 Gemini 3.6 Flash tiene un plan gratuito suficiente para uso personal (aprox. 10 solicitudes/min y 1500/día). Consulta tus límites exactos en AI Studio.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

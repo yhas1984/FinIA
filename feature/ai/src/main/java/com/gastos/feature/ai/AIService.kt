@@ -96,7 +96,7 @@ class AIService @Inject constructor(
     }
 
     /**
-     * Configura el modelo de Gemini 3.5 Flash con la API key del usuario y las
+     * Configura el modelo de Gemini 3.6 Flash con la API key del usuario y las
      * instrucciones del sistema (prompt base + personalizadas). Reinicia la
      * sesión de chat para aplicar las nuevas instrucciones.
      */
@@ -290,7 +290,8 @@ class AIService @Inject constructor(
     }
 
     private fun buildSystemPrompt(userInstructions: String): String {
-        val today = java.time.LocalDate.now().toString()
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
+            .format(java.util.Date())
         val extra = userInstructions.trim()
         val extraBlock = if (extra.isNotEmpty()) {
             "\n\nInstrucciones adicionales del usuario (sigue también estas reglas):\n$extra"
@@ -575,7 +576,7 @@ class AIService @Inject constructor(
 
     companion object {
         private const val TAG = "AIService"
-        private const val MODEL_NAME = "gemini-3.5-flash"
+        private const val MODEL_NAME = "gemini-3.6-flash"
         const val SETTINGS_PATH = "Configuración > IA"
         const val NO_API_KEY_MESSAGE =
             "Aún no has configurado tu API key de Gemini. Ve a $SETTINGS_PATH para añadir la tuya (es gratis en Google AI Studio)."

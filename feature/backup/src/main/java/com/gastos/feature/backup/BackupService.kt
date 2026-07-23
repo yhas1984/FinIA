@@ -1,53 +1,40 @@
 package com.gastos.feature.backup
 
 import android.content.Context
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.Scope
+import androidx.sqlite.db.SupportSQLiteDatabase
+import com.gastos.local.database.AppDatabase
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.io.*
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
-
+/**
+ * Backup local de la base de datos Room.
+ *
+ * Implementa dos responsabilidades:
+ *   • Crear/eliminar copias locales de la BD SQLite después de integrar
+ *     las escrituras pendientes del WAL mediante un checkpoint.
+ * Drive NO está implementado: el botón "Crear Backup" sólo copia en
+ * almacenamiento interno de la app hasta que se suba a la nube de verdad.
+ */
 @Singleton
 class BackupService @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val database: AppDatabase
 ) {
-    private val googleSignInClient: GoogleSignInClient by lazy {
-        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail()
-            .requestScopes(Scope(DRIVE_FILE_SCOPE))
-            .build()
-        GoogleSignIn.getClient(context, gso)
-    }
-
-    fun getSignInClient(): GoogleSignInClient = googleSignInClient
-
-    fun isSignedIn(): Boolean {
-        val account = GoogleSignIn.getLastSignedInAccount(context)
-        return account != null && GoogleSignIn.hasPermissions(account, Scope(DRIVE_FILE_SCOPE))
-    }
-
-    fun getSignedInEmail(): String? {
-        return GoogleSignIn.getLastSignedInAccount(context)?.email
-    }
-
+    /**
+     * Crea una copia de seguridad local de la base de datos, forzando un
+     * checkpoint de WAL para garantizar que `db`, `-wal` y `-shm` están
+     * consistentes antes de copiarlos.
+     */
     suspend fun createBackup(): BackupResult {
         return try {
-            if (!isSignedIn()) {
-                return BackupResult(
-                    success = false,
-                    message = "Debes iniciar sesión con Google para hacer backup"
-                )
-            }
-
-            // Crear backup del archivo de base de datos
-            val dbFile = context.getDatabasePath("gastos_ingresos_db")
+            val dbFile = context.getDatabasePath(AppDatabase.DATABASE_NAME)
             if (!dbFile.exists()) {
                 return BackupResult(
                     success = false,
@@ -57,43 +44,30 @@ class BackupService @Inject constructor(
 
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val backupFileName = "finai_backup_$timestamp.db"
+            val cacheFile = File(context.cacheDir, backupFileName)
 
-            // Copiar archivo de base de datos
-            val backupFile = File(context.cacheDir, backupFileName)
-            dbFile.copyTo(backupFile, overwrite = true)
+            // 1) Forzar checkpoint de WAL/SHM para tener un snapshot consistente.
+            checkpointWal(database.openHelper.writableDatabase)
+            // 2) El checkpoint TRUNCATE ya integró el WAL; la copia del .db
+            //    contiene el snapshot completo.
+            copyAtomic(dbFile, cacheFile)
 
-            // TODO: Subir a Google Drive usando la API
-            // Por ahora, solo copiamos localmente
+            // 3) Persistir la copia en el almacenamiento externo privado de la
+            //    app, que es accesible para el usuario vía "Archivos".
             val backupDir = File(context.getExternalFilesDir(null), "backups")
             backupDir.mkdirs()
             val destinationFile = File(backupDir, backupFileName)
-            backupFile.copyTo(destinationFile, overwrite = true)
+            cacheFile.copyTo(destinationFile, overwrite = true)
+            cacheFile.delete()
 
             BackupResult(
                 success = true,
-                message = "Backup creado: $backupFileName"
+                message = "Backup local creado: $backupFileName"
             )
-
         } catch (e: Exception) {
             BackupResult(
                 success = false,
                 message = "Error al crear backup: ${e.message}"
-            )
-        }
-    }
-
-    suspend fun restoreBackup(): BackupResult {
-        return try {
-            // TODO: Implementar restauración desde Google Drive
-            BackupResult(
-                success = false,
-                message = "Restauración desde Google Drive no implementada aún"
-            )
-
-        } catch (e: Exception) {
-            BackupResult(
-                success = false,
-                message = "Error al restaurar: ${e.message}"
             )
         }
     }
@@ -107,7 +81,18 @@ class BackupService @Inject constructor(
         }
     }
 
-    fun deleteBackup(file: File): Boolean {
-        return file.delete()
+    fun deleteBackup(file: File): Boolean = file.delete()
+
+    private fun checkpointWal(db: SupportSQLiteDatabase) {
+        db.query("PRAGMA wal_checkpoint(TRUNCATE)").use { it.moveToFirst() }
     }
+
+    private fun copyAtomic(source: File, destination: File) {
+        FileInputStream(source).use { input ->
+            FileOutputStream(destination).use { output ->
+                input.copyTo(output)
+            }
+        }
+    }
+
 }

@@ -104,6 +104,10 @@ class BackupViewModel @Inject constructor(
 
     /** Procesa el resultado del Sign-In (desde StartActivityForResult). */
     fun handleSignInResult(data: Intent?) {
+        if (data == null) {
+            _uiState.update { it.copy(error = "Inicio de sesión cancelado o sin respuesta de Google.") }
+            return
+        }
         try {
             val task = GoogleSignIn.getSignedInAccountFromIntent(data)
             val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
@@ -116,7 +120,7 @@ class BackupViewModel @Inject constructor(
             }
         } catch (e: ApiException) {
             _uiState.update {
-                it.copy(error = "Error al iniciar sesión: ${e.statusCode}")
+                it.copy(error = "Error al iniciar sesión con Google (código ${e.statusCode}): ${e.message ?: "sin detalle"}")
             }
         }
     }
@@ -612,31 +616,6 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun restoreFromLocal(file: File) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-
-            try {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        backupResult = BackupResult(
-                            success = false,
-                            message = "Restauración no implementada aún"
-                        )
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.message ?: "Error al restaurar"
-                    )
-                }
-            }
-        }
-    }
-
     fun deleteBackup(file: File) {
         viewModelScope.launch {
             try {
@@ -652,5 +631,25 @@ class BackupViewModel @Inject constructor(
 
     fun clearExportResult() {
         _uiState.update { it.copy(exportResult = null) }
+    }
+
+    /**
+     * Cierra sesión de Google (desvincula la cuenta de esta app) y limpia
+     * el sheetId guardado. Tras esto, la pantalla vuelve al estado "no
+     * conectado" y se puede elegir otra cuenta.
+     */
+    fun signOut() {
+        viewModelScope.launch {
+            sheetsExportService.signOut()
+            sheetsSyncManager.clearSpreadsheetId()
+            _uiState.update {
+                it.copy(
+                    isSignedIn = false,
+                    email = null,
+                    hasSheetLink = false,
+                    sheetsUrl = null
+                )
+            }
+        }
     }
 }

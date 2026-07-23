@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -51,9 +52,7 @@ fun BackupScreen(
     val signInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            viewModel.handleSignInResult(result.data)
-        }
+        viewModel.handleSignInResult(result.data)
     }
 
     Scaffold(
@@ -83,12 +82,42 @@ fun BackupScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Google Drive",
+                        text = "Backup local",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
+                    Button(
+                        onClick = { viewModel.createBackup() },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !uiState.isLoading
+                    ) {
+                        if (uiState.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.Backup, contentDescription = null)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Crear Backup local")
+                    }
+                    Text(
+                        text = "El backup se guarda en la carpeta privada de la app. La subida a Drive está pendiente.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
+                    )
+                    HorizontalDivider()
+                    Text(
+                        text = "Cuenta Google",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+                    )
+
                     if (uiState.isSignedIn) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically
@@ -108,28 +137,22 @@ fun BackupScreen(
                                 )
                             }
                         }
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        Button(
-                            onClick = { viewModel.createBackup() },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !uiState.isLoading
+
+                        TextButton(
+                            onClick = { viewModel.signOut() },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            if (uiState.isLoading) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(Icons.Default.Backup, contentDescription = null)
-                            }
+                            Icon(
+                                Icons.AutoMirrored.Filled.Logout,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Crear Backup")
+                            Text("Cerrar sesión de Google")
                         }
                     } else {
                         Text(
-                            text = "Inicia sesión con Google para exportar a Sheets y hacer backup en la nube",
+                            text = "Inicia sesión con Google para exportar a Sheets y sincronizar tus datos",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -395,7 +418,6 @@ fun BackupScreen(
                             items(uiState.localBackups) { file ->
                                 BackupFileItem(
                                     file = file,
-                                    onRestore = { viewModel.restoreFromLocal(file) },
                                     onDelete = { viewModel.deleteBackup(file) }
                                 )
                             }
@@ -433,7 +455,6 @@ fun BackupScreen(
 @Composable
 private fun BackupFileItem(
     file: File,
-    onRestore: () -> Unit,
     onDelete: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
@@ -458,9 +479,6 @@ private fun BackupFileItem(
             )
         }
         Row {
-            IconButton(onClick = onRestore) {
-                Icon(Icons.Default.Restore, contentDescription = "Restaurar")
-            }
             IconButton(onClick = onDelete) {
                 Icon(
                     Icons.Default.Delete,
