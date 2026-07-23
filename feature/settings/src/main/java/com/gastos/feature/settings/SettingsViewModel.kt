@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.feature.ai.AIService
+import com.gastos.repository.ExchangeRateProvider
 import com.android.billingclient.api.ProductDetails
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,14 +33,18 @@ data class SettingsUiState(
     val productDetails: ProductDetails? = null,
     val isBillingConnecting: Boolean = false,
     val purchaseError: String? = null,
-    val isDebug: Boolean = false
+    val isDebug: Boolean = false,
+    val ratesAsOf: Long? = null,
+    val ratesCount: Int = 0,
+    val isRefreshingRates: Boolean = false
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val aiService: AIService,
-    private val billingManager: BillingManager
+    private val billingManager: BillingManager,
+    private val exchangeRateProvider: ExchangeRateProvider
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -49,6 +54,38 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(isDebug = billingManager.isDebugBuild) }
         loadSettings()
         observeBilling()
+        observeRates()
+    }
+
+    /** Estado de las tasas de cambio para la tarjeta de Ajustes. */
+    private fun observeRates() {
+        viewModelScope.launch {
+            exchangeRateProvider.rates.collect { rates ->
+                _uiState.update {
+                    it.copy(ratesCount = rates.size, ratesAsOf = exchangeRateProvider.lastUpdated.value)
+                }
+            }
+        }
+        viewModelScope.launch {
+            exchangeRateProvider.lastUpdated.collect { asOf ->
+                _uiState.update { it.copy(ratesAsOf = asOf) }
+            }
+        }
+    }
+
+    /** Refresca las tasas de cambio desde la API. */
+    fun refreshRates() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshingRates = true) }
+            exchangeRateProvider.refresh()
+            _uiState.update {
+                it.copy(
+                    isRefreshingRates = false,
+                    ratesAsOf = exchangeRateProvider.lastUpdated.value,
+                    ratesCount = exchangeRateProvider.rates.value.size
+                )
+            }
+        }
     }
 
     private fun loadSettings() {

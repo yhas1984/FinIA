@@ -5,9 +5,15 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import com.gastos.repository.CurrencyPreference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,7 +24,10 @@ data class AppSettings(
     val systemInstructions: String = "",
     val sheetId: String = "",
     val defaultCurrency: String = "EUR",
+    val defaultCountry: String = "ES",
     val darkMode: String = "system",
+    val showTutorials: Boolean = true,
+    val autoBackup: Boolean = false,
     val isPro: Boolean = false
 )
 
@@ -26,12 +35,19 @@ data class AppSettings(
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secureStorage: SecureStorage
-) {
+) : CurrencyPreference {
+
+    // Scope propio para stateIn (el repo es un @Singleton a nivel app).
+    private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
     private object Keys {
         val SYSTEM_INSTRUCTIONS = stringPreferencesKey("system_instructions")
         val SHEET_ID = stringPreferencesKey("sheet_id")
         val DEFAULT_CURRENCY = stringPreferencesKey("default_currency")
+        val DEFAULT_COUNTRY = stringPreferencesKey("default_country")
         val DARK_MODE = stringPreferencesKey("dark_mode")
+        val SHOW_TUTORIALS = booleanPreferencesKey("show_tutorials")
+        val AUTO_BACKUP = booleanPreferencesKey("auto_backup")
     }
 
     /**
@@ -51,9 +67,21 @@ class SettingsRepository @Inject constructor(
             systemInstructions = preferences[Keys.SYSTEM_INSTRUCTIONS] ?: "",
             sheetId = preferences[Keys.SHEET_ID] ?: "",
             defaultCurrency = preferences[Keys.DEFAULT_CURRENCY] ?: "EUR",
-            darkMode = preferences[Keys.DARK_MODE] ?: "system"
+            defaultCountry = preferences[Keys.DEFAULT_COUNTRY] ?: "ES",
+            darkMode = preferences[Keys.DARK_MODE] ?: "system",
+            showTutorials = preferences[Keys.SHOW_TUTORIALS] ?: true,
+            autoBackup = preferences[Keys.AUTO_BACKUP] ?: false
         )
     }
+
+    /**
+     * Moneda por defecto como StateFlow (reactivo y con .value síncrono)
+     * para que otros módulos conviertan importes vía [CurrencyPreference].
+     * Debe ir DESPUÉS de `settings` (orden de inicialización de Kotlin).
+     */
+    override val defaultCurrency: kotlinx.coroutines.flow.StateFlow<String> =
+        settings.map { it.defaultCurrency }
+            .stateIn(repoScope, SharingStarted.Eagerly, "EUR")
 
     suspend fun updateGeminiApiKey(apiKey: String) {
         secureStorage.putString(SecureStorage.KEY_GEMINI_API_KEY, apiKey)
@@ -71,9 +99,27 @@ class SettingsRepository @Inject constructor(
         }
     }
 
+    suspend fun updateDefaultCountry(country: String) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.DEFAULT_COUNTRY] = country
+        }
+    }
+
     suspend fun updateDarkMode(mode: String) {
         context.dataStore.edit { preferences ->
             preferences[Keys.DARK_MODE] = mode
+        }
+    }
+
+    suspend fun updateShowTutorials(show: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.SHOW_TUTORIALS] = show
+        }
+    }
+
+    suspend fun updateAutoBackup(autoBackup: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.AUTO_BACKUP] = autoBackup
         }
     }
 

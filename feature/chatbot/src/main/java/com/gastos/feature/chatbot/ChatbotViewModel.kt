@@ -11,6 +11,8 @@ import com.gastos.feature.ai.AIService
 import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.domain.usecase.SaveIncomeUseCase
 import com.gastos.domain.usecase.SaveInvoiceUseCase
+import com.gastos.repository.CurrencyPreference
+import com.gastos.repository.ExchangeRateProvider
 import com.gastos.feature.voice.VoiceRecognitionService
 import com.gastos.feature.voice.VoiceResult
 import com.gastos.repository.IncomeRepository
@@ -44,7 +46,9 @@ class ChatbotViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val sheetsSyncManager: SheetsSyncManager,
     private val saveInvoiceUseCase: SaveInvoiceUseCase,
-    private val saveIncomeUseCase: SaveIncomeUseCase
+    private val saveIncomeUseCase: SaveIncomeUseCase,
+    private val exchangeRateProvider: ExchangeRateProvider,
+    private val currencyPreference: CurrencyPreference
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatbotUiState())
@@ -280,7 +284,10 @@ class ChatbotViewModel @Inject constructor(
 
     private suspend fun executeQuery(queryType: String, periodo: String, categoria: String?, item: String?): String {
         val (start, end) = getDateRange(periodo)
-        val fmt = java.text.NumberFormat.getCurrencyInstance(Locale("es", "ES"))
+        val target = currencyPreference.defaultCurrency.value
+        val fmt = java.text.NumberFormat.getCurrencyInstance(Locale("es", "ES")).apply {
+            try { currency = java.util.Currency.getInstance(target) } catch (_: Exception) { /* fallback al locale */ }
+        }
 
         val invoices = invoiceRepository.getAllInvoices().first()
         val incomes = incomeRepository.getAllIncomes().first()
@@ -292,9 +299,16 @@ class ChatbotViewModel @Inject constructor(
         val periodInvoiceIds = periodInvoices.map { it.id }.toSet()
         val periodProducts = allProducts.filter { it.invoiceId in periodInvoiceIds }
 
-        val totalGastos = periodInvoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { it.total }
-        val totalIngresos = periodInvoices.filter { it.tipo == InvoiceType.INGRESO }.sumOf { it.total } +
-                periodIncomes.sumOf { it.monto }
+        // Totales convertidos a la moneda por defecto del usuario (mismo
+        // mecanismo que el Dashboard): si falta la tasa de una moneda, su
+        // importe se excluye y no se suma como si fuera la moneda destino.
+        val totalGastos = periodInvoices
+            .filter { it.tipo == InvoiceType.GASTO }
+            .sumOf { exchangeRateProvider.convert(it.total, it.moneda, target) ?: 0.0 }
+        val totalIngresos = periodInvoices
+                .filter { it.tipo == InvoiceType.INGRESO }
+                .sumOf { exchangeRateProvider.convert(it.total, it.moneda, target) ?: 0.0 } +
+            periodIncomes.sumOf { exchangeRateProvider.convert(it.monto, it.moneda, target) ?: 0.0 }
         val countGastos = periodInvoices.count { it.tipo == InvoiceType.GASTO }
         val countIngresos = periodInvoices.count { it.tipo == InvoiceType.INGRESO } + periodIncomes.size
 
