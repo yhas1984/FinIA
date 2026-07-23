@@ -69,8 +69,9 @@ fun IncomesScreen(
                 }
             }
         } else {
-            // Resumen total
-            val totalIngresos = uiState.incomes.sumOf { it.monto }
+            // Resumen total (convertido a la moneda por defecto del usuario).
+            val total = uiState.totalIngresosConvertido
+            val target = uiState.defaultCurrency
 
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                 Card(
@@ -90,7 +91,11 @@ fun IncomesScreen(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = com.gastos.domain.model.formatMoney(totalIngresos, "EUR"),
+                            text = if (total != null) {
+                                com.gastos.domain.model.formatMoney(total, target)
+                            } else {
+                                "— ($target)"
+                            },
                             style = MaterialTheme.typography.headlineMedium.copy(
                                 fontWeight = FontWeight.Bold
                             )

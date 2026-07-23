@@ -237,6 +237,67 @@ fun SettingsScreen(
                     options = com.gastos.domain.model.SUPPORTED_CURRENCIES,
                     onValueChange = { viewModel.updateDefaultCurrency(it) }
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Tarjeta de tipos de cambio
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.CurrencyExchange,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Tipos de cambio",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = when {
+                                    uiState.isRefreshingRates -> "Actualizando…"
+                                    uiState.ratesAsOf != null -> {
+                                        val d = java.text.SimpleDateFormat(
+                                            "dd/MM/yyyy HH:mm", java.util.Locale.getDefault()
+                                        ).format(java.util.Date(uiState.ratesAsOf!!))
+                                        "${uiState.ratesCount} monedas · actualizado $d"
+                                    }
+                                    else -> "Sin tasas todavía. Pulsa para descargar."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { viewModel.refreshRates() },
+                            enabled = !uiState.isRefreshingRates
+                        ) {
+                            if (uiState.isRefreshingRates) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Actualizar")
+                        }
+                    }
+                }
             }
 
             // Sección Premium

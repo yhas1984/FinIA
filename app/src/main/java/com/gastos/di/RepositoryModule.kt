@@ -29,4 +29,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindCountryFiscalConfigRepository(impl: CountryFiscalConfigRepositoryImpl): CountryFiscalConfigRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindExchangeRateProvider(impl: ExchangeRateProviderImpl): ExchangeRateProvider
 }

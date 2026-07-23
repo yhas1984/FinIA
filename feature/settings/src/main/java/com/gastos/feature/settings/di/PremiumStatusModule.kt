@@ -1,6 +1,8 @@
 package com.gastos.feature.settings.di
 
 import com.gastos.feature.settings.BillingManager
+import com.gastos.feature.settings.SettingsRepository
+import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.PremiumStatusProvider
 import dagger.Module
 import dagger.Provides
@@ -19,4 +21,7 @@ object PremiumStatusModule {
     @Provides
     fun providePremiumStatusProvider(billingManager: BillingManager): PremiumStatusProvider =
         billingManager
+
+    @Provides
+    fun provideCurrencyPreference(repo: SettingsRepository): CurrencyPreference = repo
 }

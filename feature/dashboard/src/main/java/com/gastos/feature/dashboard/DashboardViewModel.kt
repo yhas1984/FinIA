@@ -6,6 +6,8 @@ import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.extension.SafeLog
+import com.gastos.repository.CurrencyPreference
+import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -40,7 +42,9 @@ data class DashboardUiState(
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val invoiceRepository: InvoiceRepository,
-    private val incomeRepository: IncomeRepository
+    private val incomeRepository: IncomeRepository,
+    private val exchangeRateProvider: ExchangeRateProvider,
+    private val currencyPreference: CurrencyPreference
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
@@ -50,70 +54,88 @@ class DashboardViewModel @Inject constructor(
         observeDashboardData()
     }
 
+    /**
+     * Agrega facturas + ingresos convertidos a la moneda por defecto del
+     * usuario. Recalcula en cuanto cambian los datos, las tasas de cambio
+     * o la moneda por defecto.
+     *
+     * Los registros cuya moneda no tenga tasa de cambio se EXCLUYEN del
+     * total (convert() devuelve null → contribuyen 0), en lugar de
+     * sumarlos como si estuvieran en la moneda por defecto (que era el bug).
+     */
     private fun observeDashboardData() {
         viewModelScope.launch {
             combine(
                 invoiceRepository.getAllInvoices(),
-                incomeRepository.getAllIncomes()
-            ) { invoices, incomes ->
-                Pair(invoices, incomes)
-            }.collect { (invoices, incomes) ->
-                SafeLog.d(TAG, "Dashboard: ${invoices.size} invoices, ${incomes.size} incomes")
-                invoices.forEach { inv -> SafeLog.d(TAG, "  Invoice: id=${inv.id}, tipo=${inv.tipo}, fecha=${inv.fecha}, total=${inv.total}") }
-                incomes.forEach { inc -> SafeLog.d(TAG, "  Income: id=${inc.id}, fecha=${inc.fecha}, monto=${inc.monto}") }
-
-                val now = System.currentTimeMillis()
-                val ranges = computeDateRanges()
-                SafeLog.d(TAG, "  Ranges: hoy=${ranges.hoyInicio}-${ranges.hoyFin}, semana=${ranges.semanaInicio}-now, mes=${ranges.mesInicio}-${ranges.mesFin}")
-
-                // Filtrar por rangos
-                val gastosMes = invoices
-                    .filter { it.tipo == InvoiceType.GASTO && it.fecha >= ranges.mesInicio && it.fecha <= ranges.mesFin }
-                    .sumOf { it.total }
-
-                val ingresosMes = incomes
-                    .filter { it.fecha >= ranges.mesInicio && it.fecha <= ranges.mesFin }
-                    .sumOf { it.monto }
-
-                val gastosHoy = invoices
-                    .filter { it.tipo == InvoiceType.GASTO && it.fecha >= ranges.hoyInicio && it.fecha <= ranges.hoyFin }
-                    .sumOf { it.total }
-
-                val ingresosHoy = incomes
-                    .filter { it.fecha >= ranges.hoyInicio && it.fecha <= ranges.hoyFin }
-                    .sumOf { it.monto }
-
-                val gastosSemana = invoices
-                    .filter { it.tipo == InvoiceType.GASTO && it.fecha >= ranges.semanaInicio && it.fecha <= now }
-                    .sumOf { it.total }
-
-                val ingresosSemana = incomes
-                    .filter { it.fecha >= ranges.semanaInicio && it.fecha <= now }
-                    .sumOf { it.monto }
-
-                SafeLog.d(TAG, "  Computed: gastosMes=$gastosMes, ingresosMes=$ingresosMes, gastosHoy=$gastosHoy, gastosSemana=$gastosSemana")
-
-                // Datos diarios
-                val dailyData = computeDailyData(invoices, incomes)
-
-                _uiState.update {
-                    it.copy(
-                        totalGastosMes = gastosMes,
-                        totalIngresosMes = ingresosMes,
-                        balanceMes = ingresosMes - gastosMes,
-                        totalGastosHoy = gastosHoy,
-                        totalIngresosHoy = ingresosHoy,
-                        totalGastosSemana = gastosSemana,
-                        totalIngresosSemana = ingresosSemana,
-                        dailyData = dailyData,
-                        isLoading = false,
-                        totalFacturas = invoices.size,
-                        totalIngresosCount = incomes.size
-                    )
-                }
+                incomeRepository.getAllIncomes(),
+                exchangeRateProvider.rates,
+                currencyPreference.defaultCurrency
+            ) { invoices, incomes, _, target ->
+                Triple(invoices, incomes, target)
+            }.collect { (invoices, incomes, target) ->
+                _uiState.value = computeState(invoices, incomes, target)
             }
         }
     }
+
+    /**
+     * Cálculo puro del estado del dashboard a partir de los registros y la
+     * moneda destino. Usa [ExchangeRateProvider] para convertir cada importe.
+     * Si una moneda no tiene tasa, su importe se excluye (suma 0).
+     */
+    private fun computeState(
+        invoices: List<Invoice>,
+        incomes: List<Income>,
+        target: String
+    ): DashboardUiState {
+        val ranges = computeDateRanges()
+        val now = System.currentTimeMillis()
+
+        val gastosMes = invoices
+            .filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.mesInicio..ranges.mesFin }
+            .sumInvoicesConverted(target)
+        val ingresosMes = incomes
+            .filter { it.fecha in ranges.mesInicio..ranges.mesFin }
+            .sumIncomesConverted(target)
+
+        val gastosHoy = invoices
+            .filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.hoyInicio..ranges.hoyFin }
+            .sumInvoicesConverted(target)
+        val ingresosHoy = incomes
+            .filter { it.fecha in ranges.hoyInicio..ranges.hoyFin }
+            .sumIncomesConverted(target)
+
+        val gastosSemana = invoices
+            .filter { it.tipo == InvoiceType.GASTO && it.fecha >= ranges.semanaInicio && it.fecha <= now }
+            .sumInvoicesConverted(target)
+        val ingresosSemana = incomes
+            .filter { it.fecha >= ranges.semanaInicio && it.fecha <= now }
+            .sumIncomesConverted(target)
+
+        SafeLog.d(TAG, "Dashboard convertido a '$target': gastosMes=$gastosMes, ingresosMes=$ingresosMes")
+
+        return DashboardUiState(
+            totalGastosMes = gastosMes,
+            totalIngresosMes = ingresosMes,
+            balanceMes = ingresosMes - gastosMes,
+            totalGastosHoy = gastosHoy,
+            totalIngresosHoy = ingresosHoy,
+            totalGastosSemana = gastosSemana,
+            totalIngresosSemana = ingresosSemana,
+            dailyData = computeDailyData(invoices, incomes, target),
+            isLoading = false,
+            totalFacturas = invoices.count { it.tipo == InvoiceType.GASTO },
+            totalIngresosCount = incomes.size
+        )
+    }
+
+    /** Suma los importes convertidos a [target] (facturas). */
+    private fun List<Invoice>.sumInvoicesConverted(target: String): Double =
+        sumOf { exchangeRateProvider.convert(it.total, it.moneda, target) ?: 0.0 }
+
+    /** Suma los importes convertidos a [target] (ingresos). */
+    private fun List<Income>.sumIncomesConverted(target: String): Double =
+        sumOf { exchangeRateProvider.convert(it.monto, it.moneda, target) ?: 0.0 }
 
     private data class DateRanges(
         val hoyInicio: Long,
@@ -124,7 +146,6 @@ class DashboardViewModel @Inject constructor(
     )
 
     private fun computeDateRanges(): DateRanges {
-        // Hoy - crear instancia fresca
         val hoyCal = Calendar.getInstance()
         hoyCal.set(Calendar.HOUR_OF_DAY, 0)
         hoyCal.set(Calendar.MINUTE, 0)
@@ -137,7 +158,6 @@ class DashboardViewModel @Inject constructor(
         hoyCal.set(Calendar.SECOND, 59)
         val hoyFin = hoyCal.timeInMillis
 
-        // Esta semana - crear instancia fresca
         val semanaCal = Calendar.getInstance()
         semanaCal.firstDayOfWeek = Calendar.MONDAY
         semanaCal.set(Calendar.DAY_OF_WEEK, semanaCal.firstDayOfWeek)
@@ -147,7 +167,6 @@ class DashboardViewModel @Inject constructor(
         semanaCal.set(Calendar.MILLISECOND, 0)
         val semanaInicio = semanaCal.timeInMillis
 
-        // Este mes - crear instancia fresca
         val mesCal = Calendar.getInstance()
         mesCal.set(Calendar.DAY_OF_MONTH, 1)
         mesCal.set(Calendar.HOUR_OF_DAY, 0)
@@ -167,7 +186,8 @@ class DashboardViewModel @Inject constructor(
 
     private fun computeDailyData(
         invoices: List<Invoice>,
-        incomes: List<Income>
+        incomes: List<Income>,
+        target: String
     ): List<DayData> {
         val data = mutableListOf<DayData>()
         val dayFormat = SimpleDateFormat("EEE", Locale("es", "ES"))
@@ -187,11 +207,10 @@ class DashboardViewModel @Inject constructor(
 
             val gastos = invoices
                 .filter { it.tipo == InvoiceType.GASTO && it.fecha >= dayStart && it.fecha <= dayEnd }
-                .sumOf { it.total }
-
+                .sumInvoicesConverted(target)
             val ingresos = incomes
                 .filter { it.fecha >= dayStart && it.fecha <= dayEnd }
-                .sumOf { it.monto }
+                .sumIncomesConverted(target)
 
             data.add(
                 DayData(
@@ -205,56 +224,15 @@ class DashboardViewModel @Inject constructor(
         return data
     }
 
-    /**
-     * Refresh: fuerza un re-fetch de los datos desde la base de datos.
-     * Pone isLoading=true al inicio y false al final. Si falla, deja
-     * isLoading=false y propaga el error.
-     */
+    /** Fuerza un re-fetch y recálculo. */
     fun refresh() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                // Forzar un re-emit del flow combinado
                 val invoices = invoiceRepository.getAllInvoices().first()
                 val incomes = incomeRepository.getAllIncomes().first()
-                // Aplica la misma lógica de observeDashboardData
-                val now = System.currentTimeMillis()
-                val ranges = computeDateRanges()
-                val totalFacturas = invoices.count { it.tipo == InvoiceType.GASTO }
-                val totalIngresosCount = incomes.size
-                val gastosMes = invoices
-                    .filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.mesInicio..ranges.mesFin }
-                    .sumOf { it.total }
-                val ingresosMes = incomes
-                    .filter { it.fecha in ranges.mesInicio..ranges.mesFin }
-                    .sumOf { it.monto }
-                val balanceMes = ingresosMes - gastosMes
-                val totalGastosHoy = invoices
-                    .filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.hoyInicio..ranges.hoyFin }
-                    .sumOf { it.total }
-                val totalIngresosHoy = incomes
-                    .filter { it.fecha in ranges.hoyInicio..ranges.hoyFin }
-                    .sumOf { it.monto }
-                val totalGastosSemana = invoices
-                    .filter { it.tipo == InvoiceType.GASTO && it.fecha >= ranges.semanaInicio }
-                    .sumOf { it.total }
-                val totalIngresosSemana = incomes
-                    .filter { it.fecha >= ranges.semanaInicio }
-                    .sumOf { it.monto }
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        totalGastosMes = gastosMes,
-                        totalIngresosMes = ingresosMes,
-                        balanceMes = balanceMes,
-                        totalGastosHoy = totalGastosHoy,
-                        totalIngresosHoy = totalIngresosHoy,
-                        totalGastosSemana = totalGastosSemana,
-                        totalIngresosSemana = totalIngresosSemana,
-                        totalFacturas = totalFacturas,
-                        totalIngresosCount = totalIngresosCount
-                    )
-                }
+                val target = currencyPreference.defaultCurrency.value
+                _uiState.value = computeState(invoices, incomes, target)
             } catch (e: Exception) {
                 SafeLog.e(TAG, "Error refrescando dashboard", e)
                 _uiState.update { it.copy(isLoading = false) }

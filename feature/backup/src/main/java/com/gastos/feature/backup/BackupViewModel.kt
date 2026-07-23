@@ -10,6 +10,8 @@ import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
+import com.gastos.repository.CurrencyPreference
+import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.PremiumStatusProvider
@@ -59,11 +61,17 @@ class BackupViewModel @Inject constructor(
     private val invoiceRepository: InvoiceRepository,
     private val incomeRepository: IncomeRepository,
     private val productRepository: ProductRepository,
-    private val premiumStatus: PremiumStatusProvider
+    private val premiumStatus: PremiumStatusProvider,
+    private val exchangeRateProvider: ExchangeRateProvider,
+    private val currencyPreference: CurrencyPreference
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BackupUiState())
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
+
+    /** Convierte un importe a la moneda por defecto del usuario (para totales). */
+    private fun converted(amount: Double, currency: String): Double =
+        exchangeRateProvider.convert(amount, currency, currencyPreference.defaultCurrency.value) ?: 0.0
 
     init {
         checkSignInStatus()
@@ -317,11 +325,11 @@ class BackupViewModel @Inject constructor(
                             )
                         }
 
-                        append("\n")
-                        append("RESUMEN\n")
-                        val totalGastos = invoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { it.total }
-                        val totalIngresos = incomes.sumOf { it.monto } + invoices.filter { it.tipo == InvoiceType.INGRESO }.sumOf { it.total }
-                        append("Total Gastos,${totalGastos}\n")
+                    append("\n")
+                    append("RESUMEN (en ${currencyPreference.defaultCurrency.value})\n")
+                    val totalGastos = invoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { converted(it.total, it.moneda) }
+                    val totalIngresos = incomes.sumOf { converted(it.monto, it.moneda) } + invoices.filter { it.tipo == InvoiceType.INGRESO }.sumOf { converted(it.total, it.moneda) }
+                    append("Total Gastos,${totalGastos}\n")
                         append("Total Ingresos,${totalIngresos}\n")
                         append("Balance,${totalIngresos - totalGastos}\n")
                         append("Fecha exportación,${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())}\n")
@@ -389,9 +397,9 @@ class BackupViewModel @Inject constructor(
                 canvas.drawText("Generado: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())}", 40f, y, bodyPaint)
                 y += 30f
 
-                // Summary
-                val totalGastos = invoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { it.total }
-                val totalIngresos = incomes.sumOf { it.monto } + invoices.filter { it.tipo == InvoiceType.INGRESO }.sumOf { it.total }
+                // Summary (convertido a la moneda por defecto del usuario)
+                val totalGastos = invoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { converted(it.total, it.moneda) }
+                val totalIngresos = incomes.sumOf { converted(it.monto, it.moneda) } + invoices.filter { it.tipo == InvoiceType.INGRESO }.sumOf { converted(it.total, it.moneda) }
 
                 canvas.drawText("RESUMEN", 40f, y, headerPaint)
                 y += 20f
