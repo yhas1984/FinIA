@@ -10,6 +10,7 @@ import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
 import com.android.billingclient.api.BillingResult
+import com.android.billingclient.api.PendingPurchasesParams
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
@@ -66,7 +67,14 @@ class BillingManager @Inject constructor(
         if (billingClient == null) {
             billingClient = BillingClient.newBuilder(context)
                 .setListener(this)
-                .enablePendingPurchases()
+                // Billing 8.0+: enablePendingPurchases requiere PendingPurchasesParams.
+                // FinAI solo vende productos únicos (INAPP), así que habilitamos
+                // los one-time products (no hace falta "enablePrepaidPlans").
+                .enablePendingPurchases(
+                    PendingPurchasesParams.newBuilder()
+                        .enableOneTimeProducts()
+                        .build()
+                )
                 .build()
         }
         if (billingClient?.isReady == true) return
@@ -108,9 +116,11 @@ class BillingManager @Inject constructor(
             )
             .build()
 
-        client.queryProductDetailsAsync(params) { result, detailsList ->
+        // Billing 8.0+: el callback recibe QueryProductDetailsResult (wrapper
+        // con productDetailsList + unfetchedProductList), no la lista directa.
+        client.queryProductDetailsAsync(params) { result, queryResult ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                _productDetails.value = detailsList.firstOrNull { it.productId == PREMIUM_SKU }
+                _productDetails.value = queryResult.productDetailsList.firstOrNull { it.productId == PREMIUM_SKU }
                 if (_productDetails.value == null) {
                     Log.w(TAG, "Producto $PREMIUM_SKU no encontrado en Play Console")
                 }
