@@ -225,36 +225,17 @@ fun SettingsScreen(
                 title = "Regional",
                 icon = Icons.Outlined.Public
             ) {
+                Text(
+                    text = "Moneda con la que se muestran los totales (dashboard) y la moneda por defecto de tus registros.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
                 SettingsDropdown(
                     label = "Moneda",
                     value = uiState.settings.defaultCurrency,
                     options = com.gastos.domain.model.SUPPORTED_CURRENCIES,
                     onValueChange = { viewModel.updateDefaultCurrency(it) }
-                )
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                val countries = mapOf(
-                    "ES" to "España",
-                    "MX" to "México",
-                    "US" to "Estados Unidos",
-                    "AR" to "Argentina",
-                    "CO" to "Colombia",
-                    "CL" to "Chile",
-                    "PE" to "Perú"
-                )
-                val selectedCountry = countries[uiState.settings.defaultCountry] ?: "España"
-                
-                SettingsDropdown(
-                    label = "País",
-                    value = selectedCountry,
-                    options = countries.values.toList(),
-                    valueMap = countries.entries.associate { it.value to it.key },
-                    onValueChange = { name ->
-                        countries.entries.find { it.value == name }?.let {
-                            viewModel.updateDefaultCountry(it.key)
-                        }
-                    }
                 )
             }
 
@@ -289,7 +270,7 @@ fun SettingsScreen(
                     )
                 } else {
                     Text(
-                        text = "Desbloquea exportación a Google Sheets, backup automático en Drive y chat IA avanzado.",
+                        text = "Desbloquea exportación a Google Sheets y chat IA avanzado.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -310,36 +291,12 @@ fun SettingsScreen(
                 title = "Datos",
                 icon = Icons.Outlined.Storage
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Backup automático",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = "Guardar en Google Drive semanalmente",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = uiState.settings.autoBackup,
-                        onCheckedChange = { viewModel.updateAutoBackup(it) }
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
                 Text(
-                    text = "Exportar y compartir tus datos",
+                    text = "Copia de seguridad local, exportación CSV/PDF y sincronización con Google Sheets.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = onNavigateToBackup,
                     modifier = Modifier.fillMaxWidth()
@@ -347,6 +304,36 @@ fun SettingsScreen(
                     Icon(Icons.Default.Download, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Ir a Backup")
+                }
+            }
+
+            // Sección Debug (solo visible en builds debug)
+            if (uiState.isDebug) {
+                SettingsSection(
+                    title = "Debug",
+                    icon = Icons.Outlined.BugReport
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Premium (debug)",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = "Forzar el estado Premium para probar las funciones de pago",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = uiState.isPremium,
+                            onCheckedChange = { viewModel.debugSetPremium(it) }
+                        )
+                    }
                 }
             }
 
@@ -364,8 +351,15 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                 )
+                // Versión real leída del paquete instalado (no hardcodeada).
+                val appVersion = remember {
+                    runCatching {
+                        @Suppress("DEPRECATION")
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                    }.getOrNull() ?: ""
+                }
                 Text(
-                    text = "Versión 1.0.0",
+                    text = "Versión $appVersion",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

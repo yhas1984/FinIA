@@ -2,6 +2,7 @@ package com.gastos.feature.settings
 
 import android.app.Activity
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.util.Log
 import com.android.billingclient.api.AcknowledgePurchaseParams
 import com.android.billingclient.api.AcknowledgePurchaseResponseListener
@@ -14,6 +15,7 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
+import com.gastos.repository.PremiumStatusProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +32,7 @@ import javax.inject.Singleton
 @Singleton
 class BillingManager @Inject constructor(
     @ApplicationContext private val context: Context
-) : PurchasesUpdatedListener, BillingClientStateListener {
+) : PurchasesUpdatedListener, BillingClientStateListener, PremiumStatusProvider {
 
     companion object {
         private const val TAG = "BillingManager"
@@ -42,7 +44,7 @@ class BillingManager @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _isPremium = MutableStateFlow(prefs.getBoolean(KEY_IS_PREMIUM, false))
-    val isPremium: StateFlow<Boolean> = _isPremium.asStateFlow()
+    override val isPremium: StateFlow<Boolean> = _isPremium.asStateFlow()
 
     private val _productDetails = MutableStateFlow<ProductDetails?>(null)
     val productDetails: StateFlow<ProductDetails?> = _productDetails.asStateFlow()
@@ -215,6 +217,19 @@ class BillingManager @Inject constructor(
     private fun setPremium(value: Boolean) {
         prefs.edit().putBoolean(KEY_IS_PREMIUM, value).apply()
         _isPremium.value = value
+    }
+
+    /** `true` solo en builds depurables (debug), `false` en release. */
+    val isDebugBuild: Boolean =
+        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    /**
+     * SOLO builds debug: fuerza el estado Premium para probar las funciones
+     * de pago sin una compra real. En release es un no-op.
+     */
+    fun debugSetPremium(value: Boolean) {
+        if (!isDebugBuild) return
+        setPremium(value)
     }
 
     /** Limpia el último error de compra mostrado en UI. */

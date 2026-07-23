@@ -31,7 +31,8 @@ data class SettingsUiState(
     val isPremium: Boolean = false,
     val productDetails: ProductDetails? = null,
     val isBillingConnecting: Boolean = false,
-    val purchaseError: String? = null
+    val purchaseError: String? = null,
+    val isDebug: Boolean = false
 )
 
 @HiltViewModel
@@ -45,6 +46,7 @@ class SettingsViewModel @Inject constructor(
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
     init {
+        _uiState.update { it.copy(isDebug = billingManager.isDebugBuild) }
         loadSettings()
         observeBilling()
     }
@@ -151,16 +153,8 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.updateDefaultCurrency(currency) }
     }
 
-    fun updateDefaultCountry(country: String) {
-        viewModelScope.launch { settingsRepository.updateDefaultCountry(country) }
-    }
-
     fun updateDarkMode(mode: String) {
         viewModelScope.launch { settingsRepository.updateDarkMode(mode) }
-    }
-
-    fun updateAutoBackup(autoBackup: Boolean) {
-        viewModelScope.launch { settingsRepository.updateAutoBackup(autoBackup) }
     }
 
     // ---------------- Premium / Billing ----------------
@@ -181,5 +175,10 @@ class SettingsViewModel @Inject constructor(
 
     fun clearPurchaseError() {
         billingManager.clearError()
+    }
+
+    /** SOLO debug: fuerza el estado Premium para probar funciones de pago. */
+    fun debugSetPremium(value: Boolean) {
+        billingManager.debugSetPremium(value)
     }
 }

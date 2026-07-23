@@ -27,12 +27,12 @@ import androidx.compose.ui.unit.Dp
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
+    defaultCurrency: String = "EUR",
     onNavigateToChat: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onNavigateToBackup: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val defaultCurrency = "EUR"  // TODO: leer de Settings cuando esté disponible
     val fmt = { amt: Double -> com.gastos.domain.model.formatMoney(amt, defaultCurrency) }
 
     Scaffold(

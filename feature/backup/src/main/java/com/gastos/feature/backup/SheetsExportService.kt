@@ -7,6 +7,7 @@ import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import com.gastos.extension.SafeLog
+import com.gastos.repository.PremiumStatusProvider
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
@@ -54,7 +55,8 @@ import javax.inject.Singleton
  */
 @Singleton
 class SheetsExportService @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val premiumStatus: PremiumStatusProvider
 ) {
     companion object {
         // Scopes necesarios: crear/editar Sheets y archivos en Drive.
@@ -99,6 +101,10 @@ class SheetsExportService @Inject constructor(
         products: List<Product>,
         existingSpreadsheetId: String = ""
     ): Pair<String, String> = withContext(Dispatchers.IO) {
+        // Función Premium: la exportación a Google Sheets requiere suscripción.
+        if (!premiumStatus.isPremium.value) {
+            throw IllegalStateException("La exportación a Google Sheets es una función Premium.")
+        }
         // Credential OAuth a partir de la cuenta autenticada.
         val credential = GoogleAccountCredential.usingOAuth2(
             context,

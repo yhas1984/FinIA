@@ -198,12 +198,7 @@ enum class PremiumFeature(
     SHEETS(
         Icons.Outlined.TableChart,
         "Exportación a Google Sheets",
-        "Sincroniza tus datos con un Google Sheet organizado por hojas."
-    ),
-    BACKUP(
-        Icons.Outlined.CloudUpload,
-        "Backup automático en Drive",
-        "Copia de seguridad programada en tu Google Drive."
+        "Exporta y sincroniza tus datos con un Google Sheet organizado por hojas."
     ),
     CHAT(
         Icons.Outlined.SmartToy,
