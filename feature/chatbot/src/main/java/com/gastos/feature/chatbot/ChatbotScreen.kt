@@ -61,6 +61,7 @@ fun ChatbotScreen(
     // Estado para la URI de la foto tomada con cámara
     var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
     var showScanMenu by remember { mutableStateOf(false) }
+    var showClearDialog by remember { mutableStateOf(false) }
 
     // Launcher para tomar una foto con la cámara
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -128,7 +129,7 @@ fun ChatbotScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.clearChat() }) {
+                    IconButton(onClick = { showClearDialog = true }) {
                         Icon(Icons.Default.DeleteSweep, contentDescription = "Limpiar chat")
                     }
                 },
@@ -349,6 +350,20 @@ fun ChatbotScreen(
                 }
             }
         }
+    }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text("Borrar conversación") },
+            text = { Text("Se eliminará el historial local del chat.") },
+            confirmButton = {
+                TextButton(onClick = { showClearDialog = false; viewModel.clearChat() }) { Text("Borrar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) { Text("Cancelar") }
+            }
+        )
     }
 }
 

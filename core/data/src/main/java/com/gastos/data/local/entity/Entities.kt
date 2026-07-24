@@ -81,3 +81,13 @@ data class CountryFiscalConfigEntity(
     val nifFormat: String = "",
     val nombreLeyFiscal: String = "IVA"
 )
+
+@Entity(tableName = "chat_messages")
+data class ChatMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val role: String,
+    val visibleText: String,
+    val contextText: String? = null,
+    @ColumnInfo(defaultValue = "1") val includeInContext: Boolean = true,
+    val createdAt: Long = System.currentTimeMillis()
+)

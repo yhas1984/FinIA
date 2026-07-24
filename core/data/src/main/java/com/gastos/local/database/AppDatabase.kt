@@ -11,9 +11,10 @@ import com.gastos.local.dao.*
         InvoiceEntity::class,
         ProductEntity::class,
         IncomeEntity::class,
-        CountryFiscalConfigEntity::class
+        CountryFiscalConfigEntity::class,
+        ChatMessageEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -23,6 +24,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun incomeDao(): IncomeDao
     abstract fun countryFiscalConfigDao(): CountryFiscalConfigDao
+    abstract fun chatMessageDao(): ChatMessageDao
 
     companion object {
         const val DATABASE_NAME = "gastos_ingresos_db"

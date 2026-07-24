@@ -209,6 +209,6 @@ enum class PremiumFeature(
     CHAT(
         Icons.Outlined.SmartToy,
         "Chat IA avanzado",
-        "Memoria conversacional extendida y respuestas en streaming."
+        "Memoria de 10 turnos y respuestas en streaming."
     )
 }
