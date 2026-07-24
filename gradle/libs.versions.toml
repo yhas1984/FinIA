@@ -73,6 +73,7 @@ play-services-auth = { group = "com.google.android.gms", name = "play-services-a
 # Google API Client (Sheets REST v4)
 google-api-client-android = { group = "com.google.api-client", name = "google-api-client-android", version = "2.7.0" }
 google-api-services-sheets = { group = "com.google.apis", name = "google-api-services-sheets", version = "v4-rev20250616-2.0.0" }
+google-api-services-drive = { group = "com.google.apis", name = "google-api-services-drive", version = "v3-rev20260712-2.0.0" }
 
 # DataStore
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }

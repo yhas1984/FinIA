@@ -1,5 +1,7 @@
 package com.gastos.feature.invoices
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,10 +29,20 @@ fun InvoicesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showFilterMenu by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearError()
+        }
+    }
     
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("es-ES"))
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text("Facturas") },
@@ -143,7 +155,15 @@ fun InvoicesScreen(
                             invoice = invoice,
                             dateFormat = dateFormat,
                             onDelete = { viewModel.deleteInvoice(invoice) },
-                            onEdit = { onNavigateToEdit(invoice.id) }
+                            onEdit = { onNavigateToEdit(invoice.id) },
+                            onRetryDrive = { viewModel.retryDriveUpload(invoice) },
+                            onOpenDrive = {
+                                invoice.driveWebViewLink?.let { link ->
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
+                                }
+                            },
+                            isPremium = uiState.isPremium,
+                            isUploadingToDrive = invoice.id in uiState.uploadingToDrive
                         )
                     }
                 }
@@ -158,7 +178,11 @@ private fun InvoiceCard(
     
     dateFormat: SimpleDateFormat,
     onDelete: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onRetryDrive: () -> Unit,
+    onOpenDrive: () -> Unit,
+    isPremium: Boolean,
+    isUploadingToDrive: Boolean
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
 
@@ -224,6 +248,43 @@ private fun InvoiceCard(
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
+                }
+            }
+
+            if (invoice.imagenUri != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                when {
+                    invoice.driveWebViewLink != null -> TextButton(onClick = onOpenDrive) {
+                        Icon(Icons.Default.CloudDone, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Abrir foto en Drive")
+                    }
+                    invoice.driveUploadPending -> OutlinedButton(
+                        onClick = onRetryDrive,
+                        enabled = isPremium && !isUploadingToDrive
+                    ) {
+                        if (isUploadingToDrive) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null)
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            when {
+                                isUploadingToDrive -> "Subiendo..."
+                                !isPremium -> "Drive requiere Premium"
+                                else -> "Reintentar Drive"
+                            }
+                        )
+                    }
+                    else -> Text(
+                        text = "Foto guardada localmente",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 

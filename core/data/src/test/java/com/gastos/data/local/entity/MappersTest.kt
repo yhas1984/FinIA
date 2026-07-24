@@ -31,6 +31,9 @@ class MappersTest {
             nifEmisor = "B12345678",
             nifReceptor = "12345678Z",
             imagenUri = "content://x",
+            driveFileId = "drive-7",
+            driveWebViewLink = "https://drive.google.com/file/d/drive-7/view",
+            driveUploadPending = true,
             ocrRawText = "raw",
             notas = "nota",
             createdAt = 1L,
@@ -44,6 +47,9 @@ class MappersTest {
         assertEquals(entity.total, back.total, 0.0)
         assertEquals(entity.ivaPercent, back.ivaPercent, 0.0)
         assertEquals(entity.nifEmisor, back.nifEmisor)
+        assertEquals(entity.driveFileId, back.driveFileId)
+        assertEquals(entity.driveWebViewLink, back.driveWebViewLink)
+        assertEquals(entity.driveUploadPending, back.driveUploadPending)
         assertEquals(entity.createdAt, back.createdAt)
         assertEquals(entity.updatedAt, back.updatedAt)
     }

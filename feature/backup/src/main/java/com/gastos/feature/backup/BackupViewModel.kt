@@ -73,6 +73,7 @@ class BackupViewModel @Inject constructor(
     private val backupService: BackupService,
     private val sheetsExportService: SheetsExportService,
     private val sheetsSyncManager: SheetsSyncManager,
+    private val invoiceDriveService: InvoiceDriveService,
     private val invoiceRepository: InvoiceRepository,
     private val incomeRepository: IncomeRepository,
     private val productRepository: ProductRepository,
@@ -543,6 +544,7 @@ class BackupViewModel @Inject constructor(
         viewModelScope.launch {
             sheetsExportService.signOut()
             sheetsSyncManager.clearSpreadsheetId()
+            invoiceDriveService.clearAccountCache()
             _uiState.update {
                 it.copy(
                     isSignedIn = false,

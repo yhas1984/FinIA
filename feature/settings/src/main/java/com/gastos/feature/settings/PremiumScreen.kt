@@ -201,6 +201,11 @@ enum class PremiumFeature(
         "Exportación a Google Sheets",
         "Exporta y sincroniza tus datos con un Google Sheet organizado por hojas."
     ),
+    DRIVE_PHOTOS(
+        Icons.Outlined.CloudUpload,
+        "Fotos de facturas en Drive",
+        "Guarda automáticamente cada justificante nuevo en tu carpeta FinAI."
+    ),
     CHAT(
         Icons.Outlined.SmartToy,
         "Chat IA avanzado",

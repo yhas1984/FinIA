@@ -14,6 +14,12 @@ interface InvoiceRepository {
     suspend fun insertInvoice(invoice: Invoice): Long
     suspend fun insertInvoiceWithProducts(invoice: Invoice, products: List<Product>): Long
     suspend fun updateInvoice(invoice: Invoice)
+    suspend fun updateDriveMetadata(
+        invoiceId: Long,
+        fileId: String?,
+        webViewLink: String?,
+        pending: Boolean
+    )
     suspend fun deleteInvoice(invoice: Invoice)
     suspend fun getInvoiceCount(): Int
     suspend fun getTotalByTypeAndDateRange(type: InvoiceType, startDate: Long, endDate: Long): Double?

@@ -54,6 +54,19 @@ class InvoiceRepositoryImpl @Inject constructor(
     override suspend fun updateInvoice(invoice: Invoice) =
         invoiceDao.updateInvoice(invoice.toEntity().copy(updatedAt = System.currentTimeMillis()))
 
+    override suspend fun updateDriveMetadata(
+        invoiceId: Long,
+        fileId: String?,
+        webViewLink: String?,
+        pending: Boolean
+    ) = invoiceDao.updateDriveMetadata(
+        invoiceId = invoiceId,
+        fileId = fileId,
+        webViewLink = webViewLink,
+        pending = pending,
+        updatedAt = System.currentTimeMillis()
+    )
+
     override suspend fun deleteInvoice(invoice: Invoice) =
         invoiceDao.deleteInvoice(invoice.toEntity())
 

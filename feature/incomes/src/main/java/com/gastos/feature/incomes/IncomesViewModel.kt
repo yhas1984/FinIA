@@ -7,6 +7,7 @@ import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.IncomeRepository
+import com.gastos.storage.InvoiceImageStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,7 +35,8 @@ class IncomesViewModel @Inject constructor(
     private val incomeRepository: IncomeRepository,
     private val sheetsSyncManager: SheetsSyncManager,
     private val exchangeRateProvider: ExchangeRateProvider,
-    private val currencyPreference: CurrencyPreference
+    private val currencyPreference: CurrencyPreference,
+    private val invoiceImageStorage: InvoiceImageStorage
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(IncomesUiState())
@@ -89,6 +91,7 @@ class IncomesViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 incomeRepository.deleteIncome(income)
+                invoiceImageStorage.delete(income.imagenUri)
                 // Propaga el borrado a la hoja "Nóminas" del Sheet vinculado.
                 sheetsSyncManager.deleteIncome(income.id)
             } catch (e: Exception) {

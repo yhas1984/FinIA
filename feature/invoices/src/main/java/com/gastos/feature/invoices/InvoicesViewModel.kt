@@ -5,9 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.feature.backup.SheetsSyncManager
+import com.gastos.feature.backup.InvoiceDriveService
 import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.InvoiceRepository
+import com.gastos.repository.PremiumStatusProvider
+import com.gastos.storage.InvoiceImageStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +32,8 @@ data class InvoicesUiState(
     /** Total convertido a la moneda por defecto (solo gastos). null = sin tasas. */
     val totalGastosConvertido: Double? = null,
     val defaultCurrency: String = "EUR",
+    val isPremium: Boolean = false,
+    val uploadingToDrive: Set<Long> = emptySet(),
     val isLoading: Boolean = true,
     val error: String? = null
 )
@@ -39,7 +44,10 @@ class InvoicesViewModel @Inject constructor(
     private val invoiceRepository: InvoiceRepository,
     private val sheetsSyncManager: SheetsSyncManager,
     private val exchangeRateProvider: ExchangeRateProvider,
-    private val currencyPreference: CurrencyPreference
+    private val currencyPreference: CurrencyPreference,
+    private val invoiceDriveService: InvoiceDriveService,
+    private val invoiceImageStorage: InvoiceImageStorage,
+    private val premiumStatus: PremiumStatusProvider
 ) : ViewModel() {
 
     private val selectedType = MutableStateFlow<InvoiceType?>(null)
@@ -49,6 +57,11 @@ class InvoicesViewModel @Inject constructor(
 
     init {
         observeInvoices()
+        viewModelScope.launch {
+            premiumStatus.isPremium.collect { premium ->
+                _uiState.update { it.copy(isPremium = premium) }
+            }
+        }
     }
 
     /**
@@ -118,6 +131,7 @@ class InvoicesViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 invoiceRepository.deleteInvoice(invoice)
+                invoiceImageStorage.delete(invoice.imagenUri)
                 // Propaga el borrado al Sheet (fila del gasto + sus productos).
                 sheetsSyncManager.deleteExpense(invoice.id)
             } catch (e: Exception) {
@@ -126,5 +140,31 @@ class InvoicesViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun retryDriveUpload(invoice: Invoice) {
+        if (!invoice.driveUploadPending || invoice.id in _uiState.value.uploadingToDrive) return
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    uploadingToDrive = it.uploadingToDrive + invoice.id,
+                    error = null
+                )
+            }
+            val result = invoiceDriveService.upload(invoice)
+            if (result.uploaded) {
+                sheetsSyncManager.upsertExpense(result.invoice)
+            }
+            _uiState.update {
+                it.copy(
+                    uploadingToDrive = it.uploadingToDrive - invoice.id,
+                    error = result.message.takeUnless { result.uploaded }
+                )
+            }
+        }
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
     }
 }
