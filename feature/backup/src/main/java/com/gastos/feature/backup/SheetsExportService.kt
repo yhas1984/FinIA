@@ -9,6 +9,8 @@ import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import com.gastos.extension.SafeLog
+import com.gastos.repository.CurrencyPreference
+import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.PremiumStatusProvider
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -58,7 +60,9 @@ import javax.inject.Singleton
 @Singleton
 class SheetsExportService @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val premiumStatus: PremiumStatusProvider
+    private val premiumStatus: PremiumStatusProvider,
+    private val exchangeRateProvider: ExchangeRateProvider,
+    private val currencyPreference: CurrencyPreference
 ) {
     companion object {
         // Scopes necesarios: crear/editar Sheets y archivos en Drive.
@@ -167,10 +171,14 @@ class SheetsExportService @Inject constructor(
         // Los Invoice con tipo=INGRESO (factura_emitida) no se exportan:
         // el usuario no genera facturas expedidas.
         val recibidas = invoices.filter { it.tipo == InvoiceType.GASTO }
-        writeRecibidas(sheetsService, spreadsheetId, recibidas)
-        writeNominas(sheetsService, spreadsheetId, incomes)
-        writeProductos(sheetsService, spreadsheetId, products, invoices)
-        writeResumenAeat(sheetsService, spreadsheetId, dateStr)
+        val conversion = SheetsSchema.ConversionSnapshot(
+            targetCurrency = currencyPreference.defaultCurrency.value,
+            exchangeRateProvider = exchangeRateProvider
+        )
+        writeRecibidas(sheetsService, spreadsheetId, recibidas, conversion)
+        writeNominas(sheetsService, spreadsheetId, incomes, conversion)
+        writeProductos(sheetsService, spreadsheetId, products, invoices, conversion)
+        writeResumenAeat(sheetsService, spreadsheetId, dateStr, conversion.targetCurrency)
 
         // Formatear cabeceras (negrita) en todas las hojas.
         formatHeaders(sheetsService, spreadsheetId, sheetTitles)
@@ -189,9 +197,14 @@ class SheetsExportService @Inject constructor(
      * Base / cuota se CALCULAN aquí en el export (sin migration de
      * Room): base = total / (1 + iva%/100); cuota = total - base.
      */
-    private fun writeRecibidas(sheets: Sheets, id: String, recibidas: List<Invoice>) {
+    private fun writeRecibidas(
+        sheets: Sheets,
+        id: String,
+        recibidas: List<Invoice>,
+        conversion: SheetsSchema.ConversionSnapshot
+    ) {
         val values = mutableListOf<List<Any>>(SheetsSchema.recibidasHeaders)
-        values.addAll(recibidas.map(SheetsSchema::expenseRow))
+        values.addAll(recibidas.map { SheetsSchema.expenseRow(it, conversion) })
         sheets.spreadsheets().values()
             .update(id, "'${SheetsSchema.RECIBIDAS}'!A1", ValueRange().setValues(values))
             .setValueInputOption("RAW")
@@ -205,9 +218,14 @@ class SheetsExportService @Inject constructor(
      * IRPF %, Base Cot., Seg. Social, Moneda y, como ÚLTIMA columna,
      * el "ID" del ingreso en Room (clave del sync upsert/delete).
      */
-    private fun writeNominas(sheets: Sheets, id: String, nominas: List<Income>) {
+    private fun writeNominas(
+        sheets: Sheets,
+        id: String,
+        nominas: List<Income>,
+        conversion: SheetsSchema.ConversionSnapshot
+    ) {
         val values = mutableListOf<List<Any>>(SheetsSchema.nominasHeaders)
-        values.addAll(nominas.map(SheetsSchema::incomeRow))
+        values.addAll(nominas.map { SheetsSchema.incomeRow(it, conversion) })
         sheets.spreadsheets().values()
             .update(id, "'${SheetsSchema.NOMINAS}'!A1", ValueRange().setValues(values))
             .setValueInputOption("RAW")
@@ -219,15 +237,21 @@ class SheetsExportService @Inject constructor(
      * de Recibidas, Expedidas y Nóminas. Se recalculan automáticamente al
      * añadir filas vía sync.
      */
-    private fun writeResumenAeat(sheets: Sheets, id: String, exportDate: String) {
+    private fun writeResumenAeat(
+        sheets: Sheets,
+        id: String,
+        exportDate: String,
+        reportCurrency: String
+    ) {
         val values = listOf(
             listOf("Resumen Financiero (AEAT)"),
             listOf("Fecha exportación", exportDate),
+            listOf("Moneda informe", reportCurrency),
             // 'Facturas Recibidas'!K = Total
             listOf("Total Gastos (Recibidas)", "=SUM('Facturas Recibidas'!K2:K)"),
             // 'Nóminas'!D = Líquido
             listOf("Total Nóminas (Líquido)", "=SUM('Nóminas'!D2:D)"),
-            listOf("Balance", "=B4-B3")
+            listOf("Balance", "=B5-B4")
         )
         sheets.spreadsheets().values()
             .update(id, "Resumen!A1", ValueRange().setValues(values))
@@ -239,16 +263,17 @@ class SheetsExportService @Inject constructor(
         sheets: Sheets,
         id: String,
         products: List<Product>,
-        invoices: List<Invoice>
+        invoices: List<Invoice>,
+        conversion: SheetsSchema.ConversionSnapshot
     ) {
         val values = mutableListOf<List<Any>>(SheetsSchema.productosHeaders)
         val invMap = invoices
             .filter { it.tipo == InvoiceType.GASTO }
-            .associate { it.id to it.proveedor }
+            .associateBy { it.id }
         values.addAll(
             products.mapNotNull { product ->
-                val provider = invMap[product.invoiceId] ?: return@mapNotNull null
-                SheetsSchema.productRow(product, provider)
+                val invoice = invMap[product.invoiceId] ?: return@mapNotNull null
+                SheetsSchema.productRow(product, invoice.proveedor, invoice.moneda, conversion)
             }
         )
         sheets.spreadsheets().values()
@@ -385,13 +410,13 @@ class SheetsExportService @Inject constructor(
         // 2) Forzar formato numérico en las columnas de cantidades de
         //    las hojas AEAT para que SUM() las sume siempre (índices
         //    0-based): Recibidas F(base=5),G(IVA=6),H(cuota=7),I(recargo=8),
-        //    J(IRPF=9),K(total=10) — Expedidas E(base=4),G(cuota=6),
-        //    H(IRPF=7),I(total=8) — Nóminas C(devengado=2),D(líquido=3) —
-        //    Productos B,C,D,E = 1..4
+        //    J(IRPF=9),K(total=10),P(total original=15),R(tasa=17) —
+        //    Nóminas C(devengado=2),D(líquido=3),E(IRPF=4),J/K originales,
+        //    M(tasa) — Productos B,C,D,E,F y J/K/L/N.
         val numericColumns = mapOf(
-            SheetsSchema.RECIBIDAS to listOf(5..5, 6..6, 7..7, 8..8, 9..9, 10..10),
-            SheetsSchema.NOMINAS to listOf(2..2, 3..3, 4..4),
-            SheetsSchema.PRODUCTOS to listOf(1..1, 2..2, 3..3, 4..4, 5..5)
+            SheetsSchema.RECIBIDAS to listOf(5..5, 6..6, 7..7, 8..8, 9..9, 10..10, 15..15, 17..17),
+            SheetsSchema.NOMINAS to listOf(2..2, 3..3, 4..4, 9..10, 12..12),
+            SheetsSchema.PRODUCTOS to listOf(1..1, 2..2, 3..3, 4..4, 5..5, 9..11, 13..13)
         )
         numericColumns.forEach { (title, ranges) ->
             val sheetId = sheetIdByTitle[title] ?: return@forEach

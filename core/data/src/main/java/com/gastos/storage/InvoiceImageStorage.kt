@@ -17,6 +17,7 @@ class InvoiceImageStorage @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val imageDir = File(context.filesDir, DIRECTORY_NAME)
+    private val cameraDir = File(context.cacheDir, CAMERA_DIRECTORY_NAME)
 
     suspend fun persist(source: Uri): Uri = withContext(Dispatchers.IO) {
         imageDir.mkdirs()
@@ -56,10 +57,21 @@ class InvoiceImageStorage @Inject constructor(
         return runCatching { fileFor(Uri.parse(uri)).delete() }.getOrDefault(false)
     }
 
+    fun deleteTemporaryCameraCopy(uri: Uri?): Boolean {
+        if (uri == null) return false
+        return runCatching {
+            val fileName = requireNotNull(uri.lastPathSegment) { "URI sin nombre" }
+                .substringAfterLast('/')
+            val file = File(cameraDir, fileName)
+            file.parentFile?.canonicalFile == cameraDir.canonicalFile && file.exists() && file.delete()
+        }.getOrDefault(false)
+    }
+
     private fun fileFor(uri: Uri): File = File(imageDir, requireNotNull(uri.lastPathSegment))
 
     companion object {
         private const val DIRECTORY_NAME = "invoice_images"
+        private const val CAMERA_DIRECTORY_NAME = "camera"
         private val SUPPORTED_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "heic", "heif")
     }
 }
