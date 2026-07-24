@@ -87,4 +87,36 @@ class FinancialQueryResolverTest {
             FinancialQueryResolver.normalizeProductName("  CAFÉ-con leche! ")
         )
     }
+
+    @Test
+    fun `agua matches a complete token but not aguacate`() {
+        assertEquals(true, FinancialQueryResolver.isRelatedProductName("AGUA CONSUM 8L", "agua"))
+        assertEquals(false, FinancialQueryResolver.isRelatedProductName("AGUACATE BANDEJA", "agua"))
+    }
+
+    @Test
+    fun `confirmation selects the only product variant`() {
+        val resolved = FinancialQueryResolver.resolveClarification(
+            answer = "sí",
+            requestedItem = "agua",
+            variants = listOf("AGUA CONSUM 8L")
+        )
+
+        assertEquals("AGUA CONSUM 8L", resolved?.item)
+        assertEquals("exact", resolved?.matchMode)
+    }
+
+    @Test
+    fun `number selects one variant and all keeps group mode`() {
+        val variants = listOf("Café con leche", "Café molido")
+
+        assertEquals(
+            "Café molido",
+            FinancialQueryResolver.resolveClarification("2", "café", variants)?.item
+        )
+        assertEquals(
+            "group",
+            FinancialQueryResolver.resolveClarification("todas", "café", variants)?.matchMode
+        )
+    }
 }

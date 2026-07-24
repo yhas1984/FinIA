@@ -381,6 +381,7 @@ private fun AIMessageBubble(text: String) {
     ) {
         Box(
             modifier = Modifier
+                .fillMaxWidth(0.9f)
                 .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(12.dp)

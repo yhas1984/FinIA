@@ -42,10 +42,21 @@ private data class ProductMatchResult(
     val usedGroupMode: Boolean
 )
 
+private data class PendingProductClarification(
+    val periodo: String,
+    val requestedItem: String,
+    val variants: List<String>
+)
+
 internal data class ResolvedFinancialQuery(
     val queryType: String?,
     val item: String?,
     val matchMode: String?
+)
+
+internal data class ResolvedProductClarification(
+    val item: String,
+    val matchMode: String
 )
 
 internal object FinancialQueryResolver {
@@ -86,6 +97,35 @@ internal object FinancialQueryResolver {
         .replace("[^a-z0-9]+".toRegex(), " ")
         .trim()
         .replace("\\s+".toRegex(), " ")
+
+    fun isRelatedProductName(candidate: String, requestedItem: String): Boolean {
+        val candidateTokens = normalizeProductName(candidate).split(' ').filter(String::isNotBlank)
+        val requestedTokens = normalizeProductName(requestedItem).split(' ').filter(String::isNotBlank)
+        if (requestedTokens.isEmpty() || requestedTokens.size > candidateTokens.size) return false
+        return candidateTokens.windowed(requestedTokens.size).any { it == requestedTokens }
+    }
+
+    fun resolveClarification(
+        answer: String,
+        requestedItem: String,
+        variants: List<String>
+    ): ResolvedProductClarification? {
+        val normalizedAnswer = normalizeProductName(answer)
+        if (normalizedAnswer in setOf("todas", "todos", "todas las variantes", "todos los productos")) {
+            return ResolvedProductClarification(requestedItem, "group")
+        }
+        if (normalizedAnswer in setOf("si", "correcto", "esa", "ese") && variants.size == 1) {
+            return ResolvedProductClarification(variants.single(), "exact")
+        }
+        val number = normalizedAnswer.toIntOrNull()
+        if (number != null && number in 1..variants.size) {
+            return ResolvedProductClarification(variants[number - 1], "exact")
+        }
+        val selected = variants.firstOrNull { variant ->
+            normalizeProductName(variant) == normalizedAnswer
+        } ?: return null
+        return ResolvedProductClarification(selected, "exact")
+    }
 
     private fun inferKnownProduct(question: String?, productNames: List<String>): String? {
         val normalizedQuestion = normalizeProductName(question.orEmpty())
@@ -131,9 +171,24 @@ class ChatbotViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatbotUiState())
     val uiState: StateFlow<ChatbotUiState> = _uiState.asStateFlow()
+    private var pendingProductClarification: PendingProductClarification? = null
 
     fun sendMessage(text: String) {
         if (text.isBlank() || _uiState.value.isProcessing) return
+
+        val pending = pendingProductClarification
+        if (pending != null) {
+            val clarification = FinancialQueryResolver.resolveClarification(
+                answer = text,
+                requestedItem = pending.requestedItem,
+                variants = pending.variants
+            )
+            if (clarification != null) {
+                executeProductClarification(text, pending, clarification)
+                return
+            }
+            pendingProductClarification = null
+        }
 
         _uiState.update {
             it.copy(messages = it.messages + ChatMessage.User(text), isProcessing = true)
@@ -203,6 +258,40 @@ class ChatbotViewModel @Inject constructor(
                         isProcessing = false
                     )
                 }
+            }
+        }
+    }
+
+    private fun executeProductClarification(
+        userAnswer: String,
+        pending: PendingProductClarification,
+        clarification: ResolvedProductClarification
+    ) {
+        pendingProductClarification = null
+        var placeholderIndex = -1
+        _uiState.update {
+            placeholderIndex = it.messages.size + 1
+            it.copy(
+                messages = it.messages + ChatMessage.User(userAnswer) + ChatMessage.AI(""),
+                isProcessing = true
+            )
+        }
+        viewModelScope.launch {
+            val response = executeQuery(
+                queryType = "productos",
+                periodo = pending.periodo,
+                categoria = null,
+                item = clarification.item,
+                matchMode = clarification.matchMode,
+                originalQuestion = userAnswer
+            )
+            _uiState.update { state ->
+                state.copy(
+                    messages = state.messages.toMutableList().apply {
+                        if (placeholderIndex in indices) this[placeholderIndex] = ChatMessage.AI(response)
+                    },
+                    isProcessing = false
+                )
             }
         }
     }
@@ -524,6 +613,11 @@ class ChatbotViewModel @Inject constructor(
                 if (!resolvedItem.isNullOrBlank()) {
                     val matchResult = matchProducts(periodProducts, resolvedItem, resolvedQuery.matchMode)
                     if (matchResult.requiresClarification) {
+                        pendingProductClarification = PendingProductClarification(
+                            periodo = periodo,
+                            requestedItem = resolvedItem,
+                            variants = matchResult.variants
+                        )
                         return buildProductClarification(periodo, resolvedItem, matchResult.variants)
                     }
                     if (matchResult.matches.isEmpty()) {
@@ -596,7 +690,7 @@ class ChatbotViewModel @Inject constructor(
             FinancialQueryResolver.normalizeProductName(it.descripcion) == normalizedItem
         }
         val relatedMatches = products.filter {
-            FinancialQueryResolver.normalizeProductName(it.descripcion).contains(normalizedItem)
+            FinancialQueryResolver.isRelatedProductName(it.descripcion, normalizedItem)
         }
         val relatedVariants = relatedMatches
             .map { it.descripcion.trim() }
@@ -651,8 +745,15 @@ class ChatbotViewModel @Inject constructor(
     }
 
     private fun buildProductClarification(periodo: String, item: String, variants: List<String>): String {
-        val options = variants.take(5).joinToString(", ") { "'${it.trim()}'" }
-        return "No encontré '$item' como producto exacto en $periodo. Sí veo variantes como $options. Dime si quieres solo uno exacto o incluir todas esas variantes."
+        val options = variants.take(5).mapIndexed { index, variant ->
+            "${index + 1}. ${variant.trim()}"
+        }.joinToString("\n")
+        val instruction = if (variants.size == 1) {
+            "¿Te refieres a ese producto? Responde “sí” o escribe su nombre exacto."
+        } else {
+            "Responde con el número, el nombre exacto o “todas”."
+        }
+        return "No encontré “$item” como producto exacto durante $periodo.\n\nEncontré:\n$options\n\n$instruction"
     }
 
     fun startVoiceInput() {
