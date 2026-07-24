@@ -3,6 +3,7 @@ package com.gastos.feature.backup
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
+import com.gastos.domain.model.Income
 import com.gastos.repository.ExchangeRateProvider
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -102,5 +103,67 @@ class SheetsSchemaTest {
         assertEquals(500.0, row[9])
         assertEquals(400.0, row[10])
         assertTrue(row[12] is Double)
+    }
+
+    @Test
+    fun `summary includes converted incomes and expenses`() {
+        val conversion = snapshot()
+        val totals = SheetsSchema.summaryTotals(
+            invoices = listOf(
+                Invoice(
+                    id = 1,
+                    fecha = 1L,
+                    proveedor = "Gasto VES",
+                    tipo = InvoiceType.GASTO,
+                    moneda = "VES",
+                    total = 36_000.0
+                )
+            ),
+            incomes = listOf(
+                Income(
+                    id = 1,
+                    fecha = 1L,
+                    concepto = "Ingreso EUR",
+                    monto = 2_500.0,
+                    moneda = "EUR"
+                ),
+                Income(
+                    id = 2,
+                    fecha = 1L,
+                    concepto = "Ingreso VES",
+                    monto = 200_000.0,
+                    moneda = "VES"
+                )
+            ),
+            conversion = conversion
+        )
+
+        assertEquals(900.0, totals.totalExpenses, 0.001)
+        assertEquals(7_500.0, totals.totalIncomes, 0.001)
+        assertEquals(6_600.0, totals.balance, 0.001)
+        assertEquals(0, totals.pendingConversions)
+        val rows = SheetsSchema.summaryRows("2026-07-24", "EUR", totals)
+        assertEquals("Total Ingresos", rows[4][0])
+        assertEquals(7_500.0, rows[4][1])
+    }
+
+    @Test
+    fun `summary excludes missing rates and counts pending conversions`() {
+        val totals = SheetsSchema.summaryTotals(
+            invoices = emptyList(),
+            incomes = listOf(
+                Income(
+                    id = 3,
+                    fecha = 1L,
+                    concepto = "Ingreso sin tasa",
+                    monto = 500.0,
+                    moneda = "ARS"
+                )
+            ),
+            conversion = snapshot()
+        )
+
+        assertEquals(0.0, totals.totalIncomes, 0.001)
+        assertEquals(1, totals.pendingConversions)
     }
 }

@@ -34,6 +34,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -205,6 +208,7 @@ class SheetsSyncManager @Inject constructor(
                             )
                         )
                     }
+                    refreshSummaryNow(sheets, spreadsheetId)
                 } catch (e: Exception) {
                     SafeLog.e(TAG, "syncExpense FALLO id=${invoice.id}", e)
                 }
@@ -277,6 +281,7 @@ class SheetsSyncManager @Inject constructor(
                     }
                     if (ensureSchemaCurrent(sheetId)) return@withLock
                     upsertRowNow(sheets, sheetId, sheet, keyCol, lastCol, key, values)
+                    refreshSummaryNow(sheets, sheetId)
                 } catch (e: Exception) {
                     SafeLog.e(TAG, "upsert FALLO hoja='$sheet' id=$key", e)
                     SafeLog.d(TAG, "upsert FALLO valores=$values")
@@ -364,6 +369,7 @@ class SheetsSyncManager @Inject constructor(
                     }
                     if (ensureSchemaCurrent(sheetId)) return@withLock
                     deleteRowsNow(sheets, sheetId, sheetKeyCols, key)
+                    refreshSummaryNow(sheets, sheetId)
                 } catch (e: Exception) {
                     SafeLog.e(TAG, "delete FALLO id=$key", e)
                 }
@@ -448,6 +454,25 @@ class SheetsSyncManager @Inject constructor(
         return Sheets.Builder(NetHttpTransport(), GsonFactory.getDefaultInstance(), credential)
             .setApplicationName("FinAI Sync")
             .build()
+    }
+
+    private suspend fun refreshSummaryNow(sheets: Sheets, spreadsheetId: String) {
+        val invoices = invoiceRepository.getAllInvoices().first()
+        val incomes = incomeRepository.getAllIncomes().first()
+        val conversion = conversionSnapshot()
+        val values = SheetsSchema.summaryRows(
+            exportDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()),
+            reportCurrency = conversion.targetCurrency,
+            totals = SheetsSchema.summaryTotals(invoices, incomes, conversion)
+        )
+        sheets.spreadsheets().values()
+            .update(
+                spreadsheetId,
+                "'${SheetsSchema.RESUMEN}'!A1",
+                ValueRange().setValues(values)
+            )
+            .setValueInputOption("RAW")
+            .execute()
     }
 
     private fun conversionSnapshot(): SheetsSchema.ConversionSnapshot =

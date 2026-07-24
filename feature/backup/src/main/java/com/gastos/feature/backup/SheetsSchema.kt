@@ -14,7 +14,7 @@ internal object SheetsSchema {
     const val NOMINAS = "Nóminas"
     const val PRODUCTOS = "Productos"
     const val RESUMEN = "Resumen"
-    const val SCHEMA_VERSION = 3
+    const val SCHEMA_VERSION = 4
 
     const val RECIBIDAS_KEY_COLUMN = "N"
     const val RECIBIDAS_LAST_COLUMN = "T"
@@ -91,6 +91,52 @@ internal object SheetsSchema {
         val appliedRate: Double?,
         val rateTimestampLabel: String,
         val status: String
+    )
+
+    data class SummaryTotals(
+        val totalExpenses: Double,
+        val totalIncomes: Double,
+        val balance: Double,
+        val pendingConversions: Int
+    )
+
+    fun summaryTotals(
+        invoices: List<Invoice>,
+        incomes: List<Income>,
+        conversion: ConversionSnapshot
+    ): SummaryTotals {
+        val expenseAmounts = invoices
+            .filter { it.tipo == com.gastos.domain.model.InvoiceType.GASTO }
+            .map { conversion.convert(it.total, it.moneda) }
+        val invoiceIncomeAmounts = invoices
+            .filter { it.tipo == com.gastos.domain.model.InvoiceType.INGRESO }
+            .map { conversion.convert(it.total, it.moneda) }
+        val incomeAmounts = incomes.map { conversion.convert(it.monto, it.moneda) }
+        val totalExpenses = expenseAmounts.sumOf { it.convertedAmount ?: 0.0 }
+        val totalIncomes = (invoiceIncomeAmounts + incomeAmounts)
+            .sumOf { it.convertedAmount ?: 0.0 }
+        val pending = (expenseAmounts + invoiceIncomeAmounts + incomeAmounts)
+            .count { it.convertedAmount == null }
+        return SummaryTotals(
+            totalExpenses = round2(totalExpenses),
+            totalIncomes = round2(totalIncomes),
+            balance = round2(totalIncomes - totalExpenses),
+            pendingConversions = pending
+        )
+    }
+
+    fun summaryRows(
+        exportDate: String,
+        reportCurrency: String,
+        totals: SummaryTotals
+    ): List<List<Any>> = listOf(
+        listOf("Resumen Financiero (AEAT)"),
+        listOf("Fecha actualización", exportDate),
+        listOf("Moneda informe", reportCurrency),
+        listOf("Total Gastos", totals.totalExpenses),
+        listOf("Total Ingresos", totals.totalIncomes),
+        listOf("Balance", totals.balance),
+        listOf("Conversiones pendientes", totals.pendingConversions)
     )
 
     fun expenseRow(invoice: Invoice, conversion: ConversionSnapshot): List<Any> {
