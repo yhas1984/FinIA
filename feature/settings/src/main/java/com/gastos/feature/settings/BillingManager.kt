@@ -39,12 +39,31 @@ class BillingManager @Inject constructor(
         private const val TAG = "BillingManager"
         private const val PREFS_NAME = "finai_billing"
         private const val KEY_IS_PREMIUM = "is_premium"
+        private const val KEY_PLAY_PREMIUM = "play_premium"
+        private const val KEY_DEBUG_PREMIUM = "debug_premium"
         const val PREMIUM_SKU = "finai_premium"
+
+        internal fun resolvePremium(
+            isDebugBuild: Boolean,
+            playEntitled: Boolean,
+            debugOverride: Boolean
+        ): Boolean = playEntitled || (isDebugBuild && debugOverride)
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private val _isPremium = MutableStateFlow(prefs.getBoolean(KEY_IS_PREMIUM, false))
+    /** `true` solo en builds depurables (debug), `false` en release. */
+    val isDebugBuild: Boolean =
+        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+    private val legacyPremium = prefs.getBoolean(KEY_IS_PREMIUM, false)
+    private var playEntitled: Boolean = prefs.getBoolean(KEY_PLAY_PREMIUM, legacyPremium)
+    private var debugOverride: Boolean = prefs.getBoolean(
+        KEY_DEBUG_PREMIUM,
+        if (isDebugBuild) legacyPremium else false
+    )
+
+    private val _isPremium = MutableStateFlow(resolvePremium(isDebugBuild, playEntitled, debugOverride))
     override val isPremium: StateFlow<Boolean> = _isPremium.asStateFlow()
 
     private val _productDetails = MutableStateFlow<ProductDetails?>(null)
@@ -192,7 +211,7 @@ class BillingManager @Inject constructor(
             purchase.purchaseState == Purchase.PurchaseState.PURCHASED
         ) {
             // Marca premium inmediatamente.
-            setPremium(true)
+            setPlayEntitled(true)
 
             // Confirma la compra para que no sea reembolsada automáticamente.
             if (!purchase.isAcknowledged) {
@@ -233,19 +252,29 @@ class BillingManager @Inject constructor(
             if (owns) {
                 purchasesList.forEach(::handlePurchase)
             } else {
-                setPremium(false)
+                setPlayEntitled(false)
             }
         }
     }
 
-    private fun setPremium(value: Boolean) {
-        prefs.edit().putBoolean(KEY_IS_PREMIUM, value).apply()
-        _isPremium.value = value
+    private fun setPlayEntitled(value: Boolean) {
+        playEntitled = value
+        prefs.edit()
+            .putBoolean(KEY_PLAY_PREMIUM, value)
+            .putBoolean(KEY_IS_PREMIUM, value)
+            .apply()
+        refreshPremiumState()
     }
 
-    /** `true` solo en builds depurables (debug), `false` en release. */
-    val isDebugBuild: Boolean =
-        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    private fun setDebugOverride(value: Boolean) {
+        debugOverride = value
+        prefs.edit().putBoolean(KEY_DEBUG_PREMIUM, value).apply()
+        refreshPremiumState()
+    }
+
+    private fun refreshPremiumState() {
+        _isPremium.value = resolvePremium(isDebugBuild, playEntitled, debugOverride)
+    }
 
     /**
      * SOLO builds debug: fuerza el estado Premium para probar las funciones
@@ -253,7 +282,7 @@ class BillingManager @Inject constructor(
      */
     fun debugSetPremium(value: Boolean) {
         if (!isDebugBuild) return
-        setPremium(value)
+        setDebugOverride(value)
     }
 
     /** Limpia el último error de compra mostrado en UI. */

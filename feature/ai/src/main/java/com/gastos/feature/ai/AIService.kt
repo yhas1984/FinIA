@@ -317,7 +317,13 @@ class AIService @Inject constructor(
             Reglas de acción:
             1. CONSULTA FINANCIERA: si pregunta cuánto gastó, sus ingresos, balance, totales,
                productos comprados, etc.:
-               {"action":"query","query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":null,"item":null}
+               {"action":"query","query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":null,"item":null,"match_mode":"exact|group|auto|null"}
+
+               Reglas extra para productos:
+               - Una pregunta por un producto concreto SIEMPRE usa query_type="productos" y match_mode="exact". Ejemplo: "cuánto gasté en banana" => item="banana".
+               - Si el usuario pide SOLO un producto exacto (ej. "solo café", "únicamente café"), usa query_type="productos", item="café", match_mode="exact".
+               - Si pide una familia o variantes (ej. "todos los cafés", "cafés incluidos con leche"), usa query_type="productos", item="café", match_mode="group".
+               - Si pregunta por un producto concreto, NO uses query_type="balance".
 
             2. REGISTRAR GASTO: si dice que gastó, compró o pagó algo:
                {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0.0,"total":0.0,"moneda":"EUR","fecha":"$today","categoria":"texto"}
@@ -335,7 +341,12 @@ class AIService @Inject constructor(
 
     private fun queryExtractionPrompt(query: String): String = """
         Extrae los parámetros de esta consulta financiera y devuelve SOLO el JSON:
-        {"query_type":"gastos|ingresos|balance|categoria|productos","periodo":"hoy|semana|mes|año","categoria":"texto o null","item":"texto o null"}
+        {"query_type":"gastos|ingresos|balance|categoria|productos","periodo":"hoy|semana|mes|año","categoria":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
+
+        Reglas:
+        - "solo", "únicamente", "exactamente" + producto => match_mode="exact"
+        - "todos", "variantes", "incluidos", "incluyendo" + producto => match_mode="group"
+        - si la consulta es sobre un producto, usa query_type="productos", nunca "balance"
 
         Consulta: "$query"
     """.trimIndent()

@@ -28,11 +28,76 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.text.Normalizer
 import java.util.*
 import javax.inject.Inject
 import com.gastos.domain.model.SUPPORTED_CURRENCIES
 
 private const val TAG = "ChatbotVM"
+
+private data class ProductMatchResult(
+    val matches: List<com.gastos.domain.model.Product>,
+    val variants: List<String>,
+    val requiresClarification: Boolean,
+    val usedGroupMode: Boolean
+)
+
+internal data class ResolvedFinancialQuery(
+    val queryType: String?,
+    val item: String?,
+    val matchMode: String?
+)
+
+internal object FinancialQueryResolver {
+    fun resolve(
+        queryType: String?,
+        item: String?,
+        matchMode: String?,
+        originalQuestion: String?,
+        productNames: List<String>
+    ): ResolvedFinancialQuery {
+        val normalizedType = queryType?.lowercase(Locale.ROOT)
+        val explicitItem = item?.trim()?.takeIf { it.isNotEmpty() }
+        val inferredItem = explicitItem ?: inferKnownProduct(originalQuestion, productNames)
+        val resolvedType = when {
+            inferredItem != null -> "productos"
+            normalizedType in SUPPORTED_QUERY_TYPES -> normalizedType
+            else -> null
+        }
+        val resolvedMode = when {
+            inferredItem == null -> null
+            matchMode.equals("group", ignoreCase = true) -> "group"
+            else -> "exact"
+        }
+        return ResolvedFinancialQuery(resolvedType, inferredItem, resolvedMode)
+    }
+
+    fun normalizeProductName(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFD)
+        .replace("\\p{M}+".toRegex(), "")
+        .lowercase(Locale.ROOT)
+        .replace("[^a-z0-9]+".toRegex(), " ")
+        .trim()
+        .replace("\\s+".toRegex(), " ")
+
+    private fun inferKnownProduct(question: String?, productNames: List<String>): String? {
+        val normalizedQuestion = normalizeProductName(question.orEmpty())
+        if (normalizedQuestion.isBlank()) return null
+        val paddedQuestion = " $normalizedQuestion "
+        return productNames
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .sortedByDescending { normalizeProductName(it).length }
+            .firstOrNull { name ->
+                val normalizedName = normalizeProductName(name)
+                normalizedName.isNotBlank() && paddedQuestion.contains(" $normalizedName ")
+            }
+    }
+
+    private val SUPPORTED_QUERY_TYPES = setOf(
+        "gastos", "ingresos", "balance", "productos", "producto"
+    )
+}
 
 data class ChatbotUiState(
     val messages: List<ChatMessage> = emptyList(),
@@ -105,7 +170,7 @@ class ChatbotViewModel @Inject constructor(
                 // Si hay texto, parseamos el resultado final para ejecutar acciones
                 // (registrar gasto/ingreso/consulta) o, si era chat, ya se mostró en vivo.
                 if (raw.isNotBlank()) {
-                    handleStreamingResult(raw, placeholderIndex)
+                    handleStreamingResult(raw, placeholderIndex, text)
                 } else {
                     _uiState.update {
                         it.copy(
@@ -139,16 +204,24 @@ class ChatbotViewModel @Inject constructor(
      * - Si el modelo respondió en texto plano (chat), lo deja tal cual (ya mostrado).
      * - Si respondió con JSON de acción, ejecuta la acción y reemplaza el mensaje.
      */
-    private suspend fun handleStreamingResult(raw: String, placeholderIndex: Int) {
+    private suspend fun handleStreamingResult(
+        raw: String,
+        placeholderIndex: Int,
+        originalQuestion: String
+    ) {
         val result = aiService.parseStreamingResult(raw)
-        applyAIResult(result, placeholderIndex)
+        applyAIResult(result, placeholderIndex, originalQuestion)
     }
 
     /**
      * Aplica un AIResult reemplazando el mensaje placeholder. Lógica unificada
      * para streaming (chat) y para resultados síncronos (imagen escaneada).
      */
-    private suspend fun applyAIResult(result: AIResult, placeholderIndex: Int) {
+    private suspend fun applyAIResult(
+        result: AIResult,
+        placeholderIndex: Int,
+        originalQuestion: String? = null
+    ) {
         val replacePlaceholder: (String) -> Unit = { text ->
             _uiState.update { state ->
                 state.copy(
@@ -171,8 +244,7 @@ class ChatbotViewModel @Inject constructor(
             // Gasto (factura)
             result.invoice != null && result.invoice!!.tipo != InvoiceType.INGRESO -> {
                 val invoice = result.invoice!!.copy(
-                    driveUploadPending = result.invoice!!.imagenUri != null &&
-                        invoiceDriveService.shouldQueueNewInvoice()
+                    driveUploadPending = result.invoice!!.imagenUri != null
                 )
                 val invoiceId = saveInvoiceUseCase(invoice, result.products)
                 val savedInvoice = invoice.copy(id = invoiceId)
@@ -227,11 +299,21 @@ class ChatbotViewModel @Inject constructor(
                 try {
                     val json = JSONObject(result.queryResult!!)
                     if (json.optString("action") == "query") {
-                        val queryType = json.optString("query_type", "balance")
+                        val queryType = json.optString("query_type")
                         val periodo = json.optString("periodo", "mes")
                         val categoria = json.optString("categoria", "").takeIf { it.isNotEmpty() && it != "null" }
                         val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
-                        replacePlaceholder(executeQuery(queryType, periodo, categoria, item))
+                        val matchMode = json.optString("match_mode", "").takeIf { it.isNotEmpty() && it != "null" }
+                        replacePlaceholder(
+                            executeQuery(
+                                queryType = queryType,
+                                periodo = periodo,
+                                categoria = categoria,
+                                item = item,
+                                matchMode = matchMode,
+                                originalQuestion = originalQuestion
+                            )
+                        )
                     } else {
                         replacePlaceholder(result.message)
                     }
@@ -327,7 +409,14 @@ class ChatbotViewModel @Inject constructor(
         }
     }
 
-    private suspend fun executeQuery(queryType: String, periodo: String, categoria: String?, item: String?): String {
+    private suspend fun executeQuery(
+        queryType: String?,
+        periodo: String,
+        categoria: String?,
+        item: String?,
+        matchMode: String?,
+        originalQuestion: String?
+    ): String {
         val (start, end) = getDateRange(periodo)
         val target = currencyPreference.defaultCurrency.value
         val fmt = java.text.NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-ES")).apply {
@@ -369,9 +458,17 @@ class ChatbotViewModel @Inject constructor(
         val countGastos = periodInvoices.count { it.tipo == InvoiceType.GASTO }
         val countIngresos = periodInvoices.count { it.tipo == InvoiceType.INGRESO } + periodIncomes.size
 
-        SafeLog.d(TAG, "Query: type=$queryType, period=$periodo, gastos=$totalGastos, ingresos=$totalIngresos, products=${periodProducts.size}")
+        val resolvedQuery = FinancialQueryResolver.resolve(
+            queryType = queryType,
+            item = item,
+            matchMode = matchMode,
+            originalQuestion = originalQuestion,
+            productNames = allProducts.map { it.descripcion }
+        )
+        val resolvedQueryType = resolvedQuery.queryType
+        SafeLog.d(TAG, "Query: type=$resolvedQueryType, period=$periodo, gastos=$totalGastos, ingresos=$totalIngresos, products=${periodProducts.size}")
 
-        return when (queryType.lowercase()) {
+        return when (resolvedQueryType) {
             "gastos" -> {
                 val sb = StringBuilder("💰 Gastos del $periodo:\n")
                 sb.append("• Total: ${fmt.format(totalGastos)}\n")
@@ -413,6 +510,32 @@ class ChatbotViewModel @Inject constructor(
                 "📊 Balance del $periodo:\n• Ingresos: ${fmt.format(totalIngresos)} ($countIngresos)\n• Gastos: ${fmt.format(totalGastos)} ($countGastos)\n• Balance: $emoji ${fmt.format(balance)}"
             }
             "productos", "producto" -> {
+                val resolvedItem = resolvedQuery.item
+                if (!resolvedItem.isNullOrBlank()) {
+                    val matchResult = matchProducts(periodProducts, resolvedItem, resolvedQuery.matchMode)
+                    if (matchResult.requiresClarification) {
+                        return buildProductClarification(periodo, resolvedItem, matchResult.variants)
+                    }
+                    if (matchResult.matches.isEmpty()) {
+                        return "📦 No encontré un producto exacto para '$resolvedItem' en el periodo: $periodo"
+                    }
+                    val total = matchResult.matches.sumOf(::convertedProductAmount)
+                    val totalUnits = matchResult.matches.sumOf { it.cantidad }
+                    val variantsText = matchResult.variants.joinToString(", ") {
+                        it.replaceFirstChar { ch -> ch.uppercase() }
+                    }
+                    val intro = if (matchResult.usedGroupMode) {
+                        "📦 Gasto en variantes de '$resolvedItem' durante $periodo:"
+                    } else {
+                        "📦 Gasto en '$resolvedItem' durante $periodo:"
+                    }
+                    return buildString {
+                        appendLine(intro)
+                        appendLine("• Total: ${fmt.format(total)}")
+                        appendLine("• Cantidad: ${if (totalUnits % 1.0 == 0.0) totalUnits.toInt() else totalUnits} uds")
+                        append("• Coincidencias: $variantsText")
+                    }
+                }
                 if (periodProducts.isEmpty()) {
                     return "📦 No hay productos registrados en el periodo: $periodo"
                 }
@@ -444,24 +567,82 @@ class ChatbotViewModel @Inject constructor(
                 sb.toString().trimEnd()
             }
             else -> {
-                // Full summary for unknown query types
-                val balance = totalIngresos - totalGastos
-                val sb = StringBuilder("📊 Resumen completo del $periodo:\n")
-                sb.append("• Ingresos: ${fmt.format(totalIngresos)} ($countIngresos)\n")
-                sb.append("• Gastos: ${fmt.format(totalGastos)} ($countGastos)\n")
-                sb.append("• Balance: ${fmt.format(balance)}\n")
-                if (periodProducts.isNotEmpty()) {
-                    sb.append("• Productos registrados: ${periodProducts.size}\n")
-                    val topProduct = periodProducts.groupBy { it.descripcion.lowercase().trim() }
-                        .mapValues { it.value.sumOf { p -> p.cantidad }.toInt() }
-                        .toList().sortedByDescending { it.second }.firstOrNull()
-                    if (topProduct != null) {
-                        sb.append("• Producto más comprado: ${topProduct.first.replaceFirstChar { it.uppercase() }} (${topProduct.second} uds)")
-                    }
-                }
-                sb.toString().trimEnd()
+                "No entendí del todo la consulta. Pídeme gastos, ingresos, balance o un producto concreto indicando el periodo."
             }
         }
+    }
+
+    private fun matchProducts(
+        products: List<com.gastos.domain.model.Product>,
+        item: String,
+        matchMode: String?
+    ): ProductMatchResult {
+        val normalizedItem = FinancialQueryResolver.normalizeProductName(item)
+        if (normalizedItem.isBlank()) {
+            return ProductMatchResult(emptyList(), emptyList(), requiresClarification = false, usedGroupMode = false)
+        }
+
+        val exactMatches = products.filter {
+            FinancialQueryResolver.normalizeProductName(it.descripcion) == normalizedItem
+        }
+        val relatedMatches = products.filter {
+            FinancialQueryResolver.normalizeProductName(it.descripcion).contains(normalizedItem)
+        }
+        val relatedVariants = relatedMatches
+            .map { it.descripcion.trim() }
+            .distinct()
+            .sortedBy(FinancialQueryResolver::normalizeProductName)
+        val normalizedMode = matchMode?.lowercase(Locale.ROOT)
+
+        return when (normalizedMode) {
+            "group" -> ProductMatchResult(
+                matches = relatedMatches,
+                variants = relatedVariants,
+                requiresClarification = false,
+                usedGroupMode = true
+            )
+            "exact" -> when {
+                exactMatches.isNotEmpty() -> ProductMatchResult(
+                    matches = exactMatches,
+                    variants = exactMatches.map { it.descripcion.trim() }.distinct(),
+                    requiresClarification = false,
+                    usedGroupMode = false
+                )
+                relatedVariants.isNotEmpty() -> ProductMatchResult(
+                    matches = emptyList(),
+                    variants = relatedVariants,
+                    requiresClarification = true,
+                    usedGroupMode = false
+                )
+                else -> ProductMatchResult(emptyList(), emptyList(), false, false)
+            }
+            else -> when {
+                exactMatches.isNotEmpty() -> ProductMatchResult(
+                    matches = exactMatches,
+                    variants = exactMatches.map { it.descripcion.trim() }.distinct(),
+                    requiresClarification = false,
+                    usedGroupMode = false
+                )
+                relatedVariants.size == 1 -> ProductMatchResult(
+                    matches = relatedMatches,
+                    variants = relatedVariants,
+                    requiresClarification = false,
+                    usedGroupMode = true
+                )
+                relatedVariants.size > 1 -> ProductMatchResult(
+                    matches = emptyList(),
+                    variants = relatedVariants,
+                    requiresClarification = true,
+                    usedGroupMode = false
+                )
+                else -> ProductMatchResult(emptyList(), emptyList(), false, false)
+            }
+        }
+    }
+
+    private fun buildProductClarification(periodo: String, item: String, variants: List<String>): String {
+        val options = variants.take(5).joinToString(", ") { "'${it.trim()}'" }
+        return "No encontré '$item' como producto exacto en $periodo. Sí veo variantes como $options. Dime si quieres solo uno exacto o incluir todas esas variantes."
     }
 
     fun startVoiceInput() {
@@ -511,6 +692,7 @@ class ChatbotViewModel @Inject constructor(
             try {
                 val stableUri = invoiceImageStorage.persist(uri)
                 persistedUri = stableUri
+                invoiceImageStorage.deleteTemporaryCameraCopy(uri)
                 val result = aiService.processInvoiceFromImage(stableUri)
                 // Reutilizamos la lógica unificada añadiendo un placeholder AI.
                 var placeholderIndex = -1

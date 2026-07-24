@@ -36,12 +36,10 @@ class InvoiceDriveService @Inject constructor(
 ) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun shouldQueueNewInvoice(): Boolean = premiumStatus.isPremium.value
-
     suspend fun upload(invoice: Invoice): InvoiceDriveUploadResult = withContext(Dispatchers.IO) {
         if (!premiumStatus.isPremium.value) {
             return@withContext InvoiceDriveUploadResult(
-                invoice = invoice,
+                invoice = invoice.copy(driveUploadPending = true),
                 uploaded = false,
                 message = "La copia en Google Drive requiere Premium."
             )
@@ -55,7 +53,7 @@ class InvoiceDriveService @Inject constructor(
         }
         val account = sheetsExportService.getLastSignedInAccount()
             ?: return@withContext InvoiceDriveUploadResult(
-                invoice = invoice,
+                invoice = invoice.copy(driveUploadPending = true),
                 uploaded = false,
                 message = "Conecta tu cuenta Google para subir la foto a Drive."
             )
