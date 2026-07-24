@@ -320,6 +320,7 @@ class AIService @Inject constructor(
                {"action":"query","query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":null,"item":null,"match_mode":"exact|group|auto|null"}
 
                Reglas extra para productos:
+               - Una pregunta por un producto concreto SIEMPRE usa query_type="productos" y match_mode="exact". Ejemplo: "cuánto gasté en banana" => item="banana".
                - Si el usuario pide SOLO un producto exacto (ej. "solo café", "únicamente café"), usa query_type="productos", item="café", match_mode="exact".
                - Si pide una familia o variantes (ej. "todos los cafés", "cafés incluidos con leche"), usa query_type="productos", item="café", match_mode="group".
                - Si pregunta por un producto concreto, NO uses query_type="balance".
