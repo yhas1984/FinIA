@@ -100,6 +100,14 @@
     }
 
     a { color: inherit; }
+    code {
+      color: #bff8ef;
+      background: rgba(51, 214, 198, 0.08);
+      border: 1px solid rgba(51, 214, 198, 0.16);
+      border-radius: 6px;
+      padding: 2px 6px;
+      overflow-wrap: anywhere;
+    }
     .skip-link {
       position: absolute;
       left: 16px;
@@ -436,6 +444,7 @@
       </a>
 
       <div class="top-actions" aria-label="Acciones principales">
+        <a class="pill" href="privacy.html">Política de privacidad</a>
         <a class="pill" href="mailto:ymi2021@gmail.com">Contacto: ymi2021@gmail.com</a>
         <a class="button primary" href="https://play.google.com/store/apps/details?id=com.gastos.ingresos" rel="noopener noreferrer">Ver en Google Play</a>
       </div>
@@ -469,7 +478,8 @@
 
         <div class="hero-actions">
           <a class="button primary" href="https://play.google.com/store/apps/details?id=com.gastos.ingresos" rel="noopener noreferrer">Descargar FinAI</a>
-          <a class="pill" href="#privacidad">Privacidad y control</a>
+          <a class="pill" href="#datos-google">Uso de datos de Google</a>
+          <a class="pill" href="privacy.html">Política de privacidad</a>
           <a class="pill" href="#funciones">Funciones</a>
         </div>
       </article>
@@ -517,6 +527,44 @@
             <h3>Google Drive</h3>
             <p>Subida opcional de fotos de facturas a tu cuenta mediante el permiso limitado <code>drive.file</code>.</p>
           </article>
+        </div>
+      </section>
+
+      <section class="panel section" id="datos-google" aria-labelledby="google-data-title">
+        <h2 id="google-data-title">Por qué FinAI solicita acceso a datos de Google</h2>
+        <p class="hero-copy">
+          FinAI solicita acceso a tu cuenta de Google únicamente cuando eliges conectar Google Sheets o subir una foto a Google Drive.
+          Estos permisos hacen posible las funciones que activas; FinAI no vende tus datos, no los usa para publicidad y no dispone de servidores propios donde copiarlos.
+        </p>
+        <div class="cards">
+          <article class="feature">
+            <div class="icon" aria-hidden="true">👤</div>
+            <h3>Dirección de correo</h3>
+            <p>Se utiliza para identificar y mostrar en FinAI qué cuenta de Google has conectado. No se usa para publicidad ni se comparte con terceros.</p>
+          </article>
+          <article class="feature">
+            <div class="icon" aria-hidden="true">📊</div>
+            <h3>Google Sheets</h3>
+            <p>El permiso <code>spreadsheets</code> permite crear, leer y actualizar hojas. FinAI lo usa para exportar y sincronizar exclusivamente el spreadsheet que creas o vinculas desde la app.</p>
+          </article>
+          <article class="feature">
+            <div class="icon" aria-hidden="true">☁️</div>
+            <h3>Google Drive</h3>
+            <p>El permiso limitado <code>drive.file</code> permite subir fotos de facturas y acceder solo a los archivos que FinAI crea. No permite explorar libremente tu Drive.</p>
+          </article>
+          <article class="feature">
+            <div class="icon" aria-hidden="true">🔒</div>
+            <h3>Tu control</h3>
+            <p>La conexión es opcional. Puedes cerrar la sesión en FinAI o revocar el acceso en tu cuenta de Google en cualquier momento.</p>
+          </article>
+        </div>
+        <div class="legal-box">
+          <p>
+            Consulta los detalles completos en la
+            <a href="https://finai.leadpilot.es/privacy.html">Política de privacidad de FinAI</a>,
+            la misma URL configurada en la pantalla de consentimiento OAuth.
+            También puedes <a href="https://myaccount.google.com/permissions" rel="noopener noreferrer">revisar o revocar los permisos de Google</a> cuando quieras.
+          </p>
         </div>
       </section>
 
