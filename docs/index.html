@@ -3,12 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FinAI — Asistente Financiero con IA</title>
-  <meta name="description" content="FinAI es un asistente financiero personal para Android, desarrollado por Yhas1984, con exportación a Google Sheets y sincronización multimoneda.">
+  <title>FinAI — Asistente Financiero Personal para Android</title>
+  <meta name="description" content="FinAI es una aplicación Android de finanzas personales con asistente IA (Gemini), escaneo de facturas y exportación a Google Sheets.">
   <meta name="author" content="Yhas1984">
   <meta name="application-name" content="FinAI">
   <meta name="developer" content="Yhas1984">
   <meta name="contact" content="ymi2021@gmail.com">
+  <meta property="og:title" content="FinAI — Asistente Financiero Personal">
+  <meta property="og:description" content="Aplicación Android para gestionar gastos, ingresos y facturas con asistente IA.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://finai.leadpilot.es/">
   <link rel="canonical" href="https://finai.leadpilot.es/">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -29,44 +33,64 @@
       border: 1px solid rgba(255,255,255,0.06);
       border-radius: 32px;
       padding: 48px 36px;
-      max-width: 480px;
+      max-width: 540px;
       width: 100%;
-      text-align: center;
     }
     .icon {
       font-size: 48px;
       margin-bottom: 12px;
+      text-align: center;
     }
     h1 {
-      font-size: 2.2em;
+      font-size: 2.4em;
       font-weight: 700;
       background: linear-gradient(90deg, #a78bfa, #60a5fa);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
       margin-bottom: 8px;
+      text-align: center;
     }
-    .subtitle {
+    .tagline {
       font-size: 1em;
-      color: #94a3b8;
-      margin-bottom: 16px;
-      line-height: 1.6;
-    }
-    .owner {
-      display: inline-block;
-      padding: 6px 12px;
-      margin-bottom: 28px;
-      font-size: 0.85em;
       color: #cbd5e1;
-      background: rgba(167,139,250,0.12);
-      border: 1px solid rgba(167,139,250,0.3);
-      border-radius: 999px;
+      margin-bottom: 8px;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .app-name-box {
+      display: block;
+      text-align: center;
+      font-size: 0.85em;
+      color: #94a3b8;
+      margin: 16px 0 28px;
+      padding: 8px 14px;
+      border: 1px dashed rgba(167,139,250,0.4);
+      border-radius: 10px;
+      background: rgba(167,139,250,0.06);
+    }
+    .app-name-box strong { color: #c4b5fd; }
+    .about {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 18px 20px;
+      margin-bottom: 24px;
+      font-size: 0.95em;
+      line-height: 1.6;
+      color: #d1d5db;
+    }
+    .about h2 {
+      color: #a78bfa;
+      font-size: 1.05em;
+      margin-bottom: 8px;
+      font-weight: 600;
     }
     .features {
       display: flex;
       flex-direction: column;
-      gap: 14px;
-      margin-bottom: 32px;
+      gap: 12px;
+      margin-bottom: 28px;
     }
     .feature {
       display: flex;
@@ -75,7 +99,7 @@
       text-align: left;
       padding: 12px 16px;
       background: rgba(255,255,255,0.03);
-      border-radius: 16px;
+      border-radius: 14px;
       border: 1px solid rgba(255,255,255,0.05);
     }
     .feature-icon { font-size: 20px; }
@@ -109,6 +133,7 @@
       margin-top: 28px;
       font-size: 0.8em;
       color: #64748b;
+      text-align: center;
     }
     address {
       font-style: normal;
@@ -131,29 +156,54 @@
 <div class="card">
   <div class="icon">✨</div>
   <h1>FinAI</h1>
-  <p class="subtitle">Tu asistente financiero personal con inteligencia artificial. Controla tus gastos e ingresos de forma inteligente.</p>
-  <p class="owner">Desarrollado por Yhas1984 · <a href="mailto:ymi2021@gmail.com" style="color:#c4b5fd; text-decoration:none;">ymi2021@gmail.com</a></p>
+  <p class="tagline">Asistente Financiero Personal con Inteligencia Artificial</p>
 
-  <div class="features">
+  <p class="app-name-box">
+    <span class="sr-only">Información de marca de la app: </span>
+    <strong>Nombre de la app:</strong> FinAI &middot;
+    <strong>Desarrollador:</strong> Yhas1984 &middot;
+    <strong>Contacto:</strong> <a href="mailto:ymi2021@gmail.com" style="color:#c4b5fd; text-decoration:none;">ymi2021@gmail.com</a>
+  </p>
+
+  <section class="about" aria-labelledby="about-heading">
+    <h2 id="about-heading">¿Qué es FinAI?</h2>
+    <p>
+      <strong>FinAI</strong> es una aplicación para Android que ayuda a particulares y autónomos
+      a registrar, organizar y entender sus gastos, ingresos y facturas. La app incluye un
+      asistente conversacional basado en Google Gemini para introducir movimientos hablando
+      o escribiendo en lenguaje natural, escanear tickets y nóminas con la cámara, y
+      exportar todos los datos a Google Sheets en formato AEAT (España) o personalizado,
+      con conversión automática de divisas a la moneda local del usuario.
+    </p>
+  </section>
+
+  <div class="features" aria-label="Funciones principales">
     <div class="feature">
       <div class="feature-icon">🤖</div>
       <div class="feature-text">
         <strong>Chat con IA</strong>
-        <span>Gemini 3.5 Flash — registro natural de gastos e ingresos</span>
+        <span>Asistente Gemini 3.5 Flash para registrar gastos e ingresos en lenguaje natural.</span>
       </div>
     </div>
     <div class="feature">
       <div class="feature-icon">📷</div>
       <div class="feature-text">
-        <strong>Escanea facturas</strong>
-        <span>Extrae datos automáticamente con la cámara</span>
+        <strong>Escaneo de facturas</strong>
+        <span>Cámara para extraer proveedor, fecha, total, IVA, IRPF y NIF del documento.</span>
       </div>
     </div>
     <div class="feature">
       <div class="feature-icon">📊</div>
       <div class="feature-text">
-        <strong>Exporta a Sheets</strong>
-        <span>Sincronización multimoneda con Google Sheets</span>
+        <strong>Exportación a Google Sheets</strong>
+        <span>Sincronización multimoneda con tu propio spreadsheet, controlada por OAuth.</span>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🎙️</div>
+      <div class="feature-text">
+        <strong>Comandos por voz</strong>
+        <span>Reconocimiento de voz en español para registrar movimientos hablando.</span>
       </div>
     </div>
   </div>
@@ -163,7 +213,7 @@
       <span>📱</span> FinAI en Google Play
     </a>
     <a href="privacy.html">
-      <span>📄</span> Política de Privacidad
+      <span>📄</span> Política de Privacidad de FinAI
     </a>
     <a href="terms.html">
       <span>📑</span> Términos y Condiciones
@@ -177,16 +227,17 @@
   </div>
 
   <div class="footer">
-    <p>&copy; 2026 Yhas1984 · FinAI · Todos los derechos reservados.</p>
+    <p>&copy; 2026 Yhas1984 &middot; <strong>FinAI</strong> &middot; Todos los derechos reservados.</p>
     <address>
       <span class="sr-only">Datos de contacto del propietario de la marca FinAI: </span>
-      Desarrollador: <strong>Yhas1984</strong> ·
+      Marca <strong>FinAI</strong> &middot;
+      Desarrollador <strong>Yhas1984</strong> &middot;
       <a href="mailto:ymi2021@gmail.com" style="color:#94a3b8; text-decoration:underline;">ymi2021@gmail.com</a>
     </address>
     <p style="margin-top:8px;">
-      <a href="privacy.html" style="color:#94a3b8; text-decoration:underline;">Privacidad</a> ·
-      <a href="terms.html" style="color:#94a3b8; text-decoration:underline;">Términos</a> ·
-      <a href="data-deletion.html" style="color:#94a3b8; text-decoration:underline;">Eliminación de datos</a> ·
+      <a href="privacy.html" style="color:#94a3b8; text-decoration:underline;">Privacidad</a> &middot;
+      <a href="terms.html" style="color:#94a3b8; text-decoration:underline;">Términos</a> &middot;
+      <a href="data-deletion.html" style="color:#94a3b8; text-decoration:underline;">Eliminación de datos</a> &middot;
       <a href="mailto:ymi2021@gmail.com" style="color:#94a3b8; text-decoration:underline;">Contacto</a>
     </p>
   </div>
