@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
+import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import com.gastos.extension.SafeLog
 import com.gastos.repository.PremiumStatusProvider
@@ -27,9 +28,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -70,23 +68,22 @@ class SheetsSyncManager @Inject constructor(
         private const val TAG = "SheetsSyncManager"
         private const val PREFS_NAME = "finai_sheets_sync"
         private const val KEY_SHEET_ID = "spreadsheet_id"
+        private const val KEY_SCHEMA_PREFIX = "schema_v2_"
         // Hojas AEAT (España, Orden HAC/773/2019).
-        private const val SHEET_RECIBIDAS = "Facturas Recibidas"
-        private const val SHEET_NOMINAS = "Nóminas"
-        private const val SHEET_PRODUCTOS = "Productos"
+        private const val SHEET_RECIBIDAS = SheetsSchema.RECIBIDAS
+        private const val SHEET_NOMINAS = SheetsSchema.NOMINAS
+        private const val SHEET_PRODUCTOS = SheetsSchema.PRODUCTOS
 
-        // Letra (A1) de la columna de ID de cada hoja. Es SIEMPRE la
-        // última columna con datos, y debe coincidir con las cabeceras
-        // que escribe SheetsExportService:
-        //   Recibidas: 14 cols (A..N) · Nóminas: 9 (A..I) · Productos: 8 (A..H)
-        private const val COL_ID_RECIBIDAS = "N"
-        private const val COL_ID_NOMINAS = "I"
-        private const val COL_ID_PRODUCTOS = "H"
+        // Columnas clave para localizar filas. No tienen por qué ser la
+        // última columna escrita: Recibidas añade el enlace Drive en O y
+        // Productos el ProductID en I.
+        private const val COL_ID_RECIBIDAS = SheetsSchema.RECIBIDAS_KEY_COLUMN
+        private const val COL_ID_NOMINAS = SheetsSchema.NOMINAS_KEY_COLUMN
+        private const val COL_ID_PRODUCTOS = SheetsSchema.PRODUCTOS_PARENT_COLUMN
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = Mutex()
-    private val df = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     /** ¿Hay un sheet vinculado con el que sincronizar? */
@@ -106,38 +103,21 @@ class SheetsSyncManager @Inject constructor(
      * Alta o edición de un gasto. Requiere [Invoice.id] > 0 (el ID real
      * de Room). Columnas AEAT (mismo orden que [SheetsExportService]):
      *   Nº Factura | Fecha | NIF País | NIF Emisor | Emisor | Base |
-     *   IVA % | Cuota | Recargo Eq. | IRPF | Total | Moneda | Notas | ID
+     *   IVA % | Cuota | Recargo Eq. | IRPF | Total | Moneda | Notas |
+     *   ID | Foto Drive
      */
     fun upsertExpense(invoice: Invoice) {
+        if (invoice.tipo != InvoiceType.GASTO) return
         upsertRow(
             SHEET_RECIBIDAS,
             COL_ID_RECIBIDAS,
+            SheetsSchema.RECIBIDAS_LAST_COLUMN,
             invoice.id,
             expenseValues(invoice)
         )
     }
 
-    private fun expenseValues(invoice: Invoice): List<Any> {
-        val base = if (invoice.ivaPercent > 0) invoice.total / (1 + invoice.ivaPercent / 100.0) else invoice.total
-        val cuota = invoice.total - base
-        val numFactura = extractFromOcr(invoice.ocrRawText, "numero_factura")
-        return listOf(
-            numFactura,
-            df.format(Date(invoice.fecha)),
-            invoice.paisCodigo,
-            invoice.nifEmisor ?: "",
-            invoice.proveedor,
-            round2(base),
-            invoice.ivaPercent,
-            round2(cuota),
-            0.0,
-            invoice.irpfPercent,
-            invoice.total,
-            invoice.moneda,
-            invoice.notas ?: "",
-            invoice.id
-        )
-    }
+    private fun expenseValues(invoice: Invoice): List<Any> = SheetsSchema.expenseRow(invoice)
 
     /**
      * Alta o edición de un ingreso/nómina. Requiere [Income.id] > 0.
@@ -146,42 +126,12 @@ class SheetsSyncManager @Inject constructor(
      */
     fun upsertIncome(income: Income) {
         upsertRow(
-            SHEET_NOMINAS, COL_ID_NOMINAS, income.id,
-            listOf(
-                income.fuente ?: income.concepto,         // Empresa
-                df.format(Date(income.fecha)),            // Fecha
-                income.totalDevengado,                    // Devengado
-                income.totalNeto,                         // Líquido
-                income.irpfPercent,                       // IRPF %
-                "",                                       // Base Cot. (no capturada)
-                "",                                       // Seg. Social (no capturada)
-                income.moneda,                            // Moneda
-                income.id                                 // ID (clave de sync)
-            )
+            SHEET_NOMINAS,
+            COL_ID_NOMINAS,
+            SheetsSchema.NOMINAS_LAST_COLUMN,
+            income.id,
+            SheetsSchema.incomeRow(income)
         )
-    }
-
-    /**
-     * Añade una fila por cada producto asociado a una factura (gasto).
-     * Los productos son append-only: nunca se editan sueltos desde la
-     * app; si se borra la factura, [deleteExpense] elimina sus filas.
-     * Cada producto debe llevar su [Product.invoiceId] real (> 0).
-     * Columnas: Descripción | Cantidad | P.U. | Subtotal | IVA % |
-     * Total + IVA | Factura (Proveedor) | InvoiceID
-     */
-    fun syncProducts(products: List<Product>, proveedor: String) {
-        if (products.isEmpty()) return
-        products.forEach { p ->
-            val totalConIva = p.subtotal * (1 + p.ivaPercent / 100.0)
-            appendRow(
-                SHEET_PRODUCTOS,
-                listOf(
-                    p.descripcion, p.cantidad, p.precioUnitario,
-                    p.subtotal, p.ivaPercent, round2(totalConIva), proveedor,
-                    p.invoiceId
-                )
-            )
-        }
     }
 
     /**
@@ -190,7 +140,11 @@ class SheetsSyncManager @Inject constructor(
      * ni compite con otros upserts lanzados al mismo tiempo.
      */
     fun syncExpense(invoice: Invoice, products: List<Product>) {
-        if (!premiumStatus.isPremium.value || getStoredId().isBlank()) return
+        if (
+            invoice.tipo != InvoiceType.GASTO ||
+            !premiumStatus.isPremium.value ||
+            getStoredId().isBlank()
+        ) return
         val spreadsheetId = getStoredId()
         scope.launch {
             syncMutex.withLock {
@@ -200,11 +154,13 @@ class SheetsSyncManager @Inject constructor(
                         SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
                         return@withLock
                     }
+                    ensureCurrentHeaders(sheets, spreadsheetId)
                     upsertRowNow(
                         sheets,
                         spreadsheetId,
                         SHEET_RECIBIDAS,
                         COL_ID_RECIBIDAS,
+                        SheetsSchema.RECIBIDAS_LAST_COLUMN,
                         invoice.id,
                         expenseValues(invoice)
                     )
@@ -215,21 +171,11 @@ class SheetsSyncManager @Inject constructor(
                         invoice.id
                     )
                     products.forEach { product ->
-                        val totalConIva = product.subtotal * (1 + product.ivaPercent / 100.0)
                         appendRowNow(
                             sheets,
                             spreadsheetId,
                             SHEET_PRODUCTOS,
-                            listOf(
-                                product.descripcion,
-                                product.cantidad,
-                                product.precioUnitario,
-                                product.subtotal,
-                                product.ivaPercent,
-                                round2(totalConIva),
-                                invoice.proveedor,
-                                invoice.id
-                            )
+                            SheetsSchema.productRow(product, invoice.proveedor)
                         )
                     }
                 } catch (e: Exception) {
@@ -262,54 +208,6 @@ class SheetsSyncManager @Inject constructor(
     // Mecánica de sync (upsert / append / delete)
     // ------------------------------------------------------------------
 
-    /** Redondea a 2 decimales (base imponible / cuota IVA / total+IVA). */
-    private fun round2(v: Double): Double = Math.round(v * 100.0) / 100.0
-
-    /**
-     * Extrae un campo del JSON crudo guardado en [Invoice.ocrRawText]
-     * cuando el AIService escaneó el documento.
-     */
-    private fun extractFromOcr(ocrRawText: String?, field: String): String {
-        if (ocrRawText.isNullOrBlank()) return ""
-        return try {
-            val jsonMatch = Regex("""\{[\s\S]*\}""").find(ocrRawText)?.value ?: return ""
-            val json = org.json.JSONObject(jsonMatch)
-            json.optString(field, "")
-        } catch (e: Exception) {
-            ""
-        }
-    }
-
-    /** Añade [values] como nueva fila al final de [sheet]. */
-    private fun appendRow(sheet: String, values: List<Any>) {
-        if (!premiumStatus.isPremium.value) {
-            SafeLog.d(TAG, "sync OMITIDO — Sheets es función Premium")
-            return
-        }
-        val sheetId = getStoredId()
-        if (sheetId.isBlank()) {
-            SafeLog.w(TAG, "sync OMITIDO — sheetId vacío")
-            return
-        }
-        // Los valores contienen importes: solo se loggean en builds de debug.
-        SafeLog.d(TAG, "append → hoja='$sheet' valores=$values sheetId=${sheetId.take(8)}…")
-        scope.launch {
-            syncMutex.withLock {
-                try {
-                    val sheets = getSheetsService()
-                    if (sheets == null) {
-                        SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
-                        return@withLock
-                    }
-                    appendRowNow(sheets, sheetId, sheet, values)
-                } catch (e: Exception) {
-                    SafeLog.e(TAG, "append FALLO hoja='$sheet'", e)
-                    SafeLog.d(TAG, "append FALLO valores=$values")
-                }
-            }
-        }
-    }
-
     private fun appendRowNow(sheets: Sheets, spreadsheetId: String, sheet: String, values: List<Any>) {
         val response = sheets.spreadsheets().values()
             .append(spreadsheetId, "'$sheet'!A:A", ValueRange().setValues(listOf(values)))
@@ -322,10 +220,16 @@ class SheetsSyncManager @Inject constructor(
     /**
      * Upsert por ID: busca en la columna [keyCol] una fila cuyo valor
      * coincida con [key]; si existe la sobrescribe con [values], si no
-     * la añade al final. [keyCol] es también la última columna del
-     * rango a escribir (el ID es la última columna en las tres hojas).
+     * la añade al final. [lastCol] delimita el rango escrito de forma
+     * independiente para poder añadir columnas después de la clave.
      */
-    private fun upsertRow(sheet: String, keyCol: String, key: Long, values: List<Any>) {
+    private fun upsertRow(
+        sheet: String,
+        keyCol: String,
+        lastCol: String,
+        key: Long,
+        values: List<Any>
+    ) {
         if (!premiumStatus.isPremium.value) {
             SafeLog.d(TAG, "sync OMITIDO — Sheets es función Premium")
             return
@@ -344,7 +248,8 @@ class SheetsSyncManager @Inject constructor(
                         SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
                         return@withLock
                     }
-                    upsertRowNow(sheets, sheetId, sheet, keyCol, key, values)
+                    ensureCurrentHeaders(sheets, sheetId)
+                    upsertRowNow(sheets, sheetId, sheet, keyCol, lastCol, key, values)
                 } catch (e: Exception) {
                     SafeLog.e(TAG, "upsert FALLO hoja='$sheet' id=$key", e)
                     SafeLog.d(TAG, "upsert FALLO valores=$values")
@@ -358,6 +263,7 @@ class SheetsSyncManager @Inject constructor(
         spreadsheetId: String,
         sheet: String,
         keyCol: String,
+        lastCol: String,
         key: Long,
         values: List<Any>
     ) {
@@ -366,7 +272,7 @@ class SheetsSyncManager @Inject constructor(
             sheets.spreadsheets().values()
                 .update(
                     spreadsheetId,
-                    "'$sheet'!A$existingRow:$keyCol$existingRow",
+                    "'$sheet'!A$existingRow:$lastCol$existingRow",
                     ValueRange().setValues(listOf(values))
                 )
                 .setValueInputOption("RAW")
@@ -375,6 +281,25 @@ class SheetsSyncManager @Inject constructor(
         } else {
             appendRowNow(sheets, spreadsheetId, sheet, values)
         }
+    }
+
+    /** Actualiza una sola vez las cabeceras de un sheet ya vinculado. */
+    private fun ensureCurrentHeaders(sheets: Sheets, spreadsheetId: String) {
+        val preferenceKey = "$KEY_SCHEMA_PREFIX$spreadsheetId"
+        if (prefs.getBoolean(preferenceKey, false)) return
+
+        val headers = mapOf(
+            SHEET_RECIBIDAS to SheetsSchema.recibidasHeaders,
+            SHEET_NOMINAS to SheetsSchema.nominasHeaders,
+            SHEET_PRODUCTOS to SheetsSchema.productosHeaders
+        )
+        headers.forEach { (sheet, values) ->
+            sheets.spreadsheets().values()
+                .update(spreadsheetId, "'$sheet'!A1", ValueRange().setValues(listOf(values)))
+                .setValueInputOption("RAW")
+                .execute()
+        }
+        prefs.edit().putBoolean(preferenceKey, true).apply()
     }
 
     /**

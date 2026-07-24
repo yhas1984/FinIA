@@ -125,8 +125,8 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
 /**
  * Migration 4 → 5: mueve los ingresos legacy que aún vivían en `invoices`
  * a su tabla definitiva. Las líneas asociadas se conservan como texto en
- * notas antes de borrar la factura; el borrado limpia después los productos
- * mediante la FK ON DELETE CASCADE.
+ * notas antes de borrar la factura. Las líneas se eliminan explícitamente
+ * porque SQLite puede tener las FK desactivadas durante una migración manual.
  */
 val MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(db: SupportSQLiteDatabase) {
@@ -161,7 +161,27 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
             WHERE i.`tipo` = 'INGRESO'
             """.trimIndent()
         )
+        db.execSQL(
+            """
+            DELETE FROM `products`
+            WHERE `invoiceId` IN (
+                SELECT `id` FROM `invoices` WHERE `tipo` = 'INGRESO'
+            )
+            """.trimIndent()
+        )
         db.execSQL("DELETE FROM `invoices` WHERE `tipo` = 'INGRESO'")
+    }
+}
+
+/**
+ * Migration 5 -> 6: metadatos de la copia Premium de cada factura en Drive.
+ * Las filas existentes no se marcan como pendientes para evitar un backfill.
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE invoices ADD COLUMN driveFileId TEXT")
+        db.execSQL("ALTER TABLE invoices ADD COLUMN driveWebViewLink TEXT")
+        db.execSQL("ALTER TABLE invoices ADD COLUMN driveUploadPending INTEGER NOT NULL DEFAULT 0")
     }
 }
 
@@ -177,7 +197,13 @@ object AppModule {
             AppDatabase::class.java,
             AppDatabase.DATABASE_NAME
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(
+                MIGRATION_1_2,
+                MIGRATION_2_3,
+                MIGRATION_3_4,
+                MIGRATION_4_5,
+                MIGRATION_5_6
+            )
             .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()
     }
