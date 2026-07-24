@@ -129,12 +129,7 @@ class SheetsExportService @Inject constructor(
         val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
 
         val spreadsheetId: String
-        val sheetTitles = listOf(
-            SheetsSchema.RECIBIDAS,
-            SheetsSchema.NOMINAS,
-            SheetsSchema.PRODUCTOS,
-            SheetsSchema.RESUMEN
-        )
+        val sheetTitles = listOf("Facturas Recibidas", "Nóminas", "Productos", "Resumen")
         if (existingSpreadsheetId.isNotBlank()) {
             // Reutilizar spreadsheet existente — limpiar hojas y reescribir.
             spreadsheetId = existingSpreadsheetId
@@ -183,19 +178,71 @@ class SheetsExportService @Inject constructor(
      * Escribe la hoja "Facturas Recibidas" (gastos del usuario como
      * receptor) con columnas AEAT: Nº Factura, Fecha (dd/mm/yyyy),
      * NIF País, NIF Emisor, Base Imponible, Tipo IVA, Cuota IVA,
-     * Recargo Eq., IRPF, Total, Moneda, Notas, el ID estable de Room y
-     * el enlace a la foto Premium guardada en Drive.
+     * Recargo Eq., IRPF, Total, Moneda, Notas y, como ÚLTIMA columna,
+     * el "ID" del registro en Room (clave para el sync upsert/delete
+     * de [SheetsSyncManager]).
      *
      * Base / cuota se CALCULAN aquí en el export (sin migration de
      * Room): base = total / (1 + iva%/100); cuota = total - base.
      */
     private fun writeRecibidas(sheets: Sheets, id: String, recibidas: List<Invoice>) {
-        val values = mutableListOf<List<Any>>(SheetsSchema.recibidasHeaders)
-        values.addAll(recibidas.map(SheetsSchema::expenseRow))
+        val values = mutableListOf<List<Any>>(
+            listOf(
+                "Nº Factura", "Fecha", "NIF País", "NIF Emisor",
+                "Emisor (Razón Social)",
+                "Base Imponible", "Tipo IVA", "Cuota IVA",
+                "Recargo Eq.", "IRPF", "Total", "Moneda", "Notas",
+                "ID"
+            )
+        )
+        val df = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        recibidas.forEach { inv ->
+            val base = if (inv.ivaPercent > 0) inv.total / (1 + inv.ivaPercent / 100.0) else inv.total
+            val cuota = inv.total - base
+            // Nº Factura: se extrae del JSON crudo guardado en ocrRawText
+            // por el AIService cuando se escaneó la factura. Sin Room
+            // migration: número viviente en ocrRawText.
+            val numFactura = extractFromOcr(inv.ocrRawText, "numero_factura")
+                .ifBlank { "" }
+            values.add(
+                listOf(
+                    numFactura,
+                    df.format(Date(inv.fecha)),
+                    inv.paisCodigo,
+                    inv.nifEmisor ?: "",
+                    inv.proveedor,  // Emisor (Razón Social)
+                    round2(base),
+                    inv.ivaPercent,
+                    round2(cuota),
+                    0.0,  // Recargo Eq.: no se captura aún
+                    inv.irpfPercent,
+                    inv.total,
+                    inv.moneda,
+                    inv.notas ?: "",
+                    inv.id
+                )
+            )
+        }
         sheets.spreadsheets().values()
-            .update(id, "'${SheetsSchema.RECIBIDAS}'!A1", ValueRange().setValues(values))
+            .update(id, "'Facturas Recibidas'!A1", ValueRange().setValues(values))
             .setValueInputOption("RAW")
             .execute()
+    }
+
+    /**
+     * Extrae un campo del JSON crudo guardado en [Invoice.ocrRawText] /
+     * parte de [Income.notas] cuando el AIService escaneó el documento.
+     * Devuelve "" si ocrRawText no es JSON válido o el campo no existe.
+     */
+    private fun extractFromOcr(ocrRawText: String?, field: String): String {
+        if (ocrRawText.isNullOrBlank()) return ""
+        return try {
+            val jsonMatch = Regex("""\{[\s\S]*\}""").find(ocrRawText)?.value ?: return ""
+            val json = org.json.JSONObject(jsonMatch)
+            json.optString(field, "").ifBlank { "" }
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     // (Facturas Expedidas retirada — el usuario no genera facturas emitidas)
@@ -206,10 +253,31 @@ class SheetsExportService @Inject constructor(
      * el "ID" del ingreso en Room (clave del sync upsert/delete).
      */
     private fun writeNominas(sheets: Sheets, id: String, nominas: List<Income>) {
-        val values = mutableListOf<List<Any>>(SheetsSchema.nominasHeaders)
-        values.addAll(nominas.map(SheetsSchema::incomeRow))
+        val values = mutableListOf<List<Any>>(
+            listOf(
+                "Empresa", "Fecha", "Devengado", "Líquido",
+                "IRPF %", "Base Cot.", "Seg. Social", "Moneda",
+                "ID"
+            )
+        )
+        val df = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        nominas.forEach { inc ->
+            values.add(
+                listOf(
+                    inc.fuente ?: inc.concepto,
+                    df.format(Date(inc.fecha)),
+                    inc.totalDevengado,
+                    inc.totalNeto,
+                    inc.irpfPercent,
+                    "",   // base cotización no capturada
+                    "",   // Seguridad Social no capturada
+                    inc.moneda,
+                    inc.id
+                )
+            )
+        }
         sheets.spreadsheets().values()
-            .update(id, "'${SheetsSchema.NOMINAS}'!A1", ValueRange().setValues(values))
+            .update(id, "Nóminas!A1", ValueRange().setValues(values))
             .setValueInputOption("RAW")
             .execute()
     }
@@ -241,21 +309,36 @@ class SheetsExportService @Inject constructor(
         products: List<Product>,
         invoices: List<Invoice>
     ) {
-        val values = mutableListOf<List<Any>>(SheetsSchema.productosHeaders)
-        val invMap = invoices
-            .filter { it.tipo == InvoiceType.GASTO }
-            .associate { it.id to it.proveedor }
-        values.addAll(
-            products.mapNotNull { product ->
-                val provider = invMap[product.invoiceId] ?: return@mapNotNull null
-                SheetsSchema.productRow(product, provider)
-            }
+        val values = mutableListOf<List<Any>>(
+            listOf("Descripción", "Cantidad", "Precio Unitario", "Subtotal",
+                   "IVA %", "Total + IVA", "Factura (Proveedor)", "InvoiceID")
         )
+        // Mapa idFactura -> proveedor para enriquecer.
+        val invMap = invoices.associate { it.id to it.proveedor }
+        products.forEach { p ->
+            val totalConIva = p.subtotal * (1 + p.ivaPercent / 100.0)
+            values.add(
+                listOf(
+                    p.descripcion,
+                    p.cantidad,
+                    p.precioUnitario,
+                    p.subtotal,
+                    p.ivaPercent,
+                    round2(totalConIva),
+                    invMap[p.invoiceId] ?: "",
+                    p.invoiceId
+                )
+            )
+        }
         sheets.spreadsheets().values()
-            .update(id, "'${SheetsSchema.PRODUCTOS}'!A1", ValueRange().setValues(values))
+            .update(id, "Productos!A1", ValueRange().setValues(values))
             .setValueInputOption("RAW")
             .execute()
     }
+
+    /** Redondea a 2 decimales (para base imponible / cuota IVA). */
+    private fun round2(v: Double): Double =
+        Math.round(v * 100.0) / 100.0
 
     /**
      * Limpia el contenido de las hojas indicadas y, además, resetea los
@@ -389,38 +472,38 @@ class SheetsExportService @Inject constructor(
         //    H(IRPF=7),I(total=8) — Nóminas C(devengado=2),D(líquido=3) —
         //    Productos B,C,D,E = 1..4
         val numericColumns = mapOf(
-            SheetsSchema.RECIBIDAS to listOf(5..5, 6..6, 7..7, 8..8, 9..9, 10..10),
-            SheetsSchema.NOMINAS to listOf(2..2, 3..3, 4..4),
-            SheetsSchema.PRODUCTOS to listOf(1..1, 2..2, 3..3, 4..4, 5..5)
+            "Facturas Recibidas" to listOf(5..5, 6..6, 7..7, 8..8, 9..9, 10..10),
+            "Nóminas" to listOf(2..2, 3..3),
+            "Productos" to listOf(1..1, 2..2, 3..3, 4..4, 5..5)
         )
-        numericColumns.forEach { (title, ranges) ->
-            val sheetId = sheetIdByTitle[title] ?: return@forEach
-            ranges.forEach { colRange ->
-                requests.add(
-                    Request().setRepeatCell(
-                        RepeatCellRequest()
-                            .setFields("userEnteredFormat.numberFormat")
-                            .setRange(
-                                com.google.api.services.sheets.v4.model.GridRange()
-                                    .setSheetId(sheetId)
-                                    .setStartRowIndex(1)
-                                    .setStartColumnIndex(colRange.first)
-                                    .setEndColumnIndex(colRange.last + 1)
-                            )
-                            .setCell(
-                                com.google.api.services.sheets.v4.model.CellData()
-                                    .setUserEnteredFormat(
-                                        CellFormat().setNumberFormat(
-                                            NumberFormat()
-                                                .setType("NUMBER")
-                                                .setPattern("#,##0.00")
-                                        )
+    numericColumns.forEach { (title, ranges) ->
+        val sheetId = sheetIdByTitle[title] ?: return@forEach
+        ranges.forEach { colRange ->
+            requests.add(
+                Request().setRepeatCell(
+                    RepeatCellRequest()
+                        .setFields("userEnteredFormat.numberFormat")
+                        .setRange(
+                            com.google.api.services.sheets.v4.model.GridRange()
+                                .setSheetId(sheetId)
+                                .setStartRowIndex(1)
+                                .setStartColumnIndex(colRange.first)
+                                .setEndColumnIndex(colRange.last + 1)
+                        )
+                        .setCell(
+                            com.google.api.services.sheets.v4.model.CellData()
+                                .setUserEnteredFormat(
+                                    CellFormat().setNumberFormat(
+                                        NumberFormat()
+                                            .setType("NUMBER")
+                                            .setPattern("#,##0.00")
                                     )
-                            )
-                    )
+                                )
+                        )
                 )
-            }
+            )
         }
+    }
 
         if (requests.isNotEmpty()) {
             sheets.spreadsheets().batchUpdate(
