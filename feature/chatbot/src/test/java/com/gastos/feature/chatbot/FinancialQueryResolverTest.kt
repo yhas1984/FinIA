@@ -6,6 +6,22 @@ import org.junit.Test
 
 class FinancialQueryResolverTest {
     @Test
+    fun `null or invalid period defaults to month`() {
+        assertEquals("mes", FinancialQueryResolver.normalizePeriod(null))
+        assertEquals("mes", FinancialQueryResolver.normalizePeriod("null"))
+        assertEquals("mes", FinancialQueryResolver.normalizePeriod(""))
+        assertEquals("mes", FinancialQueryResolver.normalizePeriod("desconocido"))
+    }
+
+    @Test
+    fun `period normalization keeps supported values`() {
+        assertEquals("hoy", FinancialQueryResolver.normalizePeriod("hoy"))
+        assertEquals("semana", FinancialQueryResolver.normalizePeriod("esta semana"))
+        assertEquals("mes", FinancialQueryResolver.normalizePeriod("este mes"))
+        assertEquals("año", FinancialQueryResolver.normalizePeriod("año"))
+    }
+
+    @Test
     fun `item takes precedence over general expenses query`() {
         val resolved = FinancialQueryResolver.resolve(
             queryType = "gastos",
