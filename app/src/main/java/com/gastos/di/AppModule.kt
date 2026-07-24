@@ -185,6 +185,23 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `chat_messages` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `role` TEXT NOT NULL,
+                `visibleText` TEXT NOT NULL,
+                `contextText` TEXT,
+                `includeInContext` INTEGER NOT NULL DEFAULT 1,
+                `createdAt` INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
@@ -202,7 +219,8 @@ object AppModule {
                 MIGRATION_2_3,
                 MIGRATION_3_4,
                 MIGRATION_4_5,
-                MIGRATION_5_6
+                MIGRATION_5_6,
+                MIGRATION_6_7
             )
             .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()
@@ -225,4 +243,8 @@ object AppModule {
     @Provides
     @Singleton
     fun provideCountryFiscalConfigDao(database: AppDatabase): CountryFiscalConfigDao = database.countryFiscalConfigDao()
+
+    @Provides
+    @Singleton
+    fun provideChatMessageDao(database: AppDatabase): ChatMessageDao = database.chatMessageDao()
 }

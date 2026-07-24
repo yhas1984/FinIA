@@ -9,6 +9,7 @@ import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
+import com.gastos.domain.model.ChatMessageRecord
 import com.gastos.extension.SafeLog
 import com.gastos.repository.CountryFiscalConfigRepository
 import com.google.ai.client.generativeai.Chat
@@ -134,6 +135,22 @@ class AIService @Inject constructor(
         chatMutex.withLock {
             chatHistory.clear()
             rebuildSession()
+        }
+    }
+
+    suspend fun replaceChatHistory(messages: List<ChatMessageRecord>) {
+        chatMutex.withLock {
+            chatHistory.clear()
+            buildChatContents(messages, maxHistoryTurns).forEach { chatHistory.add(it) }
+            rebuildSession()
+        }
+    }
+
+    internal fun buildChatContents(messages: List<ChatMessageRecord>, limitTurns: Int): List<com.google.ai.client.generativeai.type.Content> {
+        return selectContextMessages(messages, limitTurns).map { message ->
+            content(role = message.role) {
+                text((message.contextText ?: message.visibleText).trim())
+            }
         }
     }
 
