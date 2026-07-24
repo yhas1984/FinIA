@@ -9,7 +9,12 @@ import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import com.gastos.extension.SafeLog
+import com.gastos.repository.CurrencyPreference
+import com.gastos.repository.ExchangeRateProvider
+import com.gastos.repository.IncomeRepository
+import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.PremiumStatusProvider
+import com.gastos.repository.ProductRepository
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.javanet.NetHttpTransport
@@ -25,6 +30,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -62,13 +68,19 @@ import javax.inject.Singleton
 @Singleton
 class SheetsSyncManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val premiumStatus: PremiumStatusProvider
+    private val premiumStatus: PremiumStatusProvider,
+    private val sheetsExportService: SheetsExportService,
+    private val invoiceRepository: InvoiceRepository,
+    private val incomeRepository: IncomeRepository,
+    private val productRepository: ProductRepository,
+    private val exchangeRateProvider: ExchangeRateProvider,
+    private val currencyPreference: CurrencyPreference
 ) {
     companion object {
         private const val TAG = "SheetsSyncManager"
         private const val PREFS_NAME = "finai_sheets_sync"
         private const val KEY_SHEET_ID = "spreadsheet_id"
-        private const val KEY_SCHEMA_PREFIX = "schema_v2_"
+        private const val KEY_SCHEMA_PREFIX = "schema_v${SheetsSchema.SCHEMA_VERSION}_"
         // Hojas AEAT (España, Orden HAC/773/2019).
         private const val SHEET_RECIBIDAS = SheetsSchema.RECIBIDAS
         private const val SHEET_NOMINAS = SheetsSchema.NOMINAS
@@ -89,8 +101,17 @@ class SheetsSyncManager @Inject constructor(
     /** ¿Hay un sheet vinculado con el que sincronizar? */
     fun isEnabled(): Boolean = getStoredId().isNotBlank()
 
-    fun setSpreadsheetId(id: String) { prefs.edit().putString(KEY_SHEET_ID, id).apply() }
-    fun clearSpreadsheetId() { prefs.edit().remove(KEY_SHEET_ID).apply() }
+    fun setSpreadsheetId(id: String) {
+        prefs.edit()
+            .putString(KEY_SHEET_ID, id)
+            .putBoolean(schemaPreferenceKey(id), true)
+            .apply()
+    }
+
+    fun clearSpreadsheetId() {
+        val currentId = getStoredId()
+        prefs.edit().remove(KEY_SHEET_ID).remove(schemaPreferenceKey(currentId)).apply()
+    }
 
     /** Expone el ID del sheet vinculado. */
     fun getStoredId(): String = prefs.getString(KEY_SHEET_ID, "") ?: ""
@@ -117,7 +138,8 @@ class SheetsSyncManager @Inject constructor(
         )
     }
 
-    private fun expenseValues(invoice: Invoice): List<Any> = SheetsSchema.expenseRow(invoice)
+    private fun expenseValues(invoice: Invoice): List<Any> =
+        SheetsSchema.expenseRow(invoice, conversionSnapshot())
 
     /**
      * Alta o edición de un ingreso/nómina. Requiere [Income.id] > 0.
@@ -130,7 +152,7 @@ class SheetsSyncManager @Inject constructor(
             COL_ID_NOMINAS,
             SheetsSchema.NOMINAS_LAST_COLUMN,
             income.id,
-            SheetsSchema.incomeRow(income)
+            SheetsSchema.incomeRow(income, conversionSnapshot())
         )
     }
 
@@ -154,7 +176,7 @@ class SheetsSyncManager @Inject constructor(
                         SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
                         return@withLock
                     }
-                    ensureCurrentHeaders(sheets, spreadsheetId)
+                    if (ensureSchemaCurrent(spreadsheetId)) return@withLock
                     upsertRowNow(
                         sheets,
                         spreadsheetId,
@@ -175,7 +197,12 @@ class SheetsSyncManager @Inject constructor(
                             sheets,
                             spreadsheetId,
                             SHEET_PRODUCTOS,
-                            SheetsSchema.productRow(product, invoice.proveedor)
+                            SheetsSchema.productRow(
+                                product = product,
+                                provider = invoice.proveedor,
+                                originalCurrency = invoice.moneda,
+                                conversion = conversionSnapshot()
+                            )
                         )
                     }
                 } catch (e: Exception) {
@@ -248,7 +275,7 @@ class SheetsSyncManager @Inject constructor(
                         SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
                         return@withLock
                     }
-                    ensureCurrentHeaders(sheets, sheetId)
+                    if (ensureSchemaCurrent(sheetId)) return@withLock
                     upsertRowNow(sheets, sheetId, sheet, keyCol, lastCol, key, values)
                 } catch (e: Exception) {
                     SafeLog.e(TAG, "upsert FALLO hoja='$sheet' id=$key", e)
@@ -283,23 +310,30 @@ class SheetsSyncManager @Inject constructor(
         }
     }
 
-    /** Actualiza una sola vez las cabeceras de un sheet ya vinculado. */
-    private fun ensureCurrentHeaders(sheets: Sheets, spreadsheetId: String) {
-        val preferenceKey = "$KEY_SCHEMA_PREFIX$spreadsheetId"
-        if (prefs.getBoolean(preferenceKey, false)) return
+    /** Re-exporta el sheet una vez al detectar un esquema anterior. */
+    private suspend fun ensureSchemaCurrent(spreadsheetId: String): Boolean {
+        val preferenceKey = schemaPreferenceKey(spreadsheetId)
+        if (prefs.getBoolean(preferenceKey, false)) return false
 
-        val headers = mapOf(
-            SHEET_RECIBIDAS to SheetsSchema.recibidasHeaders,
-            SHEET_NOMINAS to SheetsSchema.nominasHeaders,
-            SHEET_PRODUCTOS to SheetsSchema.productosHeaders
-        )
-        headers.forEach { (sheet, values) ->
-            sheets.spreadsheets().values()
-                .update(spreadsheetId, "'$sheet'!A1", ValueRange().setValues(listOf(values)))
-                .setValueInputOption("RAW")
-                .execute()
+        val account = sheetsExportService.getLastSignedInAccount()
+        if (account == null || !sheetsExportService.isSignedIn()) {
+            SafeLog.w(TAG, "sync OMITIDO — falta sesión Google para migrar schema v${SheetsSchema.SCHEMA_VERSION}")
+            return true
         }
+
+        val invoices = invoiceRepository.getAllInvoices().first()
+        val incomes = incomeRepository.getAllIncomes().first()
+        val products = productRepository.getAllProducts().first()
+        sheetsExportService.exportToSheets(
+            account = account,
+            invoices = invoices,
+            incomes = incomes,
+            products = products,
+            existingSpreadsheetId = spreadsheetId
+        )
         prefs.edit().putBoolean(preferenceKey, true).apply()
+        SafeLog.d(TAG, "schema v${SheetsSchema.SCHEMA_VERSION} aplicado mediante reexportación completa")
+        return true
     }
 
     /**
@@ -328,6 +362,7 @@ class SheetsSyncManager @Inject constructor(
                         SafeLog.w(TAG, "delete OMITIDO — cuenta Google no autenticada")
                         return@withLock
                     }
+                    if (ensureSchemaCurrent(sheetId)) return@withLock
                     deleteRowsNow(sheets, sheetId, sheetKeyCols, key)
                 } catch (e: Exception) {
                     SafeLog.e(TAG, "delete FALLO id=$key", e)
@@ -414,4 +449,12 @@ class SheetsSyncManager @Inject constructor(
             .setApplicationName("FinAI Sync")
             .build()
     }
+
+    private fun conversionSnapshot(): SheetsSchema.ConversionSnapshot =
+        SheetsSchema.ConversionSnapshot(
+            targetCurrency = currencyPreference.defaultCurrency.value,
+            exchangeRateProvider = exchangeRateProvider
+        )
+
+    private fun schemaPreferenceKey(spreadsheetId: String): String = "$KEY_SCHEMA_PREFIX$spreadsheetId"
 }

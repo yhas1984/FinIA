@@ -259,7 +259,7 @@ private fun InvoiceCard(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Abrir foto en Drive")
                     }
-                    invoice.driveUploadPending -> OutlinedButton(
+                    else -> OutlinedButton(
                         onClick = onRetryDrive,
                         enabled = isPremium && !isUploadingToDrive
                     ) {
@@ -276,15 +276,11 @@ private fun InvoiceCard(
                             when {
                                 isUploadingToDrive -> "Subiendo..."
                                 !isPremium -> "Drive requiere Premium"
-                                else -> "Reintentar Drive"
+                                invoice.driveUploadPending -> "Reintentar Drive"
+                                else -> "Subir a Drive"
                             }
                         )
                     }
-                    else -> Text(
-                        text = "Foto guardada localmente",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
 

@@ -143,7 +143,11 @@ class InvoicesViewModel @Inject constructor(
     }
 
     fun retryDriveUpload(invoice: Invoice) {
-        if (!invoice.driveUploadPending || invoice.id in _uiState.value.uploadingToDrive) return
+        if (
+            invoice.imagenUri.isNullOrBlank() ||
+            invoice.driveWebViewLink != null ||
+            invoice.id in _uiState.value.uploadingToDrive
+        ) return
         viewModelScope.launch {
             _uiState.update {
                 it.copy(

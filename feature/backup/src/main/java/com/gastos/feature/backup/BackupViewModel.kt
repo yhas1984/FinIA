@@ -204,6 +204,7 @@ class BackupViewModel @Inject constructor(
                 val (url, _) = sheetsExportService.exportToSheets(
                     account, invoices, incomes, products, existingId
                 )
+                sheetsSyncManager.setSpreadsheetId(existingId)
                 _uiState.update { it.copy(isExportingSheets = false, sheetsUrl = url) }
             } catch (e: Exception) {
                 _uiState.update {
