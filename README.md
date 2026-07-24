@@ -12,11 +12,14 @@
 - 📷 **Escaneo de facturas y nóminas** — desde el propio chat (cámara o galería): extrae proveedor, fecha, total, IVA, IRPF, NIF y líneas de producto, distinguiendo nóminas de facturas.
 - 🎙️ **Comandos por voz** — registra gastos, ingresos o consulta tu balance hablando (SpeechRecognizer de Android, es-ES).
 - 💬 **Chat con streaming** — el asistente responde en tiempo real, recordando el contexto de la conversación.
+- 🛒 **Consultas inteligentes** — entiende periodos ("esta semana", "en julio"), productos concretos ("agua", "café") y aclara ambigüedades mostrando las coincidencias exactas antes de decidir.
 - 📊 **Dashboard** — resumen de ingresos, gastos, balance y actividad de los últimos 7 días.
 - 🧾 **Gestión completa** de facturas/gastos, productos e ingresos (CRUD).
-- ☁️ **Google Sheets: exportación + sincronización** — exporta a un Sheet con estructura AEAT (Facturas Recibidas, Nóminas, Productos, Resumen con fórmulas) y mantiene el Sheet sincronizado en segundo plano: **altas, ediciones y borrados** se reflejan automáticamente (upsert/delete por ID de registro).
+- ☁️ **Google Sheets: exportación + sincronización multimoneda** — Sheet AEAT (Facturas Recibidas, Nóminas, Productos, Resumen) con importes convertidos a tu moneda local. Resumen numérico recalculado en cada sync (gastos, ingresos, balance) y soporte de tasas pendientes sin tasa.
+- 🔄 **Sincronización bidireccional** — altas, ediciones y borrados en la app se reflejan automáticamente (upsert/delete por ID de registro). “Forzar sincronización” reexporta el Sheet completo.
+- ☁️ **Google Drive** — subida manual de fotos de facturas Premium con reintento y limpieza del temporal de cámara.
+- 💎 **Premium** (pago único vía Google Play Billing, con flag debug independiente) — amplía la memoria del asistente de 3 a 10 turnos y desbloquea Sheets/Drive.
 - 📄 **Exportación CSV y PDF** y copia local de la base de datos.
-- 💎 **Premium** (pago único vía Google Play Billing) — amplía la memoria del asistente de 3 a 10 turnos.
 - 🌓 **Tema claro/oscuro/sistema**.
 
 ---
@@ -88,12 +91,14 @@ FinAI usa **Gemini** a través de la **API gratuita de Google AI Studio**.
 
 Desde **Backup** puedes vincular tu cuenta de Google:
 
-1. **Exportar a Sheets** — crea (o reescribe) un spreadsheet con 4 hojas: *Facturas Recibidas*, *Nóminas*, *Productos* y *Resumen* (con fórmulas SUM que se recalculan solas).
-2. **Sincronización en segundo plano** — a partir de ahí, cada alta, **edición o borrado** en la app se refleja en el Sheet:
+1. **Exportar a Sheets** — crea (o reescribe) un spreadsheet con 4 hojas: *Facturas Recibidas*, *Nóminas*, *Productos* y *Resumen* (numérico: gastos, ingresos y balance calculados por la app, no por fórmulas SUM).
+2. **Multimoneda** — cada fila conserva el importe original y su moneda; se añade además el **importe convertido a tu moneda local** usando la tasa vigente. La hoja *Resumen* agrega esos importes convertidos para mostrar el balance real.
+3. **Sincronización en segundo plano** — a partir de ahí, cada alta, **edición o borrado** en la app se refleja en el Sheet:
    - Cada hoja lleva una columna de **ID** al final (ID del registro / InvoiceID en productos).
    - Alta/edición → *upsert* por ID (actualiza la fila si existe, la añade si no).
    - Borrado de gasto → elimina su fila y las de sus productos.
-3. **Sincronizar todo** — reexporta toda la base de datos. Úsalo una vez si tu Sheet se creó con una versión antigua de la app (filas sin ID) o para reparar divergencias.
+   - El *Resumen* se refresca tras cada operación.
+4. **Forzar sincronización** — reexporta toda la base de datos al Sheet vinculado (migración automática al esquema v4). Úsalo la primera vez o si el Sheet se creó con una versión antigua de la app.
 
 ---
 
@@ -140,10 +145,19 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 # Release APK
 ./gradlew :app:assembleRelease
 
+# Android App Bundle (.aab) — para Play Store / distribución
+./gradlew :app:bundleDebug      # → app/build/outputs/bundle/debug/app-debug.aab
+./gradlew :app:bundleRelease    # → app/build/outputs/bundle/release/app-release.aab
+
+# Lint
+./gradlew :app:lintDebug
+
 # Tests unitarios
 ./gradlew testDebugUnitTest
 ```
 
+> El `signingConfigs.release` lee credenciales de variables de entorno (`FINAI_KEYSTORE_FILE`, `FINAI_KEYSTORE_PASSWORD`, `FINAI_KEY_ALIAS`, `FINAI_KEY_PASSWORD`) o de `gradle.properties`; nunca se hardcodean en el repo.
+>
 > Si usas Android Studio, abre el proyecto y pulsa **Run ▶**. Asegúrate de tener el **Android SDK** configurado (`local.properties` con `sdk.dir`).
 
 ---
@@ -189,4 +203,4 @@ Proyecto privado. Todos los derechos reservados.
 
 ---
 
-**FinAI** · v1.0.3 · Hecho con ❤️ en Kotlin + Jetpack Compose
+**FinAI** · v1.1.0 · Hecho con ❤️ en Kotlin + Jetpack Compose
