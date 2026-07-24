@@ -9,6 +9,7 @@ import com.gastos.extension.SafeLog
 import com.gastos.feature.ai.AIResult
 import com.gastos.feature.ai.AIService
 import com.gastos.feature.backup.SheetsSyncManager
+import com.gastos.feature.backup.InvoiceDriveService
 import com.gastos.domain.usecase.SaveIncomeUseCase
 import com.gastos.domain.usecase.SaveInvoiceUseCase
 import com.gastos.repository.CurrencyPreference
@@ -18,6 +19,7 @@ import com.gastos.feature.voice.VoiceResult
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.ProductRepository
+import com.gastos.storage.InvoiceImageStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +48,8 @@ class ChatbotViewModel @Inject constructor(
     private val incomeRepository: IncomeRepository,
     private val productRepository: ProductRepository,
     private val sheetsSyncManager: SheetsSyncManager,
+    private val invoiceDriveService: InvoiceDriveService,
+    private val invoiceImageStorage: InvoiceImageStorage,
     private val saveInvoiceUseCase: SaveInvoiceUseCase,
     private val saveIncomeUseCase: SaveIncomeUseCase,
     private val exchangeRateProvider: ExchangeRateProvider,
@@ -166,14 +170,27 @@ class ChatbotViewModel @Inject constructor(
         when {
             // Gasto (factura)
             result.invoice != null && result.invoice!!.tipo != InvoiceType.INGRESO -> {
-                val invoice = result.invoice!!
+                val invoice = result.invoice!!.copy(
+                    driveUploadPending = result.invoice!!.imagenUri != null &&
+                        invoiceDriveService.shouldQueueNewInvoice()
+                )
                 val invoiceId = saveInvoiceUseCase(invoice, result.products)
                 val savedInvoice = invoice.copy(id = invoiceId)
+                val driveResult = if (savedInvoice.driveUploadPending) {
+                    invoiceDriveService.upload(savedInvoice)
+                } else {
+                    null
+                }
+                val syncedInvoice = driveResult?.invoice ?: savedInvoice
+                val savedProducts = productRepository.getProductsByInvoiceId(invoiceId).first()
                 sheetsSyncManager.syncExpense(
-                    savedInvoice,
-                    result.products.map { it.copy(invoiceId = invoiceId) }
+                    syncedInvoice,
+                    savedProducts
                 )
-                replacePlaceholder("✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}")
+                val driveMessage = driveResult?.let { "\n${if (it.uploaded) "☁️" else "⚠️"} ${it.message}" }.orEmpty()
+                replacePlaceholder(
+                    "✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}$driveMessage"
+                )
             }
             // Ingreso detectado por OCR (factura marcada como ingreso)
             result.invoice != null && result.invoice!!.tipo == InvoiceType.INGRESO -> {
@@ -186,6 +203,7 @@ class ChatbotViewModel @Inject constructor(
                     fuente = invoice.nifEmisor,
                     ivaPercent = invoice.ivaPercent,
                     irpfPercent = invoice.irpfPercent,
+                    imagenUri = invoice.imagenUri,
                     notas = invoice.notas
                 )
                 val incomeId = saveIncomeUseCase(income)
@@ -489,8 +507,11 @@ class ChatbotViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            var persistedUri: Uri? = null
             try {
-                val result = aiService.processInvoiceFromImage(uri)
+                val stableUri = invoiceImageStorage.persist(uri)
+                persistedUri = stableUri
+                val result = aiService.processInvoiceFromImage(stableUri)
                 // Reutilizamos la lógica unificada añadiendo un placeholder AI.
                 var placeholderIndex = -1
                 _uiState.update {
@@ -498,7 +519,11 @@ class ChatbotViewModel @Inject constructor(
                     it.copy(messages = it.messages + ChatMessage.AI(""))
                 }
                 applyAIResult(result, placeholderIndex)
+                if (!result.success || (result.invoice == null && result.income == null)) {
+                    invoiceImageStorage.delete(persistedUri.toString())
+                }
             } catch (e: Exception) {
+                invoiceImageStorage.delete(persistedUri?.toString())
                 _uiState.update {
                     it.copy(
                         messages = it.messages + ChatMessage.AI("❌ Error al escanear: ${e.message}"),

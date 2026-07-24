@@ -102,7 +102,7 @@ class Migration4To5Test {
         }
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_4_5)
+            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
             .build()
         val sqlite = database.openHelper.writableDatabase
 
