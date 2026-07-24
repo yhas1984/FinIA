@@ -49,6 +49,14 @@ internal data class ResolvedFinancialQuery(
 )
 
 internal object FinancialQueryResolver {
+    fun normalizePeriod(value: String?): String = when (normalizeProductName(value.orEmpty())) {
+        "hoy" -> "hoy"
+        "semana", "esta semana" -> "semana"
+        "ano", "este ano" -> "año"
+        "mes", "este mes" -> "mes"
+        else -> "mes"
+    }
+
     fun resolve(
         queryType: String?,
         item: String?,
@@ -300,7 +308,9 @@ class ChatbotViewModel @Inject constructor(
                     val json = JSONObject(result.queryResult!!)
                     if (json.optString("action") == "query") {
                         val queryType = json.optString("query_type")
-                        val periodo = json.optString("periodo", "mes")
+                        val periodo = FinancialQueryResolver.normalizePeriod(
+                            json.optString("periodo", "mes")
+                        )
                         val categoria = json.optString("categoria", "").takeIf { it.isNotEmpty() && it != "null" }
                         val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
                         val matchMode = json.optString("match_mode", "").takeIf { it.isNotEmpty() && it != "null" }
