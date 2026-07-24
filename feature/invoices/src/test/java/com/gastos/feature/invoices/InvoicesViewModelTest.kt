@@ -4,9 +4,12 @@ import app.cash.turbine.test
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.feature.backup.SheetsSyncManager
+import com.gastos.feature.backup.InvoiceDriveService
 import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.InvoiceRepository
+import com.gastos.repository.PremiumStatusProvider
+import com.gastos.storage.InvoiceImageStorage
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -54,7 +57,11 @@ class InvoicesViewModelTest {
         val currency = mockk<CurrencyPreference>()
         every { currency.defaultCurrency } returns MutableStateFlow(defaultCurrency)
         val sync = mockk<SheetsSyncManager>(relaxed = true)
-        return InvoicesViewModel(repo, sync, exchange, currency)
+        val drive = mockk<InvoiceDriveService>(relaxed = true)
+        val imageStorage = mockk<InvoiceImageStorage>(relaxed = true)
+        val premium = mockk<PremiumStatusProvider>()
+        every { premium.isPremium } returns MutableStateFlow(false)
+        return InvoicesViewModel(repo, sync, exchange, currency, drive, imageStorage, premium)
     }
 
     @Test

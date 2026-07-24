@@ -6,6 +6,7 @@ import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.IncomeRepository
+import com.gastos.storage.InvoiceImageStorage
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -49,7 +50,8 @@ class IncomesViewModelTest {
         val currency = mockk<CurrencyPreference>()
         every { currency.defaultCurrency } returns MutableStateFlow(defaultCurrency)
         val sync = mockk<SheetsSyncManager>(relaxed = true)
-        return IncomesViewModel(repo, sync, exchange, currency)
+        val imageStorage = mockk<InvoiceImageStorage>(relaxed = true)
+        return IncomesViewModel(repo, sync, exchange, currency, imageStorage)
     }
 
     @Test

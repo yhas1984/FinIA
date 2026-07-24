@@ -29,6 +29,24 @@ interface InvoiceDao {
     @Update
     suspend fun updateInvoice(invoice: InvoiceEntity)
 
+    @Query(
+        """
+        UPDATE invoices
+        SET driveFileId = :fileId,
+            driveWebViewLink = :webViewLink,
+            driveUploadPending = :pending,
+            updatedAt = :updatedAt
+        WHERE id = :invoiceId
+        """
+    )
+    suspend fun updateDriveMetadata(
+        invoiceId: Long,
+        fileId: String?,
+        webViewLink: String?,
+        pending: Boolean,
+        updatedAt: Long
+    )
+
     @Delete
     suspend fun deleteInvoice(invoice: InvoiceEntity)
 

@@ -1,5 +1,6 @@
 package com.gastos.data.local.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -20,6 +21,9 @@ data class InvoiceEntity(
     val nifEmisor: String? = null,
     val nifReceptor: String? = null,
     val imagenUri: String? = null,
+    val driveFileId: String? = null,
+    val driveWebViewLink: String? = null,
+    @ColumnInfo(defaultValue = "0") val driveUploadPending: Boolean = false,
     val ocrRawText: String? = null,
     val notas: String? = null,
     val createdAt: Long = System.currentTimeMillis(),

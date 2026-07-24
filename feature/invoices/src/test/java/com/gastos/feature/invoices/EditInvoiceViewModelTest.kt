@@ -47,6 +47,9 @@ class EditInvoiceViewModelTest {
                 ivaPercent = 21.0,
                 irpfPercent = 0.0,
                 imagenUri = "content://scan/5",
+                driveFileId = "drive-5",
+                driveWebViewLink = "https://drive.google.com/file/d/drive-5/view",
+                driveUploadPending = true,
                 ocrRawText = """{"numero_factura":"F-9"}""",
                 createdAt = 100L
             )
@@ -66,6 +69,9 @@ class EditInvoiceViewModelTest {
                     it.id == 5L &&
                         it.proveedor == "Acme Editado" &&
                         it.imagenUri == "content://scan/5" &&
+                        it.driveFileId == "drive-5" &&
+                        it.driveWebViewLink == "https://drive.google.com/file/d/drive-5/view" &&
+                        it.driveUploadPending &&
                         it.ocrRawText == original.ocrRawText &&
                         it.createdAt == 100L
                 })

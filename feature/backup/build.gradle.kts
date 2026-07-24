@@ -58,6 +58,7 @@ dependencies {
     // Google Sheets API (exportación a Sheets)
     implementation(libs.google.api.client.android)
     implementation(libs.google.api.services.sheets)
+    implementation(libs.google.api.services.drive)
 
     // Project modules
     implementation(project(":core:domain"))

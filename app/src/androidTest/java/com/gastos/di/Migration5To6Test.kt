@@ -13,9 +13,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class Migration4To5Test {
+class Migration5To6Test {
     private lateinit var context: Context
-    private val databaseName = "migration-4-5-test"
+    private val databaseName = "migration-5-6-test"
 
     @Before
     fun setUp() {
@@ -29,7 +29,7 @@ class Migration4To5Test {
     }
 
     @Test
-    fun migratesLegacyIncomeAndPreservesProductsInNotes() {
+    fun addsDriveMetadataWithoutQueuingExistingInvoices() {
         context.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null).use { db ->
             db.execSQL(
                 """
@@ -85,41 +85,28 @@ class Migration4To5Test {
             db.execSQL(
                 """
                 INSERT INTO `invoices` VALUES (
-                    7, 1000, 'Cliente ACME', 'INGRESO', 'USD', 250.0,
-                    21.0, 15.0, 'ES', 'B123', NULL, 'content://invoice/7',
-                    NULL, 'Nota original', 900, 950
+                    5, 1000, 'Proveedor', 'GASTO', 'EUR', 121.0,
+                    21.0, 0.0, 'ES', 'B123', NULL, 'content://invoice/5',
+                    NULL, NULL, 900, 950
                 )
                 """.trimIndent()
             )
-            db.execSQL(
-                """
-                INSERT INTO `products` VALUES (
-                    3, 7, 'Consultoría', 2.0, 100.0, 200.0, 21.0, 42.0, 900
-                )
-                """.trimIndent()
-            )
-            db.version = 4
+            db.version = 5
         }
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_5_6)
             .build()
         val sqlite = database.openHelper.writableDatabase
 
-        sqlite.query("SELECT concepto, monto, moneda, notas FROM incomes").use { cursor ->
+        sqlite.query(
+            "SELECT driveFileId, driveWebViewLink, driveUploadPending, imagenUri FROM invoices WHERE id=5"
+        ).use { cursor ->
             assertTrue(cursor.moveToFirst())
-            assertEquals("Cliente ACME", cursor.getString(0))
-            assertEquals(250.0, cursor.getDouble(1), 0.0)
-            assertEquals("USD", cursor.getString(2))
-            assertTrue(cursor.getString(3).contains("Consultoría"))
-        }
-        sqlite.query("SELECT COUNT(*) FROM invoices").use { cursor ->
-            assertTrue(cursor.moveToFirst())
-            assertEquals(0, cursor.getInt(0))
-        }
-        sqlite.query("SELECT COUNT(*) FROM products").use { cursor ->
-            assertTrue(cursor.moveToFirst())
-            assertEquals(0, cursor.getInt(0))
+            assertTrue(cursor.isNull(0))
+            assertTrue(cursor.isNull(1))
+            assertEquals(0, cursor.getInt(2))
+            assertEquals("content://invoice/5", cursor.getString(3))
         }
         database.close()
     }

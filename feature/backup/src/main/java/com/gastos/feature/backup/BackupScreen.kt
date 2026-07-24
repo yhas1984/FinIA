@@ -111,7 +111,7 @@ fun BackupScreen(
                         Text("Crear Backup local")
                     }
                     Text(
-                        text = "El backup se guarda en la carpeta privada de la app. La subida a Drive está pendiente.",
+                        text = "La base de datos se respalda localmente. Las fotos de facturas Premium se guardan en la carpeta FinAI de Google Drive.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -158,7 +158,7 @@ fun BackupScreen(
                         }
                     } else {
                         Text(
-                            text = "Inicia sesión con Google para exportar a Sheets y sincronizar tus datos",
+                            text = "Inicia sesión con Google para sincronizar Sheets y guardar fotos de facturas en Drive",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
