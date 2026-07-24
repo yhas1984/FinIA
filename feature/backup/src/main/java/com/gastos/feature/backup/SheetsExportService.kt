@@ -178,7 +178,14 @@ class SheetsExportService @Inject constructor(
         writeRecibidas(sheetsService, spreadsheetId, recibidas, conversion)
         writeNominas(sheetsService, spreadsheetId, incomes, conversion)
         writeProductos(sheetsService, spreadsheetId, products, invoices, conversion)
-        writeResumenAeat(sheetsService, spreadsheetId, dateStr, conversion.targetCurrency)
+        writeResumenAeat(
+            sheets = sheetsService,
+            id = spreadsheetId,
+            exportDate = dateStr,
+            invoices = invoices,
+            incomes = incomes,
+            conversion = conversion
+        )
 
         // Formatear cabeceras (negrita) en todas las hojas.
         formatHeaders(sheetsService, spreadsheetId, sheetTitles)
@@ -233,29 +240,25 @@ class SheetsExportService @Inject constructor(
     }
 
     /**
-     * Hoja "Resumen" con fórmulas SUM que suman las columnas de Total
-     * de Recibidas, Expedidas y Nóminas. Se recalculan automáticamente al
-     * añadir filas vía sync.
+     * Hoja "Resumen" calculada con la misma conversión que usa la app.
+     * No depende de fórmulas remotas ni mezcla importes en monedas distintas.
      */
     private fun writeResumenAeat(
         sheets: Sheets,
         id: String,
         exportDate: String,
-        reportCurrency: String
+        invoices: List<Invoice>,
+        incomes: List<Income>,
+        conversion: SheetsSchema.ConversionSnapshot
     ) {
-        val values = listOf(
-            listOf("Resumen Financiero (AEAT)"),
-            listOf("Fecha exportación", exportDate),
-            listOf("Moneda informe", reportCurrency),
-            // 'Facturas Recibidas'!K = Total
-            listOf("Total Gastos (Recibidas)", "=SUM('Facturas Recibidas'!K2:K)"),
-            // 'Nóminas'!D = Líquido
-            listOf("Total Nóminas (Líquido)", "=SUM('Nóminas'!D2:D)"),
-            listOf("Balance", "=B5-B4")
+        val values = SheetsSchema.summaryRows(
+            exportDate = exportDate,
+            reportCurrency = conversion.targetCurrency,
+            totals = SheetsSchema.summaryTotals(invoices, incomes, conversion)
         )
         sheets.spreadsheets().values()
             .update(id, "Resumen!A1", ValueRange().setValues(values))
-            .setValueInputOption("USER_ENTERED")
+            .setValueInputOption("RAW")
             .execute()
     }
 
