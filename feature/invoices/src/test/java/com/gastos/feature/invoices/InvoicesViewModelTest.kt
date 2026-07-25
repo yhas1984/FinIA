@@ -103,7 +103,33 @@ class InvoicesViewModelTest {
                 state = awaitItem()
             }
             assertEquals(125.0, state.totalGastosConvertido!!, 0.001)
+            assertEquals(true, state.hasAnyInvoices)
             assertEquals(true, state.availableCategories.contains("Alimentación"))
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `empty category filter keeps controls available without loading`() = runTest(dispatcher) {
+        val invoices = listOf(
+            invoice(1, 100.0, "EUR").copy(categoria = "Alimentación")
+        )
+        val vm = newViewModel(invoices)
+
+        vm.filterByCategory("Transporte")
+
+        vm.uiState.test {
+            var state = awaitItem()
+            while (
+                state.selectedCategoryFilter != "Transporte" ||
+                state.invoices.isNotEmpty() ||
+                state.totalGastosConvertido != 0.0
+            ) {
+                state = awaitItem()
+            }
+            assertEquals(true, state.hasAnyInvoices)
+            assertEquals(false, state.isLoading)
+            assertEquals(true, state.availableCategories.contains("Transporte"))
             cancelAndConsumeRemainingEvents()
         }
     }

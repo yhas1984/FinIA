@@ -125,6 +125,32 @@ class IncomesViewModelTest {
                 state = awaitItem()
             }
             assertEquals(150.0, state.totalIngresosConvertido!!, 0.001)
+            assertEquals(true, state.hasAnyIncomes)
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `empty category filter keeps controls available without loading`() = runTest(UnconfinedTestDispatcher()) {
+        val incomes = listOf(
+            income(1, 100.0, "EUR").copy(categoria = "Nómina")
+        )
+        val vm = newViewModel(incomes)
+
+        vm.filterByCategory("Honorarios")
+
+        vm.uiState.test {
+            var state = awaitItem()
+            while (
+                state.selectedCategoryFilter != "Honorarios" ||
+                state.incomes.isNotEmpty() ||
+                state.totalIngresosConvertido != 0.0
+            ) {
+                state = awaitItem()
+            }
+            assertEquals(true, state.hasAnyIncomes)
+            assertEquals(false, state.isLoading)
+            assertEquals(true, state.availableCategories.contains("Honorarios"))
             cancelAndConsumeRemainingEvents()
         }
     }
