@@ -3,6 +3,7 @@ package com.gastos.feature.incomes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
+import com.gastos.domain.model.TransactionCategories
 import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
@@ -22,12 +23,16 @@ import javax.inject.Inject
 
 data class IncomesUiState(
     val incomes: List<Income> = emptyList(),
+    val selectedCategoryFilter: String? = null,
+    val availableCategories: List<String> = emptyList(),
     /** Total convertido a la moneda por defecto (null = sin tasas cargadas). */
     val totalIngresosConvertido: Double? = null,
     val defaultCurrency: String = "EUR",
     val isLoading: Boolean = true,
     val error: String? = null
 )
+
+private const val UNCATEGORIZED_FILTER = "__uncategorized__"
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -41,34 +46,56 @@ class IncomesViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(IncomesUiState())
     val uiState: StateFlow<IncomesUiState> = _uiState.asStateFlow()
+    private val selectedCategoryFilter = MutableStateFlow<String?>(null)
 
     init {
         // Una sola cadena reactiva: ingresos + moneda destino + tasas.
         viewModelScope.launch {
             incomeRepository.getAllIncomes()
-                .combine(currencyPreference.defaultCurrency) { incomes, target ->
-                    incomes to target
+                .combine(selectedCategoryFilter) { incomes, categoryFilter ->
+                    incomes to categoryFilter
                 }
-                .combine(exchangeRateProvider.rates) { (incomes, target), _ ->
-                    Triple(incomes, target, recomputeTotal(incomes, target))
+                .combine(currencyPreference.defaultCurrency) { (allIncomes, categoryFilter), target ->
+                    Triple(allIncomes, categoryFilter, target)
+                }
+                .combine(exchangeRateProvider.rates) { (allIncomes, categoryFilter, target), _ ->
+                    val visibleIncomes = filterIncomesByCategory(allIncomes, categoryFilter)
+                    val availableCategories = TransactionCategories.availableCategories(
+                        defaults = TransactionCategories.defaultIncomeCategories,
+                        existing = allIncomes.map { it.categoria }
+                    )
+                    Quintuple(
+                        visibleIncomes,
+                        target,
+                        recomputeTotal(visibleIncomes, target),
+                        categoryFilter,
+                        availableCategories
+                    )
                 }
                 .catch { e ->
                     _uiState.update {
                         it.copy(error = e.message ?: "Error al cargar ingresos", isLoading = false)
                     }
                 }
-                .collect { (incomes, target, total) ->
+                .collect { (incomes, target, total, categoryFilter, availableCategories) ->
                     _uiState.update {
                         it.copy(
                             incomes = incomes,
                             isLoading = false,
                             error = null,
                             totalIngresosConvertido = total,
-                            defaultCurrency = target
+                            defaultCurrency = target,
+                            selectedCategoryFilter = categoryFilter,
+                            availableCategories = availableCategories
                         )
                     }
                 }
         }
+    }
+
+    fun filterByCategory(category: String?) {
+        _uiState.update { it.copy(selectedCategoryFilter = category, isLoading = true) }
+        selectedCategoryFilter.value = category
     }
 
     /**
@@ -87,6 +114,13 @@ class IncomesViewModel @Inject constructor(
         return if (allMissing) null else converted
     }
 
+    private fun filterIncomesByCategory(incomes: List<Income>, categoryFilter: String?): List<Income> =
+        when (categoryFilter) {
+            null -> incomes
+            UNCATEGORIZED_FILTER -> incomes.filter { TransactionCategories.normalizeCategory(it.categoria) == null }
+            else -> incomes.filter { TransactionCategories.matchesCategory(it.categoria, categoryFilter) }
+        }
+
     fun deleteIncome(income: Income) {
         viewModelScope.launch {
             try {
@@ -102,3 +136,11 @@ class IncomesViewModel @Inject constructor(
         }
     }
 }
+
+private data class Quintuple<A, B, C, D, E>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D,
+    val fifth: E
+)

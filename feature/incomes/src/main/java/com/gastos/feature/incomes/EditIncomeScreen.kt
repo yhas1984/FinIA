@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gastos.domain.model.TransactionCategories
 import com.gastos.extension.fromDatePickerUtcMillis
 import com.gastos.extension.toDatePickerUtcMillis
 import java.text.SimpleDateFormat
@@ -32,6 +33,7 @@ fun EditIncomeScreen(
     val scrollState = rememberScrollState()
     var showDatePicker by remember { mutableStateOf(false) }
     var showCurrencyPicker by remember { mutableStateOf(false) }
+    var showCategoryPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(incomeId) {
         if (incomeId > 0) {
@@ -139,6 +141,68 @@ fun EditIncomeScreen(
                 singleLine = true,
                 prefix = { Text(form.moneda) }
             )
+
+            ExposedDropdownMenuBox(
+                expanded = showCategoryPicker,
+                onExpandedChange = { showCategoryPicker = it }
+            ) {
+                OutlinedTextField(
+                    value = when {
+                        form.isCustomCategory && form.categoria.isNotBlank() -> form.categoria
+                        form.isCustomCategory -> TransactionCategories.CUSTOM_OPTION_LABEL
+                        else -> TransactionCategories.displayCategory(form.categoria)
+                    },
+                    onValueChange = {},
+                    label = { Text("Categoría") },
+                    readOnly = true,
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCategoryPicker) },
+                    modifier = Modifier
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                        .fillMaxWidth()
+                )
+                ExposedDropdownMenu(
+                    expanded = showCategoryPicker,
+                    onDismissRequest = { showCategoryPicker = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(TransactionCategories.UNCATEGORIZED_LABEL) },
+                        onClick = {
+                            viewModel.selectCategory(value = null, isCustomCategory = false)
+                            showCategoryPicker = false
+                        }
+                    )
+                    uiState.availableCategories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(category) },
+                            onClick = {
+                                viewModel.selectCategory(value = category, isCustomCategory = false)
+                                showCategoryPicker = false
+                            }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text(TransactionCategories.CUSTOM_OPTION_LABEL) },
+                        onClick = {
+                            viewModel.selectCategory(
+                                value = if (form.isCustomCategory) form.categoria else null,
+                                isCustomCategory = true
+                            )
+                            showCategoryPicker = false
+                        }
+                    )
+                }
+            }
+
+            if (form.isCustomCategory) {
+                OutlinedTextField(
+                    value = form.categoria,
+                    onValueChange = { viewModel.updateCategoria(it) },
+                    label = { Text("Categoría personalizada") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    supportingText = { Text("Déjala vacía para guardar sin categoría.") }
+                )
+            }
 
             // Devengado (bruto) y Líquido (neto)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {

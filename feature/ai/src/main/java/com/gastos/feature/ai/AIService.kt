@@ -10,6 +10,7 @@ import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import com.gastos.domain.model.ChatMessageRecord
+import com.gastos.domain.model.TransactionCategories
 import com.gastos.extension.SafeLog
 import com.gastos.repository.CountryFiscalConfigRepository
 import com.google.ai.client.generativeai.Chat
@@ -344,9 +345,13 @@ class AIService @Inject constructor(
 
             2. REGISTRAR GASTO: si dice que gastó, compró o pagó algo:
                {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0.0,"total":0.0,"moneda":"EUR","fecha":"$today","categoria":"texto"}
+               - Usa una categoría predeterminada de gasto si encaja claramente.
+               - Si el usuario menciona una categoría personalizada explícita, consérvala.
 
             3. REGISTRAR INGRESO: si menciona nómina, salario, cobro o ingreso recibido:
-               {"action":"add_income","concepto":"texto","total_devengado":0.0,"total_neto":0.0,"monto":0.0,"moneda":"EUR","fecha":"$today","fuente":"texto"}
+               {"action":"add_income","concepto":"texto","total_devengado":0.0,"total_neto":0.0,"monto":0.0,"moneda":"EUR","fecha":"$today","fuente":"texto","categoria":"texto"}
+               - Usa una categoría predeterminada de ingreso si encaja claramente.
+               - Si es una nómina, la categoría por defecto es "Nómina".
 
             4. CONVERSACIÓN GENERAL: saludos, agradecimientos, consejos financieros, dudas
                sobre conceptos (IVA, IRPF, ahorro, inversión), o cualquier otra cosa.
@@ -358,7 +363,7 @@ class AIService @Inject constructor(
 
     private fun queryExtractionPrompt(query: String): String = """
         Extrae los parámetros de esta consulta financiera y devuelve SOLO el JSON:
-        {"query_type":"gastos|ingresos|balance|categoria|productos","periodo":"hoy|semana|mes|año","categoria":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
+        {"query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
 
         Reglas:
         - "solo", "únicamente", "exactamente" + producto => match_mode="exact"
@@ -418,6 +423,9 @@ class AIService @Inject constructor(
                     totalNeto = if (liquido > 0) liquido else monto,
                     moneda = moneda,
                     fuente = empresa,
+                    categoria = TransactionCategories.canonicalIncomeCategory(
+                        json.optString("categoria").ifBlank { "Nómina" }
+                    ),
                     ivaPercent = 0.0,
                     irpfPercent = irpf,
                     imagenUri = imageUri,
@@ -466,6 +474,13 @@ class AIService @Inject constructor(
                 fecha = fecha,
                 proveedor = proveedor,
                 tipo = if (esIngresoFactura) InvoiceType.INGRESO else InvoiceType.GASTO,
+                categoria = if (esIngresoFactura) {
+                    TransactionCategories.canonicalIncomeCategory(
+                        json.optString("categoria").ifBlank { "Ventas" }
+                    )
+                } else {
+                    TransactionCategories.canonicalExpenseCategory(json.optString("categoria"))
+                },
                 moneda = moneda,
                 total = total,
                 ivaPercent = ivaPercent,
@@ -533,6 +548,7 @@ class AIService @Inject constructor(
                         fecha = fecha,
                         proveedor = descripcion,
                         tipo = InvoiceType.GASTO,
+                        categoria = TransactionCategories.canonicalExpenseCategory(json.optString("categoria")),
                         moneda = moneda,
                         total = total
                     )
@@ -564,7 +580,8 @@ class AIService @Inject constructor(
                         totalDevengado = if (totalDevengado > 0) totalDevengado else monto,
                         totalNeto = if (totalNeto > 0) totalNeto else monto,
                         moneda = moneda,
-                        fuente = fuente
+                        fuente = fuente,
+                        categoria = TransactionCategories.canonicalIncomeCategory(json.optString("categoria"))
                     )
 
                     val displayMonto = if (totalDevengado > 0 && totalNeto > 0) {
@@ -664,11 +681,13 @@ class AIService @Inject constructor(
 
             PASO 3 — EXTRAE LOS CAMPOS. Para nómina usa campos de salario:
               "empresa":"...", "devengado":0.0 (bruto), "liquido":0.0 (neto),
+              "categoria":"Nómina",
               "retencion_irpf":0.0 (% de retención aplicado),
               "base_cotizacion":0.0, "seguridad_social":0.0
 
             Para facturas/tickets/recibos usa:
-              "proveedor":"...", "nif_emisor":"...", "nif_receptor":"...",
+              "proveedor":"...", "categoria":"...",
+              "nif_emisor":"...", "nif_receptor":"...",
               "base_imponible":0.0, "tipo_iva":0.0, "cuota_iva":0.0,
               "retencion_irpf":0.0, "total":0.0,
               "productos":[{"descripcion":"","cantidad":1.0,
@@ -695,6 +714,7 @@ class AIService @Inject constructor(
 
             EJEMPLO — Factura de México:
             {"tipo_documento":"factura_recibida","pais":"MX","moneda":"MXN",
+             "categoria":"Alimentación",
              "fecha":"2026-06-15","proveedor":"OXXO S.A. DE C.V.",
              "nif_emisor":"OOXX840101AB1","total":58.00,
              "base_imponible":50.00,"tipo_iva":16.0,"cuota_iva":8.00,
@@ -703,7 +723,7 @@ class AIService @Inject constructor(
              "precio_unitario":30.00,"subtotal":30.00,"iva_percent":16.0}]}
 
             EJEMPLO — Nómina de España:
-            {"tipo_documento":"nomina","pais":"ES","moneda":"EUR",
+            {"tipo_documento":"nomina","pais":"ES","moneda":"EUR","categoria":"Nómina",
              "fecha":"2026-06-30","empresa":"ACME S.L.",
              "devengado":1567.54,"liquido":1212.30,"retencion_irpf":15.0,
              "base_cotizacion":1313.46,"seguridad_social":105.90,
@@ -711,6 +731,7 @@ class AIService @Inject constructor(
 
             EJEMPLO — Factura de Argentina:
             {"tipo_documento":"factura_recibida","pais":"AR","moneda":"ARS",
+             "categoria":"Alimentación",
              "fecha":"2026-06-20","proveedor":"Supermercado COTO S.A.",
              "nif_emisor":"30-12345678-9","total":15450.00,
              "base_imponible":12768.60,"tipo_iva":21.0,"cuota_iva":2681.40,

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
+import com.gastos.domain.model.TransactionCategories
 import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.feature.backup.InvoiceDriveService
 import com.gastos.repository.CurrencyPreference
@@ -29,6 +30,8 @@ import javax.inject.Inject
 data class InvoicesUiState(
     val invoices: List<Invoice> = emptyList(),
     val selectedType: InvoiceType? = null,
+    val selectedCategoryFilter: String? = null,
+    val availableCategories: List<String> = emptyList(),
     /** Total convertido a la moneda por defecto (solo gastos). null = sin tasas. */
     val totalGastosConvertido: Double? = null,
     val defaultCurrency: String = "EUR",
@@ -37,6 +40,8 @@ data class InvoicesUiState(
     val isLoading: Boolean = true,
     val error: String? = null
 )
+
+private const val UNCATEGORIZED_FILTER = "__uncategorized__"
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -51,6 +56,7 @@ class InvoicesViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val selectedType = MutableStateFlow<InvoiceType?>(null)
+    private val selectedCategoryFilter = MutableStateFlow<String?>(null)
 
     private val _uiState = MutableStateFlow(InvoicesUiState())
     val uiState: StateFlow<InvoicesUiState> = _uiState.asStateFlow()
@@ -80,25 +86,41 @@ class InvoicesViewModel @Inject constructor(
                     if (type == null) invoiceRepository.getAllInvoices()
                     else invoiceRepository.getInvoicesByType(type)
                 }
-                .combine(currencyPreference.defaultCurrency) { invoices, target ->
-                    invoices to target
+                .combine(selectedCategoryFilter) { invoices, categoryFilter ->
+                    invoices to categoryFilter
                 }
-                .combine(exchangeRateProvider.rates) { (invoices, target), _ ->
-                    Triple(invoices, target, recomputeTotal(invoices, target))
+                .combine(currencyPreference.defaultCurrency) { (allInvoices, categoryFilter), target ->
+                    Triple(allInvoices, categoryFilter, target)
+                }
+                .combine(exchangeRateProvider.rates) { (allInvoices, categoryFilter, target), _ ->
+                    val visibleInvoices = filterInvoicesByCategory(allInvoices, categoryFilter)
+                    val availableCategories = TransactionCategories.availableCategories(
+                        defaults = TransactionCategories.defaultExpenseCategories,
+                        existing = allInvoices.map { it.categoria }
+                    )
+                    Quintuple(
+                        visibleInvoices,
+                        target,
+                        recomputeTotal(visibleInvoices, target),
+                        categoryFilter,
+                        availableCategories
+                    )
                 }
                 .catch { e ->
                     _uiState.update {
                         it.copy(error = e.message ?: "Error al cargar facturas", isLoading = false)
                     }
                 }
-                .collect { (invoices, target, total) ->
+                .collect { (invoices, target, total, categoryFilter, availableCategories) ->
                     _uiState.update {
                         it.copy(
                             invoices = invoices,
                             isLoading = false,
                             error = null,
                             totalGastosConvertido = total,
-                            defaultCurrency = target
+                            defaultCurrency = target,
+                            selectedCategoryFilter = categoryFilter,
+                            availableCategories = availableCategories
                         )
                     }
                 }
@@ -108,6 +130,11 @@ class InvoicesViewModel @Inject constructor(
     fun filterByType(type: InvoiceType?) {
         _uiState.update { it.copy(selectedType = type, isLoading = true) }
         selectedType.value = type
+    }
+
+    fun filterByCategory(category: String?) {
+        _uiState.update { it.copy(selectedCategoryFilter = category, isLoading = true) }
+        selectedCategoryFilter.value = category
     }
 
     /**
@@ -126,6 +153,13 @@ class InvoicesViewModel @Inject constructor(
         }
         return if (allMissing) null else converted
     }
+
+    private fun filterInvoicesByCategory(invoices: List<Invoice>, categoryFilter: String?): List<Invoice> =
+        when (categoryFilter) {
+            null -> invoices
+            UNCATEGORIZED_FILTER -> invoices.filter { TransactionCategories.normalizeCategory(it.categoria) == null }
+            else -> invoices.filter { TransactionCategories.matchesCategory(it.categoria, categoryFilter) }
+        }
 
     fun deleteInvoice(invoice: Invoice) {
         viewModelScope.launch {
@@ -172,3 +206,11 @@ class InvoicesViewModel @Inject constructor(
         _uiState.update { it.copy(error = null) }
     }
 }
+
+private data class Quintuple<A, B, C, D, E>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D,
+    val fifth: E
+)

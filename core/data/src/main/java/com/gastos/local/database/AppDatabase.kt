@@ -14,7 +14,7 @@ import com.gastos.local.dao.*
         CountryFiscalConfigEntity::class,
         ChatMessageEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

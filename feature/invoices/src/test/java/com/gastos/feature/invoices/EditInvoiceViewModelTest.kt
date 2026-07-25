@@ -6,6 +6,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -55,6 +56,7 @@ class EditInvoiceViewModelTest {
             )
             coEvery { repo.getInvoiceById(5L) } returns original
             coEvery { repo.updateInvoice(any()) } returns Unit
+            every { repo.getAllInvoices() } returns flowOf(listOf(original))
             every { productRepo.getProductsByInvoiceId(5L) } returns kotlinx.coroutines.flow.flowOf(emptyList())
 
             val vm = EditInvoiceViewModel(repo, productRepo, sync)
@@ -72,6 +74,7 @@ class EditInvoiceViewModelTest {
                         it.driveFileId == "drive-5" &&
                         it.driveWebViewLink == "https://drive.google.com/file/d/drive-5/view" &&
                         it.driveUploadPending &&
+                        it.categoria == null &&
                         it.ocrRawText == original.ocrRawText &&
                         it.createdAt == 100L
                 })

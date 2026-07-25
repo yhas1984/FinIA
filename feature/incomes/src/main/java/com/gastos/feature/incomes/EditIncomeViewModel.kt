@@ -3,12 +3,14 @@ package com.gastos.feature.incomes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
+import com.gastos.domain.model.TransactionCategories
 import com.gastos.repository.IncomeRepository
 import com.gastos.feature.backup.SheetsSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -18,6 +20,7 @@ data class EditIncomeUiState(
     val isSaving: Boolean = false,
     val saveResult: String? = null,
     val income: Income? = null,
+    val availableCategories: List<String> = TransactionCategories.defaultIncomeCategories,
     val error: String? = null
 )
 
@@ -30,6 +33,8 @@ data class EditIncomeForm(
     val totalNeto: String = "",
     val moneda: String = "EUR",
     val fuente: String = "",
+    val categoria: String = "",
+    val isCustomCategory: Boolean = false,
     val ivaPercent: String = "0.0",
     val irpfPercent: String = "0.0",
     val notas: String = ""
@@ -49,6 +54,24 @@ class EditIncomeViewModel @Inject constructor(
 
     private var originalIncome: Income? = null
 
+    init {
+        loadAvailableCategories()
+    }
+
+    private fun loadAvailableCategories() {
+        viewModelScope.launch {
+            val existing = incomeRepository.getAllIncomes().first().map { it.categoria }
+            _uiState.update {
+                it.copy(
+                    availableCategories = TransactionCategories.availableCategories(
+                        defaults = TransactionCategories.defaultIncomeCategories,
+                        existing = existing
+                    )
+                )
+            }
+        }
+    }
+
     fun loadIncome(id: Long) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
@@ -66,6 +89,10 @@ class EditIncomeViewModel @Inject constructor(
                             totalNeto = if (income.totalNeto > 0) income.totalNeto.toString() else "",
                             moneda = income.moneda,
                             fuente = income.fuente ?: "",
+                            categoria = income.categoria.orEmpty(),
+                            isCustomCategory = income.categoria?.let {
+                                TransactionCategories.canonicalIncomeCategory(it) !in TransactionCategories.defaultIncomeCategories
+                            } ?: false,
                             ivaPercent = income.ivaPercent.toString(),
                             irpfPercent = income.irpfPercent.toString(),
                             notas = income.notas ?: ""
@@ -92,6 +119,15 @@ class EditIncomeViewModel @Inject constructor(
     fun updateTotalNeto(value: String) { _form.update { it.copy(totalNeto = value) } }
     fun updateMoneda(value: String) { _form.update { it.copy(moneda = value) } }
     fun updateFuente(value: String) { _form.update { it.copy(fuente = value) } }
+    fun updateCategoria(value: String) { _form.update { it.copy(categoria = value) } }
+    fun selectCategory(value: String?, isCustomCategory: Boolean) {
+        _form.update {
+            it.copy(
+                categoria = value.orEmpty(),
+                isCustomCategory = isCustomCategory
+            )
+        }
+    }
     fun updateIvaPercent(value: String) { _form.update { it.copy(ivaPercent = value) } }
     fun updateIrpfPercent(value: String) { _form.update { it.copy(irpfPercent = value) } }
     fun updateNotas(value: String) { _form.update { it.copy(notas = value) } }
@@ -126,6 +162,7 @@ class EditIncomeViewModel @Inject constructor(
                     totalNeto = if (neto > 0) neto else monto,
                     moneda = form.moneda,
                     fuente = form.fuente.trim().takeIf { it.isNotBlank() },
+                    categoria = TransactionCategories.canonicalIncomeCategory(form.categoria),
                     ivaPercent = form.ivaPercent.toDoubleOrNull() ?: 0.0,
                     irpfPercent = form.irpfPercent.toDoubleOrNull() ?: 0.0,
                     imagenUri = original?.imagenUri,

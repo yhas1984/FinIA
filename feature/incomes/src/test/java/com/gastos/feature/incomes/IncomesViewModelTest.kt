@@ -107,4 +107,25 @@ class IncomesViewModelTest {
                 cancelAndConsumeRemainingEvents()
             }
         }
+
+    @Test
+    fun `filterByCategory keeps only matching incomes`() = runTest(UnconfinedTestDispatcher()) {
+        val incomes = listOf(
+            income(1, 100.0, "EUR").copy(categoria = "Nómina"),
+            income(2, 50.0, "EUR").copy(categoria = "nomina"),
+            income(3, 20.0, "EUR").copy(categoria = null)
+        )
+        val vm = newViewModel(incomes)
+
+        vm.filterByCategory("Nómina")
+
+        vm.uiState.test {
+            var state = awaitItem()
+            while (state.isLoading || state.incomes.size != 2) {
+                state = awaitItem()
+            }
+            assertEquals(150.0, state.totalIngresosConvertido!!, 0.001)
+            cancelAndConsumeRemainingEvents()
+        }
+    }
 }

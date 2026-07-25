@@ -218,6 +218,26 @@ fun DashboardScreen(
                 }
             }
 
+            item {
+                CategoryBreakdownCard(
+                    title = "Gastos por categoría",
+                    rows = uiState.expenseCategoriesMes,
+                    color = MaterialTheme.colorScheme.error,
+                    fmt = fmt,
+                    emptyText = "Sin gastos categorizados este mes"
+                )
+            }
+
+            item {
+                CategoryBreakdownCard(
+                    title = "Ingresos por categoría",
+                    rows = uiState.incomeCategoriesMes,
+                    color = MaterialTheme.colorScheme.secondary,
+                    fmt = fmt,
+                    emptyText = "Sin ingresos categorizados este mes"
+                )
+            }
+
             // Today summary
             item {
                 GlassCard {
@@ -320,6 +340,65 @@ fun DashboardScreen(
             item {
                 Spacer(modifier = Modifier.height(80.dp)) // Space for FAB
             }
+        }
+    }
+}
+
+@Composable
+private fun CategoryBreakdownCard(
+    title: String,
+    rows: List<CategoryTotal>,
+    color: Color,
+    fmt: (Double) -> String,
+    emptyText: String
+) {
+    GlassCard {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        if (rows.isEmpty()) {
+            Text(
+                text = emptyText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            return@GlassCard
+        }
+        val maxTotal = rows.maxOf { it.total }.takeIf { it > 0.0 } ?: 1.0
+        rows.take(6).forEach { row ->
+            Text(
+                text = row.label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth((row.total / maxTotal).toFloat())
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(color)
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = fmt(row.total),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }
