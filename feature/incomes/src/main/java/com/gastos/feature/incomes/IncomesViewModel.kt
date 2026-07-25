@@ -23,6 +23,7 @@ import javax.inject.Inject
 
 data class IncomesUiState(
     val incomes: List<Income> = emptyList(),
+    val hasAnyIncomes: Boolean = false,
     val selectedCategoryFilter: String? = null,
     val availableCategories: List<String> = emptyList(),
     /** Total convertido a la moneda por defecto (null = sin tasas cargadas). */
@@ -64,12 +65,13 @@ class IncomesViewModel @Inject constructor(
                         defaults = TransactionCategories.defaultIncomeCategories,
                         existing = allIncomes.map { it.categoria }
                     )
-                    Quintuple(
-                        visibleIncomes,
-                        target,
-                        recomputeTotal(visibleIncomes, target),
-                        categoryFilter,
-                        availableCategories
+                    IncomesDisplayData(
+                        incomes = visibleIncomes,
+                        targetCurrency = target,
+                        total = recomputeTotal(visibleIncomes, target),
+                        categoryFilter = categoryFilter,
+                        availableCategories = availableCategories,
+                        hasAnyIncomes = allIncomes.isNotEmpty()
                     )
                 }
                 .catch { e ->
@@ -77,16 +79,17 @@ class IncomesViewModel @Inject constructor(
                         it.copy(error = e.message ?: "Error al cargar ingresos", isLoading = false)
                     }
                 }
-                .collect { (incomes, target, total, categoryFilter, availableCategories) ->
+                .collect { data ->
                     _uiState.update {
                         it.copy(
-                            incomes = incomes,
+                            incomes = data.incomes,
+                            hasAnyIncomes = data.hasAnyIncomes,
                             isLoading = false,
                             error = null,
-                            totalIngresosConvertido = total,
-                            defaultCurrency = target,
-                            selectedCategoryFilter = categoryFilter,
-                            availableCategories = availableCategories
+                            totalIngresosConvertido = data.total,
+                            defaultCurrency = data.targetCurrency,
+                            selectedCategoryFilter = data.categoryFilter,
+                            availableCategories = data.availableCategories
                         )
                     }
                 }
@@ -94,7 +97,7 @@ class IncomesViewModel @Inject constructor(
     }
 
     fun filterByCategory(category: String?) {
-        _uiState.update { it.copy(selectedCategoryFilter = category, isLoading = true) }
+        _uiState.update { it.copy(selectedCategoryFilter = category) }
         selectedCategoryFilter.value = category
     }
 
@@ -137,10 +140,11 @@ class IncomesViewModel @Inject constructor(
     }
 }
 
-private data class Quintuple<A, B, C, D, E>(
-    val first: A,
-    val second: B,
-    val third: C,
-    val fourth: D,
-    val fifth: E
+private data class IncomesDisplayData(
+    val incomes: List<Income>,
+    val targetCurrency: String,
+    val total: Double?,
+    val categoryFilter: String?,
+    val availableCategories: List<String>,
+    val hasAnyIncomes: Boolean
 )

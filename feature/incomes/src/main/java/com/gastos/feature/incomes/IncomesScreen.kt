@@ -56,7 +56,7 @@ fun IncomesScreen(
             ) {
                 CircularProgressIndicator()
             }
-        } else if (uiState.incomes.isEmpty()) {
+        } else if (!uiState.hasAnyIncomes) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding),
                 contentAlignment = Alignment.Center
@@ -140,6 +140,14 @@ fun IncomesScreen(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    if (uiState.incomes.isEmpty()) {
+                        item {
+                            FilteredEmptyState(
+                                category = uiState.selectedCategoryFilter,
+                                onClearFilter = { viewModel.filterByCategory(null) }
+                            )
+                        }
+                    }
                     items(
                         items = uiState.incomes,
                         key = { it.id }
@@ -153,6 +161,43 @@ fun IncomesScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FilteredEmptyState(
+    category: String?,
+    onClearFilter: () -> Unit
+) {
+    val categoryLabel = if (category == UNCATEGORIZED_FILTER) {
+        TransactionCategories.UNCATEGORIZED_LABEL
+    } else {
+        category.orEmpty()
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 48.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.FilterList,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = "No hay movimientos en $categoryLabel",
+            style = MaterialTheme.typography.titleMedium
+        )
+        Text(
+            text = "Prueba otra categoría o vuelve a ver todos los ingresos.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        OutlinedButton(onClick = onClearFilter) {
+            Text("Ver todos")
         }
     }
 }
