@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
+import com.gastos.domain.model.TransactionCategories
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.ProductRepository
 import com.gastos.feature.backup.SheetsSyncManager
@@ -21,6 +22,7 @@ data class EditInvoiceUiState(
     val isSaving: Boolean = false,
     val saveResult: String? = null,
     val invoice: Invoice? = null,
+    val availableCategories: List<String> = TransactionCategories.defaultExpenseCategories,
     val error: String? = null
 )
 
@@ -41,6 +43,8 @@ data class EditInvoiceForm(
     val paisCodigo: String = "ES",
     val nifEmisor: String = "",
     val nifReceptor: String = "",
+    val categoria: String = "",
+    val isCustomCategory: Boolean = false,
     val notas: String = ""
 ) {
 
@@ -108,6 +112,24 @@ class EditInvoiceViewModel @Inject constructor(
 
     private var originalInvoice: Invoice? = null
 
+    init {
+        loadAvailableCategories()
+    }
+
+    private fun loadAvailableCategories() {
+        viewModelScope.launch {
+            val existing = invoiceRepository.getAllInvoices().first().map { it.categoria }
+            _uiState.update {
+                it.copy(
+                    availableCategories = TransactionCategories.availableCategories(
+                        defaults = TransactionCategories.defaultExpenseCategories,
+                        existing = existing
+                    )
+                )
+            }
+        }
+    }
+
     fun loadInvoice(id: Long) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
@@ -127,6 +149,10 @@ class EditInvoiceViewModel @Inject constructor(
                             paisCodigo = invoice.paisCodigo,
                             nifEmisor = invoice.nifEmisor ?: "",
                             nifReceptor = invoice.nifReceptor ?: "",
+                            categoria = invoice.categoria.orEmpty(),
+                            isCustomCategory = invoice.categoria?.let {
+                                TransactionCategories.canonicalExpenseCategory(it) !in TransactionCategories.defaultExpenseCategories
+                            } ?: false,
                             notas = invoice.notas ?: ""
                         )
                     }
@@ -153,6 +179,15 @@ class EditInvoiceViewModel @Inject constructor(
     fun updatePaisCodigo(value: String) { _form.update { it.copy(paisCodigo = value) } }
     fun updateNifEmisor(value: String) { _form.update { it.copy(nifEmisor = value) } }
     fun updateNifReceptor(value: String) { _form.update { it.copy(nifReceptor = value) } }
+    fun updateCategoria(value: String) { _form.update { it.copy(categoria = value) } }
+    fun selectCategory(value: String?, isCustomCategory: Boolean) {
+        _form.update {
+            it.copy(
+                categoria = value.orEmpty(),
+                isCustomCategory = isCustomCategory
+            )
+        }
+    }
     fun updateNotas(value: String) { _form.update { it.copy(notas = value) } }
 
     fun saveInvoice() {
@@ -183,6 +218,7 @@ class EditInvoiceViewModel @Inject constructor(
                     fecha = form.fecha,
                     proveedor = form.proveedor.trim(),
                     tipo = InvoiceType.GASTO,
+                    categoria = TransactionCategories.canonicalExpenseCategory(form.categoria),
                     moneda = form.moneda,
                     total = total,
                     ivaPercent = form.ivaPercent.toDoubleOrNull() ?: 0.0,

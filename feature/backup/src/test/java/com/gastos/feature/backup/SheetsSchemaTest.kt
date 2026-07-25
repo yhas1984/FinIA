@@ -30,6 +30,7 @@ class SheetsSchemaTest {
                 fecha = 1L,
                 proveedor = "Proveedor",
                 tipo = InvoiceType.GASTO,
+                categoria = "Alimentación",
                 total = 121.0,
                 driveWebViewLink = "https://drive.test/9"
             ),
@@ -37,8 +38,9 @@ class SheetsSchemaTest {
         )
 
         assertEquals(SheetsSchema.recibidasHeaders.size, row.size)
-        assertEquals(9L, row[13])
-        assertEquals("https://drive.test/9", row[14])
+        assertEquals("Alimentación", row[12])
+        assertEquals(9L, row[14])
+        assertEquals("https://drive.test/9", row[15])
         assertEquals("EUR", row[11])
     }
 
@@ -78,9 +80,9 @@ class SheetsSchemaTest {
         assertEquals("", row[5])
         assertEquals("", row[7])
         assertEquals("", row[10])
-        assertEquals(250.0, row[15])
-        assertEquals("ARS", row[16])
-        assertEquals("Tasa pendiente", row[19])
+        assertEquals(250.0, row[16])
+        assertEquals("ARS", row[17])
+        assertEquals("Tasa pendiente", row[20])
     }
 
     @Test
@@ -100,9 +102,10 @@ class SheetsSchemaTest {
 
         assertEquals(SheetsSchema.nominasHeaders.size, row.size)
         assertEquals("EUR", row[7])
-        assertEquals(500.0, row[9])
-        assertEquals(400.0, row[10])
-        assertTrue(row[12] is Double)
+        assertEquals("Sin categoría", row[8])
+        assertEquals(500.0, row[10])
+        assertEquals(400.0, row[11])
+        assertTrue(row[13] is Double)
     }
 
     @Test

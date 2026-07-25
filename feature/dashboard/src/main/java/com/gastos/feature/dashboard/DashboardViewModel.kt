@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
+import com.gastos.domain.model.TransactionCategories
 import com.gastos.extension.SafeLog
 import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
@@ -25,6 +26,11 @@ data class DayData(
     val ingresos: Double
 )
 
+data class CategoryTotal(
+    val label: String,
+    val total: Double
+)
+
 data class DashboardUiState(
     val totalGastosMes: Double = 0.0,
     val totalIngresosMes: Double = 0.0,
@@ -33,6 +39,8 @@ data class DashboardUiState(
     val totalIngresosHoy: Double = 0.0,
     val totalGastosSemana: Double = 0.0,
     val totalIngresosSemana: Double = 0.0,
+    val expenseCategoriesMes: List<CategoryTotal> = emptyList(),
+    val incomeCategoriesMes: List<CategoryTotal> = emptyList(),
     val dailyData: List<DayData> = emptyList(),
     val isLoading: Boolean = true,
     val totalFacturas: Int = 0,
@@ -113,12 +121,12 @@ class DashboardViewModel @Inject constructor(
         val ranges = computeDateRanges()
         val now = System.currentTimeMillis()
 
-        val gastosMes = invoices
-            .filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.mesInicio..ranges.mesFin }
-            .sumInvoicesConverted(target)
-        val ingresosMes = incomes
-            .filter { it.fecha in ranges.mesInicio..ranges.mesFin }
-            .sumIncomesConverted(target)
+        val monthlyExpenseInvoices = invoices.filter {
+            it.tipo == InvoiceType.GASTO && it.fecha in ranges.mesInicio..ranges.mesFin
+        }
+        val monthlyIncomes = incomes.filter { it.fecha in ranges.mesInicio..ranges.mesFin }
+        val gastosMes = monthlyExpenseInvoices.sumInvoicesConverted(target)
+        val ingresosMes = monthlyIncomes.sumIncomesConverted(target)
 
         val gastosHoy = invoices
             .filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.hoyInicio..ranges.hoyFin }
@@ -178,6 +186,8 @@ class DashboardViewModel @Inject constructor(
             totalIngresosHoy = ingresosHoy,
             totalGastosSemana = gastosSemana,
             totalIngresosSemana = ingresosSemana,
+            expenseCategoriesMes = computeExpenseCategories(monthlyExpenseInvoices, target),
+            incomeCategoriesMes = computeIncomeCategories(monthlyIncomes, target),
             dailyData = computeDailyData(invoices, incomes, target),
             isLoading = false,
             totalFacturas = invoices.count { it.tipo == InvoiceType.GASTO },
@@ -195,6 +205,29 @@ class DashboardViewModel @Inject constructor(
     /** Suma los importes convertidos a [target] (ingresos). */
     private fun List<Income>.sumIncomesConverted(target: String): Double =
         sumOf { exchangeRateProvider.convert(it.monto, it.moneda, target) ?: 0.0 }
+
+    private fun computeExpenseCategories(invoices: List<Invoice>, target: String): List<CategoryTotal> =
+        invoices.groupBy { categoryLabel(it.categoria) }
+            .mapNotNull { (label, rows) ->
+                val total = rows.sumOf { exchangeRateProvider.convert(it.total, it.moneda, target) ?: 0.0 }
+                val hasConvertible = rows.any { exchangeRateProvider.convert(it.total, it.moneda, target) != null }
+                if (!hasConvertible) null else CategoryTotal(label = label, total = total)
+            }
+            .sortedByDescending { it.total }
+
+    private fun computeIncomeCategories(incomes: List<Income>, target: String): List<CategoryTotal> =
+        incomes.groupBy { categoryLabel(it.categoria) }
+            .mapNotNull { (label, rows) ->
+                val total = rows.sumOf { exchangeRateProvider.convert(it.monto, it.moneda, target) ?: 0.0 }
+                val hasConvertible = rows.any { exchangeRateProvider.convert(it.monto, it.moneda, target) != null }
+                if (!hasConvertible) null else CategoryTotal(label = label, total = total)
+            }
+            .sortedByDescending { it.total }
+
+    private fun categoryLabel(category: String?): String =
+        TransactionCategories.canonicalExpenseCategory(category)
+            ?: TransactionCategories.canonicalIncomeCategory(category)
+            ?: TransactionCategories.UNCATEGORIZED_LABEL
 
     private data class DateRanges(
         val hoyInicio: Long,

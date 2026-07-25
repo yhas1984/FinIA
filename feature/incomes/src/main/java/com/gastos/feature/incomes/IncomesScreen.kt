@@ -1,6 +1,8 @@
 package com.gastos.feature.incomes
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -14,9 +16,12 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.Income
+import com.gastos.domain.model.TransactionCategories
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
+
+private const val UNCATEGORIZED_FILTER = "__uncategorized__"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,6 +109,32 @@ fun IncomesScreen(
                     }
                 }
 
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = uiState.selectedCategoryFilter == null,
+                        onClick = { viewModel.filterByCategory(null) },
+                        label = { Text("Todas") }
+                    )
+                    FilterChip(
+                        selected = uiState.selectedCategoryFilter == UNCATEGORIZED_FILTER,
+                        onClick = { viewModel.filterByCategory(UNCATEGORIZED_FILTER) },
+                        label = { Text(TransactionCategories.UNCATEGORIZED_LABEL) }
+                    )
+                    uiState.availableCategories.forEach { category ->
+                        FilterChip(
+                            selected = uiState.selectedCategoryFilter == category,
+                            onClick = { viewModel.filterByCategory(category) },
+                            label = { Text(category) }
+                        )
+                    }
+                }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -162,6 +193,11 @@ private fun IncomeCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    SuggestionChip(
+                        onClick = {},
+                        label = { Text(TransactionCategories.displayCategory(income.categoria)) }
+                    )
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(

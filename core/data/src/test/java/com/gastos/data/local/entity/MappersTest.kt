@@ -3,6 +3,7 @@ package com.gastos.data.local.entity
 import com.gastos.domain.model.CountryFiscalConfig
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.InvoiceType
+import com.gastos.domain.model.TransactionCategories
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -23,6 +24,7 @@ class MappersTest {
             fecha = 1700000000L,
             proveedor = "Acme",
             tipo = InvoiceType.GASTO,
+            categoria = "Alimentación",
             moneda = "EUR",
             total = 121.0,
             ivaPercent = 21.0,
@@ -50,6 +52,7 @@ class MappersTest {
         assertEquals(entity.driveFileId, back.driveFileId)
         assertEquals(entity.driveWebViewLink, back.driveWebViewLink)
         assertEquals(entity.driveUploadPending, back.driveUploadPending)
+        assertEquals(entity.categoria, back.categoria)
         assertEquals(entity.createdAt, back.createdAt)
         assertEquals(entity.updatedAt, back.updatedAt)
     }
@@ -59,12 +62,13 @@ class MappersTest {
         val entity = IncomeEntity(
             id = 3, fecha = 1L, concepto = "Sueldo", monto = 1000.0,
             totalDevengado = 1210.0, totalNeto = 1000.0, moneda = "EUR",
-            ivaPercent = 21.0, irpfPercent = 15.0
+            categoria = "Nómina", ivaPercent = 21.0, irpfPercent = 15.0
         )
         val back = entity.toDomain().toEntity()
         assertEquals(1210.0, back.totalDevengado, 0.0)
         assertEquals(1000.0, back.totalNeto, 0.0)
         assertEquals("Sueldo", back.concepto)
+        assertEquals("Nómina", back.categoria)
     }
 
     @Test
@@ -140,5 +144,16 @@ class MappersTest {
         assertEquals(original.ivaRates, round.ivaRates)
         assertEquals(original.irpfRate!!, round.irpfRate!!, 0.0)
         assertEquals(original.nombreLeyFiscal, round.nombreLeyFiscal)
+    }
+
+    @Test
+    fun `category helpers normalize blanks and match defaults`() {
+        val normalized = TransactionCategories.normalizeCategory("  ")
+        val canonicalExpense = TransactionCategories.canonicalExpenseCategory("alimentacion")
+        val canonicalIncome = TransactionCategories.canonicalIncomeCategory("nomina")
+
+        assertNull(normalized)
+        assertEquals("Alimentación", canonicalExpense)
+        assertEquals("Nómina", canonicalIncome)
     }
 }

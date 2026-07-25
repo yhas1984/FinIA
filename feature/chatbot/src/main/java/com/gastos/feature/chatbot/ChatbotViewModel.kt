@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.InvoiceType
+import com.gastos.domain.model.TransactionCategories
 import com.gastos.extension.SafeLog
 import com.gastos.feature.ai.AIResult
 import com.gastos.feature.ai.AIService
@@ -562,6 +563,7 @@ class ChatbotViewModel @Inject constructor(
         originalQuestion: String?
     ): String {
         val (start, end) = getDateRange(periodo)
+        val normalizedCategory = TransactionCategories.normalizeCategory(categoria)
         val target = currencyPreference.defaultCurrency.value
         val fmt = java.text.NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-ES")).apply {
             try { currency = java.util.Currency.getInstance(target) } catch (_: Exception) { /* fallback al locale */ }
@@ -574,9 +576,22 @@ class ChatbotViewModel @Inject constructor(
         // Filter by date range
         val periodInvoices = invoices.filter { it.fecha in start..end }
         val periodIncomes = incomes.filter { it.fecha in start..end }
-        val periodInvoiceIds = periodInvoices.map { it.id }.toSet()
-        val periodProducts = allProducts.filter { it.invoiceId in periodInvoiceIds }
-        val invoiceById = periodInvoices.associateBy { it.id }
+        val filteredInvoices = periodInvoices.filter {
+            TransactionCategories.matchesCategory(it.categoria, normalizedCategory)
+        }
+        val filteredIncomes = periodIncomes.filter {
+            TransactionCategories.matchesCategory(it.categoria, normalizedCategory)
+        }
+        val filteredInvoiceIds = filteredInvoices.map { it.id }.toSet()
+        val periodProducts = allProducts.filter { it.invoiceId in filteredInvoiceIds }
+        val invoiceById = filteredInvoices.associateBy { it.id }
+        val scopeLabel = buildString {
+            append(periodo)
+            normalizedCategory?.let {
+                append(" en ")
+                append(TransactionCategories.displayCategory(it))
+            }
+        }
 
         fun convertedInvoiceAmount(invoice: com.gastos.domain.model.Invoice): Double =
             exchangeRateProvider.convert(invoice.total, invoice.moneda, target) ?: 0.0
@@ -592,15 +607,15 @@ class ChatbotViewModel @Inject constructor(
         // Totales convertidos a la moneda por defecto del usuario (mismo
         // mecanismo que el Dashboard): si falta la tasa de una moneda, su
         // importe se excluye y no se suma como si fuera la moneda destino.
-        val totalGastos = periodInvoices
+        val totalGastos = filteredInvoices
             .filter { it.tipo == InvoiceType.GASTO }
             .sumOf(::convertedInvoiceAmount)
-        val totalIngresos = periodInvoices
+        val totalIngresos = filteredInvoices
                 .filter { it.tipo == InvoiceType.INGRESO }
                 .sumOf(::convertedInvoiceAmount) +
-            periodIncomes.sumOf(::convertedIncomeAmount)
-        val countGastos = periodInvoices.count { it.tipo == InvoiceType.GASTO }
-        val countIngresos = periodInvoices.count { it.tipo == InvoiceType.INGRESO } + periodIncomes.size
+            filteredIncomes.sumOf(::convertedIncomeAmount)
+        val countGastos = filteredInvoices.count { it.tipo == InvoiceType.GASTO }
+        val countIngresos = filteredInvoices.count { it.tipo == InvoiceType.INGRESO } + filteredIncomes.size
 
         val resolvedQuery = FinancialQueryResolver.resolve(
             queryType = queryType,
@@ -610,15 +625,15 @@ class ChatbotViewModel @Inject constructor(
             productNames = allProducts.map { it.descripcion }
         )
         val resolvedQueryType = resolvedQuery.queryType
-        SafeLog.d(TAG, "Query: type=$resolvedQueryType, period=$periodo, gastos=$totalGastos, ingresos=$totalIngresos, products=${periodProducts.size}")
+        SafeLog.d(TAG, "Query: type=$resolvedQueryType, period=$periodo, category=$normalizedCategory, gastos=$totalGastos, ingresos=$totalIngresos, products=${periodProducts.size}")
 
         return when (resolvedQueryType) {
             "gastos" -> {
-                val sb = StringBuilder("💰 Gastos del $periodo:\n")
+                val sb = StringBuilder("💰 Gastos de $scopeLabel:\n")
                 sb.append("• Total: ${fmt.format(totalGastos)}\n")
                 sb.append("• Cantidad: $countGastos transacciones\n")
-                if (periodInvoices.isNotEmpty()) {
-                    val byProvider = periodInvoices.filter { it.tipo == InvoiceType.GASTO }
+                if (filteredInvoices.isNotEmpty()) {
+                    val byProvider = filteredInvoices.filter { it.tipo == InvoiceType.GASTO }
                         .groupBy { it.proveedor }
                         .mapValues { (_, values) -> values.sumOf(::convertedInvoiceAmount) }
                         .toList().sortedByDescending { it.second }.take(5)
@@ -632,11 +647,11 @@ class ChatbotViewModel @Inject constructor(
                 sb.toString().trimEnd()
             }
             "ingresos" -> {
-                val sb = StringBuilder("💵 Ingresos del $periodo:\n")
+                val sb = StringBuilder("💵 Ingresos de $scopeLabel:\n")
                 sb.append("• Total: ${fmt.format(totalIngresos)}\n")
                 sb.append("• Cantidad: $countIngresos transacciones\n")
-                if (periodIncomes.isNotEmpty()) {
-                    val bySource = periodIncomes.groupBy { it.fuente ?: it.concepto }
+                if (filteredIncomes.isNotEmpty()) {
+                    val bySource = filteredIncomes.groupBy { it.fuente ?: it.concepto }
                         .mapValues { (_, values) -> values.sumOf(::convertedIncomeAmount) }
                         .toList().sortedByDescending { it.second }.take(5)
                     if (bySource.isNotEmpty()) {
@@ -651,7 +666,7 @@ class ChatbotViewModel @Inject constructor(
             "balance" -> {
                 val balance = totalIngresos - totalGastos
                 val emoji = if (balance >= 0) "✅" else "⚠️"
-                "📊 Balance del $periodo:\n• Ingresos: ${fmt.format(totalIngresos)} ($countIngresos)\n• Gastos: ${fmt.format(totalGastos)} ($countGastos)\n• Balance: $emoji ${fmt.format(balance)}"
+                "📊 Balance de $scopeLabel:\n• Ingresos: ${fmt.format(totalIngresos)} ($countIngresos)\n• Gastos: ${fmt.format(totalGastos)} ($countGastos)\n• Balance: $emoji ${fmt.format(balance)}"
             }
             "productos", "producto" -> {
                 val resolvedItem = resolvedQuery.item
@@ -666,7 +681,7 @@ class ChatbotViewModel @Inject constructor(
                         return buildProductClarification(periodo, resolvedItem, matchResult.variants)
                     }
                     if (matchResult.matches.isEmpty()) {
-                        return "📦 No encontré un producto exacto para '$resolvedItem' en el periodo: $periodo"
+                        return "📦 No encontré un producto exacto para '$resolvedItem' en el periodo: $scopeLabel"
                     }
                     val total = matchResult.matches.sumOf(::convertedProductAmount)
                     val totalUnits = matchResult.matches.sumOf { it.cantidad }
@@ -674,9 +689,9 @@ class ChatbotViewModel @Inject constructor(
                         it.replaceFirstChar { ch -> ch.uppercase() }
                     }
                     val intro = if (matchResult.usedGroupMode) {
-                        "📦 Gasto en variantes de '$resolvedItem' durante $periodo:"
+                        "📦 Gasto en variantes de '$resolvedItem' durante $scopeLabel:"
                     } else {
-                        "📦 Gasto en '$resolvedItem' durante $periodo:"
+                        "📦 Gasto en '$resolvedItem' durante $scopeLabel:"
                     }
                     return buildString {
                         appendLine(intro)
@@ -686,9 +701,9 @@ class ChatbotViewModel @Inject constructor(
                     }
                 }
                 if (periodProducts.isEmpty()) {
-                    return "📦 No hay productos registrados en el periodo: $periodo"
+                    return "📦 No hay productos registrados en el periodo: $scopeLabel"
                 }
-                val sb = StringBuilder("📦 Productos del $periodo:\n")
+                val sb = StringBuilder("📦 Productos de $scopeLabel:\n")
                 // Most bought by frequency
                 val byFrequency = periodProducts.groupBy { it.descripcion.lowercase().trim() }
                     .mapValues { (_, values) ->

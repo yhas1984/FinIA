@@ -87,6 +87,28 @@ class InvoicesViewModelTest {
     }
 
     @Test
+    fun `filterByCategory keeps visible total and uncategorized option`() = runTest(dispatcher) {
+        val invoices = listOf(
+            invoice(1, 100.0, "EUR").copy(categoria = "Alimentación"),
+            invoice(2, 50.0, "EUR").copy(categoria = null),
+            invoice(3, 25.0, "EUR").copy(categoria = "alimentacion")
+        )
+        val vm = newViewModel(invoices)
+
+        vm.filterByCategory("Alimentación")
+
+        vm.uiState.test {
+            var state = awaitItem()
+            while (state.isLoading || state.invoices.size != 2) {
+                state = awaitItem()
+            }
+            assertEquals(125.0, state.totalGastosConvertido!!, 0.001)
+            assertEquals(true, state.availableCategories.contains("Alimentación"))
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
     fun `recomputeTotal convierte cuando hay tasas`() = runTest(dispatcher) {
         val invoices = listOf(
             invoice(1, 100.0, "EUR"),

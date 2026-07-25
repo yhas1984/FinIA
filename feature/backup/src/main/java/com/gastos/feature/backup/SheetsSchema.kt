@@ -3,6 +3,7 @@ package com.gastos.feature.backup
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.Product
+import com.gastos.domain.model.TransactionCategories
 import com.gastos.repository.ExchangeRateProvider
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -14,12 +15,12 @@ internal object SheetsSchema {
     const val NOMINAS = "Nóminas"
     const val PRODUCTOS = "Productos"
     const val RESUMEN = "Resumen"
-    const val SCHEMA_VERSION = 4
+    const val SCHEMA_VERSION = 5
 
-    const val RECIBIDAS_KEY_COLUMN = "N"
-    const val RECIBIDAS_LAST_COLUMN = "T"
-    const val NOMINAS_KEY_COLUMN = "I"
-    const val NOMINAS_LAST_COLUMN = "O"
+    const val RECIBIDAS_KEY_COLUMN = "O"
+    const val RECIBIDAS_LAST_COLUMN = "U"
+    const val NOMINAS_KEY_COLUMN = "J"
+    const val NOMINAS_LAST_COLUMN = "P"
     const val PRODUCTOS_PARENT_COLUMN = "H"
     const val PRODUCTOS_LAST_COLUMN = "P"
 
@@ -30,13 +31,13 @@ internal object SheetsSchema {
     val recibidasHeaders: List<Any> = listOf(
         "Nº Factura", "Fecha", "NIF País", "NIF Emisor",
         "Emisor (Razón Social)", "Base Imponible", "Tipo IVA", "Cuota IVA",
-        "Recargo Eq.", "IRPF", "Total", "Moneda", "Notas", "ID", "Foto Drive",
+        "Recargo Eq.", "IRPF", "Total", "Moneda", "Categoría", "Notas", "ID", "Foto Drive",
         "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
     )
 
     val nominasHeaders: List<Any> = listOf(
         "Empresa", "Fecha", "Devengado", "Líquido", "IRPF %",
-        "Base Cot.", "Seg. Social", "Moneda", "ID",
+        "Base Cot.", "Seg. Social", "Moneda", "Categoría", "ID",
         "Devengado Original", "Líquido Original", "Moneda Original",
         "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
     )
@@ -163,6 +164,7 @@ internal object SheetsSchema {
             invoice.irpfPercent,
             convertedTotal ?: "",
             conversion.targetCurrency,
+            TransactionCategories.displayCategory(invoice.categoria),
             invoice.notas ?: "",
             invoice.id,
             invoice.driveWebViewLink ?: "",
@@ -189,6 +191,7 @@ internal object SheetsSchema {
             "",
             "",
             conversion.targetCurrency,
+            TransactionCategories.displayCategory(income.categoria),
             income.id,
             devengado.originalAmount,
             liquido.originalAmount,

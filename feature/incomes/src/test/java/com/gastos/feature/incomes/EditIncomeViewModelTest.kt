@@ -4,8 +4,10 @@ import com.gastos.domain.model.Income
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.every
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -46,6 +48,7 @@ class EditIncomeViewModelTest {
             )
             coEvery { repo.getIncomeById(9L) } returns original
             coEvery { repo.updateIncome(any()) } returns Unit
+            every { repo.getAllIncomes() } returns flowOf(listOf(original))
 
             val vm = EditIncomeViewModel(repo, sync)
             vm.loadIncome(9L)
@@ -59,6 +62,7 @@ class EditIncomeViewModelTest {
                     it.id == 9L &&
                         it.concepto == "Nómina actualizada" &&
                         it.imagenUri == "content://scan/9" &&
+                        it.categoria == null &&
                         it.createdAt == 555L
                 })
             }
