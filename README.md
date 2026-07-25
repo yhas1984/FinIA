@@ -8,7 +8,7 @@
 
 ## ✨ Características principales
 
-- 🤖 **Asistente IA (Gemini)** — chat conversacional con memoria, streaming de respuestas e instrucciones personalizables.
+- 🤖 **Asistente IA (Gemini)** — chat conversacional con memoria local; streaming solo en Premium e instrucciones personalizables.
 - 📷 **Escaneo de facturas y nóminas** — desde el propio chat (cámara o galería): extrae proveedor, fecha, total, IVA, IRPF, NIF y líneas de producto, distinguiendo nóminas de facturas.
 - 🎙️ **Comandos por voz** — registra gastos, ingresos o consulta tu balance hablando (SpeechRecognizer de Android, es-ES).
 - 💬 **Chat con streaming** — el asistente responde en tiempo real, recordando el contexto de la conversación.
@@ -83,7 +83,7 @@ FinAI usa **Gemini** a través de la **API gratuita de Google AI Studio**.
 - **Consultas** — *"¿cuánto gasté este mes?"*, *"mi balance de la semana"*. La IA solo clasifica la consulta; los cálculos se hacen localmente (tus cifras nunca se envían al modelo).
 - **OCR de documentos** — foto de factura, ticket o nómina desde el chat. Detección multi-país de moneda, IVA e identificación fiscal.
 
-> ⚠️ Tus mensajes se envían a la API de Gemini para procesarse. No se almacenan fuera de tu dispositivo.
+> ⚠️ Tus mensajes se envían a la API de Gemini para procesarse. El historial del chat se guarda localmente y se incluye en la copia de seguridad de la app.
 
 ---
 

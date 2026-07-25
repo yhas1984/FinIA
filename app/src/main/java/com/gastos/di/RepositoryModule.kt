@@ -33,4 +33,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindExchangeRateProvider(impl: ExchangeRateProviderImpl): ExchangeRateProvider
+
+    @Binds
+    @Singleton
+    abstract fun bindChatMessageRepository(impl: ChatMessageRepositoryImpl): ChatMessageRepository
 }

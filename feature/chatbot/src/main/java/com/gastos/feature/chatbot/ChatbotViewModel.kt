@@ -14,6 +14,8 @@ import com.gastos.domain.usecase.SaveIncomeUseCase
 import com.gastos.domain.usecase.SaveInvoiceUseCase
 import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
+import com.gastos.repository.ChatMessageRepository
+import com.gastos.repository.PremiumStatusProvider
 import com.gastos.feature.voice.VoiceRecognitionService
 import com.gastos.feature.voice.VoiceResult
 import com.gastos.repository.IncomeRepository
@@ -26,6 +28,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.Normalizer
@@ -156,6 +160,8 @@ data class ChatbotUiState(
 @HiltViewModel
 class ChatbotViewModel @Inject constructor(
     private val aiService: AIService,
+    private val chatMessageRepository: ChatMessageRepository,
+    private val premiumStatusProvider: PremiumStatusProvider,
     private val voiceRecognitionService: VoiceRecognitionService,
     private val invoiceRepository: InvoiceRepository,
     private val incomeRepository: IncomeRepository,
@@ -169,9 +175,60 @@ class ChatbotViewModel @Inject constructor(
     private val currencyPreference: CurrencyPreference
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(ChatbotUiState())
+    private val _uiState = MutableStateFlow(ChatbotUiState(isProcessing = true))
     val uiState: StateFlow<ChatbotUiState> = _uiState.asStateFlow()
     private var pendingProductClarification: PendingProductClarification? = null
+    private var hasRestoredMessages = false
+
+    init {
+        viewModelScope.launch {
+            premiumStatusProvider.isPremium.collectLatest { premium ->
+                try {
+                    aiService.setPremiumLimits(premium)
+                    restoreChat()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    SafeLog.e(TAG, "Error restoring chat", e)
+                    _uiState.update { it.copy(isProcessing = false) }
+                }
+            }
+        }
+    }
+
+    private suspend fun restoreChat() {
+        val messages = chatMessageRepository.getMessages()
+        if (!hasRestoredMessages) {
+            _uiState.update {
+                it.copy(messages = messages.toUiMessages().takeLast(200), isProcessing = false)
+            }
+            hasRestoredMessages = true
+        }
+        aiService.replaceChatHistory(messages)
+    }
+
+    private fun List<com.gastos.domain.model.ChatMessageRecord>.toUiMessages(): List<ChatMessage> = mapNotNull { it.toUiMessage() }
+    private fun com.gastos.domain.model.ChatMessageRecord.toUiMessage(): ChatMessage? = when (role) {
+        "user" -> ChatMessage.User(visibleText, createdAt)
+        "model" -> ChatMessage.AI(visibleText, createdAt)
+        else -> ChatMessage.System(visibleText, createdAt)
+    }
+
+    private suspend fun persistMessage(
+        role: String,
+        visibleText: String,
+        contextText: String? = visibleText,
+        includeInContext: Boolean = true
+    ) {
+        if (visibleText.isBlank()) return
+        val message = com.gastos.domain.model.ChatMessageRecord(
+            role = role,
+            visibleText = visibleText,
+            contextText = contextText,
+            includeInContext = includeInContext
+        )
+        chatMessageRepository.addMessage(message)
+    }
 
     fun sendMessage(text: String) {
         if (text.isBlank() || _uiState.value.isProcessing) return
@@ -190,9 +247,7 @@ class ChatbotViewModel @Inject constructor(
             pendingProductClarification = null
         }
 
-        _uiState.update {
-            it.copy(messages = it.messages + ChatMessage.User(text), isProcessing = true)
-        }
+        _uiState.update { it.copy(messages = it.messages + ChatMessage.User(text), isProcessing = true) }
 
         // Sin API key: mensaje guía en lugar de llamar al servicio.
         if (!aiService.isConfigured()) {
@@ -205,58 +260,37 @@ class ChatbotViewModel @Inject constructor(
             return
         }
 
-        // Añadimos un mensaje AI vacío (placeholder) que iremos rellenando en
-        // streaming. El índice se captura DENTRO del update para evitar races.
-        var placeholderIndex = -1
-        _uiState.update {
-            placeholderIndex = it.messages.size
-            it.copy(messages = it.messages + ChatMessage.AI(""))
-        }
-
         viewModelScope.launch {
+            var responseMode = ChatResponseMode.FREE_COMPLETE
             try {
-                val collected = StringBuilder()
-                aiService.processCommandStreaming(text).collect { chunk ->
-                    collected.append(chunk)
-                    _uiState.update { state ->
-                        state.copy(
-                            messages = state.messages.toMutableList().apply {
-                                if (placeholderIndex in indices) {
-                                    this[placeholderIndex] = ChatMessage.AI(collected.toString())
-                                }
-                            }
-                        )
+                persistMessage("user", text)
+                responseMode = chatResponseMode(premiumStatusProvider.isPremium.value)
+                if (responseMode == ChatResponseMode.PREMIUM_STREAM) {
+                    val collected = StringBuilder()
+                    appendPlaceholder()
+                    aiService.processCommandStreaming(text).collect { chunk ->
+                        collected.append(chunk)
+                        updateStreamingPlaceholder(collected.toString())
                     }
-                }
-
-                val raw = collected.toString()
-                // Si hay texto, parseamos el resultado final para ejecutar acciones
-                // (registrar gasto/ingreso/consulta) o, si era chat, ya se mostró en vivo.
-                if (raw.isNotBlank()) {
-                    handleStreamingResult(raw, placeholderIndex, text)
+                    val raw = collected.toString()
+                    if (raw.isNotBlank()) {
+                        handleFinalResult(raw, text, streaming = true)
+                    } else {
+                        replacePlaceholder("No recibí respuesta. Inténtalo de nuevo.")
+                    }
                 } else {
-                    _uiState.update {
-                        it.copy(
-                            messages = it.messages.toMutableList().apply {
-                                if (placeholderIndex in indices) {
-                                    this[placeholderIndex] = ChatMessage.AI("No recibí respuesta. Inténtalo de nuevo.")
-                                }
-                            },
-                            isProcessing = false
-                        )
-                    }
+                    val result = aiService.processCommand(text)
+                    handleAIResult(result, text)
                 }
             } catch (e: Exception) {
                 SafeLog.e(TAG, "Error processing message", e)
-                _uiState.update {
-                    it.copy(
-                        messages = it.messages.toMutableList().apply {
-                            if (placeholderIndex in indices) {
-                                this[placeholderIndex] = ChatMessage.AI("Error al procesar: ${e.message}")
-                            }
-                        },
-                        isProcessing = false
-                    )
+                val message = "Error al procesar: ${e.message}"
+                if (responseMode == ChatResponseMode.PREMIUM_STREAM) {
+                    replacePlaceholder(message)
+                } else {
+                    _uiState.update {
+                        it.copy(messages = it.messages + ChatMessage.AI(message), isProcessing = false)
+                    }
                 }
             }
         }
@@ -268,15 +302,9 @@ class ChatbotViewModel @Inject constructor(
         clarification: ResolvedProductClarification
     ) {
         pendingProductClarification = null
-        var placeholderIndex = -1
-        _uiState.update {
-            placeholderIndex = it.messages.size + 1
-            it.copy(
-                messages = it.messages + ChatMessage.User(userAnswer) + ChatMessage.AI(""),
-                isProcessing = true
-            )
-        }
+        _uiState.update { it.copy(messages = it.messages + ChatMessage.User(userAnswer), isProcessing = true) }
         viewModelScope.launch {
+            persistMessage("user", userAnswer)
             val response = executeQuery(
                 queryType = "productos",
                 periodo = pending.periodo,
@@ -285,14 +313,7 @@ class ChatbotViewModel @Inject constructor(
                 matchMode = clarification.matchMode,
                 originalQuestion = userAnswer
             )
-            _uiState.update { state ->
-                state.copy(
-                    messages = state.messages.toMutableList().apply {
-                        if (placeholderIndex in indices) this[placeholderIndex] = ChatMessage.AI(response)
-                    },
-                    isProcessing = false
-                )
-            }
+            handleAIResult(AIResult(success = true, message = response), userAnswer)
         }
     }
 
@@ -301,39 +322,41 @@ class ChatbotViewModel @Inject constructor(
      * - Si el modelo respondió en texto plano (chat), lo deja tal cual (ya mostrado).
      * - Si respondió con JSON de acción, ejecuta la acción y reemplaza el mensaje.
      */
-    private suspend fun handleStreamingResult(
-        raw: String,
-        placeholderIndex: Int,
-        originalQuestion: String
-    ) {
+    private suspend fun handleFinalResult(raw: String, originalQuestion: String, streaming: Boolean = false) {
         val result = aiService.parseStreamingResult(raw)
-        applyAIResult(result, placeholderIndex, originalQuestion)
+        handleAIResult(result, originalQuestion, streaming)
     }
 
     /**
      * Aplica un AIResult reemplazando el mensaje placeholder. Lógica unificada
      * para streaming (chat) y para resultados síncronos (imagen escaneada).
      */
-    private suspend fun applyAIResult(
+    private suspend fun handleAIResult(
         result: AIResult,
-        placeholderIndex: Int,
-        originalQuestion: String? = null
+        originalQuestion: String? = null,
+        streaming: Boolean = false,
+        includeInContext: Boolean = true
     ) {
-        val replacePlaceholder: (String) -> Unit = { text ->
-            _uiState.update { state ->
-                state.copy(
-                    messages = state.messages.toMutableList().apply {
-                        if (placeholderIndex in indices) {
-                            this[placeholderIndex] = ChatMessage.AI(text)
-                        }
-                    },
-                    isProcessing = false
+        suspend fun showResult(text: String, shouldPersist: Boolean = true) {
+            if (streaming) {
+                replacePlaceholder(text)
+            } else {
+                _uiState.update {
+                    it.copy(messages = it.messages + ChatMessage.AI(text), isProcessing = false)
+                }
+            }
+            if (shouldPersist) {
+                persistMessage(
+                    role = "model",
+                    visibleText = text,
+                    contextText = text,
+                    includeInContext = includeInContext
                 )
             }
         }
 
         validateAction(result)?.let { message ->
-            replacePlaceholder("❌ $message")
+            showResult("❌ $message", shouldPersist = false)
             return
         }
 
@@ -357,7 +380,7 @@ class ChatbotViewModel @Inject constructor(
                     savedProducts
                 )
                 val driveMessage = driveResult?.let { "\n${if (it.uploaded) "☁️" else "⚠️"} ${it.message}" }.orEmpty()
-                replacePlaceholder(
+                showResult(
                     "✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}$driveMessage"
                 )
             }
@@ -377,7 +400,7 @@ class ChatbotViewModel @Inject constructor(
                 )
                 val incomeId = saveIncomeUseCase(income)
                 sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
-                replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
+                showResult("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
             }
             // Ingreso detectado por texto
             result.income != null -> {
@@ -389,7 +412,7 @@ class ChatbotViewModel @Inject constructor(
                 } else {
                     "${income.monto} ${income.moneda}"
                 }
-                replacePlaceholder("✅ Ingreso registrado: ${income.concepto} - $display")
+                showResult("✅ Ingreso registrado: ${income.concepto} - $display")
             }
             // Consulta de datos (JSON con action=query)
             result.queryResult != null -> {
@@ -403,7 +426,7 @@ class ChatbotViewModel @Inject constructor(
                         val categoria = json.optString("categoria", "").takeIf { it.isNotEmpty() && it != "null" }
                         val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
                         val matchMode = json.optString("match_mode", "").takeIf { it.isNotEmpty() && it != "null" }
-                        replacePlaceholder(
+                        showResult(
                             executeQuery(
                                 queryType = queryType,
                                 periodo = periodo,
@@ -414,14 +437,36 @@ class ChatbotViewModel @Inject constructor(
                             )
                         )
                     } else {
-                        replacePlaceholder(result.message)
+                        showResult(result.message)
                     }
                 } catch (e: Exception) {
-                    replacePlaceholder(result.message)
+                    showResult(result.message)
                 }
             }
-            result.success -> replacePlaceholder(result.message)
-            else -> replacePlaceholder("❌ ${result.message}")
+            result.success -> showResult(result.message)
+            else -> showResult("❌ ${result.message}", shouldPersist = false)
+        }
+    }
+
+    private fun appendPlaceholder() {
+        _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(""), isProcessing = true) }
+    }
+
+    private fun updateStreamingPlaceholder(text: String) {
+        _uiState.update { state ->
+            val lastIndex = state.messages.lastIndex
+            if (lastIndex >= 0 && state.messages[lastIndex] is ChatMessage.AI) {
+                state.copy(messages = state.messages.toMutableList().apply { this[lastIndex] = ChatMessage.AI(text) })
+            } else state
+        }
+    }
+
+    private fun replacePlaceholder(text: String) {
+        _uiState.update { state ->
+            val lastIndex = state.messages.lastIndex
+            if (lastIndex >= 0 && state.messages[lastIndex] is ChatMessage.AI) {
+                state.copy(messages = state.messages.toMutableList().apply { this[lastIndex] = ChatMessage.AI(text) }, isProcessing = false)
+            } else state.copy(messages = state.messages + ChatMessage.AI(text), isProcessing = false)
         }
     }
 
@@ -805,13 +850,7 @@ class ChatbotViewModel @Inject constructor(
                 persistedUri = stableUri
                 invoiceImageStorage.deleteTemporaryCameraCopy(uri)
                 val result = aiService.processInvoiceFromImage(stableUri)
-                // Reutilizamos la lógica unificada añadiendo un placeholder AI.
-                var placeholderIndex = -1
-                _uiState.update {
-                    placeholderIndex = it.messages.size
-                    it.copy(messages = it.messages + ChatMessage.AI(""))
-                }
-                applyAIResult(result, placeholderIndex)
+                handleAIResult(result, includeInContext = false)
                 if (!result.success || (result.invoice == null && result.income == null)) {
                     invoiceImageStorage.delete(persistedUri.toString())
                 }
@@ -830,6 +869,7 @@ class ChatbotViewModel @Inject constructor(
     fun clearChat() {
         viewModelScope.launch {
             aiService.resetChat()
+            chatMessageRepository.clearAll()
             _uiState.update { it.copy(messages = emptyList(), isProcessing = false) }
         }
     }
