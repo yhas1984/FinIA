@@ -29,6 +29,7 @@ import javax.inject.Inject
 
 data class InvoicesUiState(
     val invoices: List<Invoice> = emptyList(),
+    val hasAnyInvoices: Boolean = false,
     val selectedType: InvoiceType? = null,
     val selectedCategoryFilter: String? = null,
     val availableCategories: List<String> = emptyList(),
@@ -98,12 +99,13 @@ class InvoicesViewModel @Inject constructor(
                         defaults = TransactionCategories.defaultExpenseCategories,
                         existing = allInvoices.map { it.categoria }
                     )
-                    Quintuple(
-                        visibleInvoices,
-                        target,
-                        recomputeTotal(visibleInvoices, target),
-                        categoryFilter,
-                        availableCategories
+                    InvoicesDisplayData(
+                        invoices = visibleInvoices,
+                        targetCurrency = target,
+                        total = recomputeTotal(visibleInvoices, target),
+                        categoryFilter = categoryFilter,
+                        availableCategories = availableCategories,
+                        hasAnyInvoices = allInvoices.isNotEmpty()
                     )
                 }
                 .catch { e ->
@@ -111,16 +113,17 @@ class InvoicesViewModel @Inject constructor(
                         it.copy(error = e.message ?: "Error al cargar facturas", isLoading = false)
                     }
                 }
-                .collect { (invoices, target, total, categoryFilter, availableCategories) ->
+                .collect { data ->
                     _uiState.update {
                         it.copy(
-                            invoices = invoices,
+                            invoices = data.invoices,
+                            hasAnyInvoices = data.hasAnyInvoices,
                             isLoading = false,
                             error = null,
-                            totalGastosConvertido = total,
-                            defaultCurrency = target,
-                            selectedCategoryFilter = categoryFilter,
-                            availableCategories = availableCategories
+                            totalGastosConvertido = data.total,
+                            defaultCurrency = data.targetCurrency,
+                            selectedCategoryFilter = data.categoryFilter,
+                            availableCategories = data.availableCategories
                         )
                     }
                 }
@@ -133,7 +136,7 @@ class InvoicesViewModel @Inject constructor(
     }
 
     fun filterByCategory(category: String?) {
-        _uiState.update { it.copy(selectedCategoryFilter = category, isLoading = true) }
+        _uiState.update { it.copy(selectedCategoryFilter = category) }
         selectedCategoryFilter.value = category
     }
 
@@ -207,10 +210,11 @@ class InvoicesViewModel @Inject constructor(
     }
 }
 
-private data class Quintuple<A, B, C, D, E>(
-    val first: A,
-    val second: B,
-    val third: C,
-    val fourth: D,
-    val fifth: E
+private data class InvoicesDisplayData(
+    val invoices: List<Invoice>,
+    val targetCurrency: String,
+    val total: Double?,
+    val categoryFilter: String?,
+    val availableCategories: List<String>,
+    val hasAnyInvoices: Boolean
 )
