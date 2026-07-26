@@ -32,21 +32,21 @@
 <p>Al descargar, instalar o usar FinAI ("la Aplicación"), aceptas los presentes Términos y Condiciones. Si no estás de acuerdo, no uses la Aplicación.</p>
 
 <h2>2. Descripción del servicio</h2>
-<p>FinAI es un asistente financiero personal que permite registrar y gestionar gastos, ingresos y facturas, así como exportar datos a Google Sheets y realizar copias de seguridad en Google Drive. La Aplicación utiliza la API de Gemini de Google para procesar comandos de voz y texto.</p>
+<p>FinAI es un asistente financiero personal que permite registrar y gestionar gastos, ingresos y facturas, exportar datos a Google Sheets, crear copias locales de la base de datos y guardar fotos de facturas en Google Drive. La Aplicación utiliza la API de Gemini de Google para procesar texto e imágenes seleccionadas para escaneo.</p>
 
 <h2>3. Cuentas de usuario</h2>
-<p>FinAI no requiere registro ni cuenta de usuario para su funcionalidad básica. El inicio de sesión con Google es opcional y solo se utiliza para las funciones de exportación a Google Sheets y backup en Google Drive.</p>
+<p>FinAI no requiere registro ni cuenta de usuario para su funcionalidad básica. El inicio de sesión con Google es opcional y se utiliza para Google Sheets y para subir fotos de facturas a Google Drive.</p>
 
 <h2>4. Uso de la API de Google</h2>
 <p>La Aplicación utiliza las siguientes APIs de Google:</p>
 <ul>
   <li><strong>Gemini API:</strong> para procesar mensajes del asistente IA. Los últimos 3 turnos en el plan gratis y 10 en Premium se envían como contexto. El historial visible se guarda localmente y puede borrarse desde la app.</li>
   <li><strong>Google Sheets API (alcance <code>https://www.googleapis.com/auth/spreadsheets</code>):</strong> para crear y mantener un spreadsheet en tu propio Google Drive con los datos que exportas o sincronizas. Solo se accede con tu autorización explícita.</li>
-  <li><strong>Google Drive API (alcance <code>https://www.googleapis.com/auth/drive.file</code>):</strong> para guardar las fotos de facturas que tú subes manualmente. La Aplicación solo accede a los archivos que ella misma crea.</li>
+  <li><strong>Google Drive API (alcance <code>https://www.googleapis.com/auth/drive.file</code>):</strong> para guardar automáticamente la foto tras escanear una factura cuando Premium y Google están conectados. La Aplicación solo accede a los archivos que ella misma crea.</li>
 </ul>
 
 <h2>5. Privacidad de los datos</h2>
-<p>Tus datos financieros se almacenan exclusivamente en tu dispositivo. No tenemos servidores propios. Consulta nuestra <a href="privacy.html">Política de Privacidad</a> para más detalles.</p>
+<p>Tus datos financieros se almacenan principalmente en tu dispositivo. No tenemos servidores propios; Gemini, Sheets y Drive reciben únicamente los datos necesarios cuando utilizas esas funciones. Consulta nuestra <a href="privacy.html">Política de Privacidad</a> para más detalles.</p>
 
 <h2>6. Compras integradas</h2>
 <p>FinAI ofrece una compra premium opcional (pago único) que desbloquea funciones adicionales. Las compras se gestionan a través de Google Play y están sujetas a sus términos.</p>

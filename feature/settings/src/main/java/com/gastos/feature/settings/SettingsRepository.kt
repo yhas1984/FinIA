@@ -25,8 +25,6 @@ data class AppSettings(
     val defaultCurrency: String = "EUR",
     val defaultCountry: String = "ES",
     val darkMode: String = "system",
-    val showTutorials: Boolean = true,
-    val autoBackup: Boolean = false,
     val isPro: Boolean = false
 )
 
@@ -44,8 +42,6 @@ class SettingsRepository @Inject constructor(
         val DEFAULT_CURRENCY = stringPreferencesKey("default_currency")
         val DEFAULT_COUNTRY = stringPreferencesKey("default_country")
         val DARK_MODE = stringPreferencesKey("dark_mode")
-        val SHOW_TUTORIALS = booleanPreferencesKey("show_tutorials")
-        val AUTO_BACKUP = booleanPreferencesKey("auto_backup")
     }
 
     /**
@@ -65,9 +61,7 @@ class SettingsRepository @Inject constructor(
             systemInstructions = preferences[Keys.SYSTEM_INSTRUCTIONS] ?: "",
             defaultCurrency = preferences[Keys.DEFAULT_CURRENCY] ?: "EUR",
             defaultCountry = preferences[Keys.DEFAULT_COUNTRY] ?: "ES",
-            darkMode = preferences[Keys.DARK_MODE] ?: "system",
-            showTutorials = preferences[Keys.SHOW_TUTORIALS] ?: true,
-            autoBackup = preferences[Keys.AUTO_BACKUP] ?: false
+            darkMode = preferences[Keys.DARK_MODE] ?: "system"
         )
     }
 
@@ -105,18 +99,6 @@ class SettingsRepository @Inject constructor(
     suspend fun updateDarkMode(mode: String) {
         context.dataStore.edit { preferences ->
             preferences[Keys.DARK_MODE] = mode
-        }
-    }
-
-    suspend fun updateShowTutorials(show: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[Keys.SHOW_TUTORIALS] = show
-        }
-    }
-
-    suspend fun updateAutoBackup(autoBackup: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[Keys.AUTO_BACKUP] = autoBackup
         }
     }
 

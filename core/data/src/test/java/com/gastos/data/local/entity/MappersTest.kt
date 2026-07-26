@@ -3,6 +3,8 @@ package com.gastos.data.local.entity
 import com.gastos.domain.model.CountryFiscalConfig
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.InvoiceType
+import com.gastos.domain.model.Invoice
+import com.gastos.domain.model.Product
 import com.gastos.domain.model.TransactionCategories
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -16,6 +18,41 @@ import org.junit.Test
  * (String "21,10,4" — o el legado "[21,10,4]" — ↔ List<Double>).
  */
 class MappersTest {
+
+    @Test
+    fun `product prices include VAT and expose only the contained tax`() {
+        val product = Product(
+            invoiceId = 1L,
+            descripcion = "Producto",
+            precioUnitario = 121.0,
+            ivaPercent = 21.0
+        )
+        val entity = ProductEntity(
+            invoiceId = 1L,
+            descripcion = "Producto",
+            precioUnitario = 121.0,
+            ivaPercent = 21.0
+        )
+
+        assertEquals(21.0, product.ivaAmount, 0.001)
+        assertEquals(21.0, entity.ivaAmount, 0.001)
+    }
+
+    @Test
+    fun `income invoice conversion preserves its category and fiscal amounts`() {
+        val income = Invoice(
+            fecha = 1L,
+            proveedor = "Cliente",
+            tipo = InvoiceType.INGRESO,
+            categoria = "Ventas",
+            total = 121.0,
+            ivaPercent = 21.0
+        ).toIncome()
+
+        assertEquals("Ventas", income.categoria)
+        assertEquals(121.0, income.totalDevengado, 0.001)
+        assertEquals(121.0, income.totalNeto, 0.001)
+    }
 
     @Test
     fun `InvoiceEntity round-trip conserva todos los campos`() {

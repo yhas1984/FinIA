@@ -88,6 +88,14 @@ class CountryFiscalConfigRepositoryImpl @Inject constructor(
                     irpfRate = null,
                     nifFormat = "XXXXXXXXXX",
                     nombreLeyFiscal = "IGV"
+                ),
+                CountryFiscalConfig(
+                    paisCodigo = "EC",
+                    nombrePais = "Ecuador",
+                    ivaRates = listOf(0.0, 5.0, 15.0),
+                    irpfRate = null,
+                    nifFormat = "XXXXXXXXXXXXX",
+                    nombreLeyFiscal = "IVA"
                 )
             )
             countryFiscalConfigDao.insertConfigs(defaultConfigs.map { it.toEntity() })

@@ -1,10 +1,16 @@
 package com.gastos.feature.chatbot
 
 import com.gastos.domain.model.ChatMessageRecord
+import com.gastos.domain.model.Income
 import com.gastos.feature.ai.AIResult
 import com.gastos.feature.ai.AIService
 import com.gastos.repository.ChatMessageRepository
+import com.gastos.repository.CurrencyPreference
+import com.gastos.repository.ExchangeRateProvider
+import com.gastos.repository.IncomeRepository
+import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.PremiumStatusProvider
+import com.gastos.repository.ProductRepository
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
@@ -22,6 +28,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 
@@ -95,23 +102,59 @@ class ChatbotViewModelTest {
         coVerify { fixture.aiService.setPremiumLimits(true) }
     }
 
+    @Test
+    fun `financial confirmation is persisted outside model context`() = runTest(dispatcher) {
+        val fixture = fixture(isPremium = false)
+        coEvery { fixture.aiService.processCommand("Ingreso de 100 euros") } returns AIResult(
+            success = true,
+            message = "Ingreso detectado",
+            income = Income(
+                fecha = 1L,
+                concepto = "Honorarios",
+                monto = 100.0
+            )
+        )
+
+        val viewModel = fixture.createViewModel()
+        advanceUntilIdle()
+        viewModel.sendMessage("Ingreso de 100 euros")
+        advanceUntilIdle()
+
+        val modelMessage = fixture.persistedMessages.single { it.role == "model" }
+        assertFalse(modelMessage.includeInContext)
+    }
+
     private fun fixture(isPremium: Boolean): Fixture {
         val aiService = mockk<AIService>()
         val chatMessageRepository = mockk<ChatMessageRepository>()
         val premium = MutableStateFlow(isPremium)
         val persistedMessages = mutableListOf<ChatMessageRecord>()
+        val invoiceRepository = mockk<InvoiceRepository>()
+        val incomeRepository = mockk<IncomeRepository>()
+        val productRepository = mockk<ProductRepository>()
+        val exchangeRateProvider = mockk<ExchangeRateProvider>(relaxed = true)
+        val currencyPreference = mockk<CurrencyPreference>()
 
         every { aiService.isConfigured() } returns true
         coJustRun { aiService.setPremiumLimits(any()) }
         coJustRun { aiService.replaceChatHistory(any()) }
         coEvery { chatMessageRepository.getMessages() } returns emptyList()
         coEvery { chatMessageRepository.addMessage(capture(persistedMessages)) } returns Unit
+        every { invoiceRepository.getAllInvoices() } returns flowOf(emptyList())
+        every { incomeRepository.getAllIncomes() } returns flowOf(emptyList())
+        every { productRepository.getAllProducts() } returns flowOf(emptyList())
+        every { currencyPreference.defaultCurrency } returns MutableStateFlow("EUR")
 
         return Fixture(
             aiService = aiService,
             chatMessageRepository = chatMessageRepository,
             premium = premium,
-            persistedMessages = persistedMessages
+            persistedMessages = persistedMessages,
+            invoiceRepository = invoiceRepository,
+            incomeRepository = incomeRepository,
+            productRepository = productRepository,
+            exchangeRateProvider = exchangeRateProvider,
+            currencyPreference = currencyPreference
         )
     }
 
@@ -119,7 +162,12 @@ class ChatbotViewModelTest {
         val aiService: AIService,
         val chatMessageRepository: ChatMessageRepository,
         val premium: MutableStateFlow<Boolean>,
-        val persistedMessages: MutableList<ChatMessageRecord>
+        val persistedMessages: MutableList<ChatMessageRecord>,
+        val invoiceRepository: InvoiceRepository,
+        val incomeRepository: IncomeRepository,
+        val productRepository: ProductRepository,
+        val exchangeRateProvider: ExchangeRateProvider,
+        val currencyPreference: CurrencyPreference
     ) {
         fun createViewModel() = ChatbotViewModel(
             aiService = aiService,
@@ -128,16 +176,16 @@ class ChatbotViewModelTest {
                 override val isPremium = premium
             },
             voiceRecognitionService = mockk(relaxed = true),
-            invoiceRepository = mockk(relaxed = true),
-            incomeRepository = mockk(relaxed = true),
-            productRepository = mockk(relaxed = true),
+            invoiceRepository = invoiceRepository,
+            incomeRepository = incomeRepository,
+            productRepository = productRepository,
             sheetsSyncManager = mockk(relaxed = true),
             invoiceDriveService = mockk(relaxed = true),
             invoiceImageStorage = mockk(relaxed = true),
             saveInvoiceUseCase = mockk(relaxed = true),
             saveIncomeUseCase = mockk(relaxed = true),
-            exchangeRateProvider = mockk(relaxed = true),
-            currencyPreference = mockk(relaxed = true)
+            exchangeRateProvider = exchangeRateProvider,
+            currencyPreference = currencyPreference
         )
     }
 

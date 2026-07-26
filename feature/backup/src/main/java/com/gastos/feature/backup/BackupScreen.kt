@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -36,6 +37,7 @@ fun BackupScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val locale = LocalLocale.current.platformLocale
 
     val exportCsvLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
@@ -325,7 +327,7 @@ fun BackupScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {
-                                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", locale).format(Date())
                                 exportCsvLauncher.launch("finai_export_$timestamp.csv")
                             },
                             modifier = Modifier.weight(1f),
@@ -346,7 +348,7 @@ fun BackupScreen(
 
                         Button(
                             onClick = {
-                                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", locale).format(Date())
                                 exportPdfLauncher.launch("finai_informe_$timestamp.pdf")
                             },
                             modifier = Modifier.weight(1f),
@@ -463,7 +465,8 @@ private fun BackupFileItem(
     file: File,
     onDelete: () -> Unit
 ) {
-    val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+    val locale = LocalLocale.current.platformLocale
+    val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", locale)
     val date = Date(file.lastModified())
     val size = file.length() / 1024 // KB
 

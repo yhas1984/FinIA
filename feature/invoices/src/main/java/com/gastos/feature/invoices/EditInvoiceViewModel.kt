@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
+import com.gastos.domain.model.SUPPORTED_CURRENCIES
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.ProductRepository
@@ -78,9 +79,9 @@ data class EditInvoiceForm(
      * válidos (igual que hacía `saveInvoice()` antes con `toDoubleOrNull`).
      */
     fun recalcFiscal(): FiscalBreakdown? {
-        val total = total.toDoubleOrNull()?.takeIf { it >= 0.0 } ?: return null
-        val iva = ivaPercent.toDoubleOrNull()?.takeIf { it >= 0.0 } ?: return null
-        val irpf = irpfPercent.toDoubleOrNull()?.takeIf { it >= 0.0 } ?: return null
+        val total = total.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 } ?: return null
+        val iva = ivaPercent.toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
+        val irpf = irpfPercent.toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
         val base = total / (1.0 + iva / 100.0)
         val ivaAmount = total - base
         val irpfAmount = base * irpf / 100.0
@@ -193,13 +194,20 @@ class EditInvoiceViewModel @Inject constructor(
     fun saveInvoice() {
         viewModelScope.launch {
             val form = _form.value
-            val total = form.total.toDoubleOrNull()
-            if (total == null || total <= 0) {
-                _uiState.update { it.copy(saveResult = "El total debe ser un número positivo") }
+            val fiscal = form.recalcFiscal()
+            if (fiscal == null || fiscal.total <= 0.0) {
+                _uiState.update {
+                    it.copy(saveResult = "Revisa el total y los porcentajes (deben estar entre 0 y 100)")
+                }
                 return@launch
             }
             if (form.proveedor.isBlank()) {
                 _uiState.update { it.copy(saveResult = "El proveedor es obligatorio") }
+                return@launch
+            }
+            val currency = form.moneda.trim().uppercase()
+            if (currency !in SUPPORTED_CURRENCIES) {
+                _uiState.update { it.copy(saveResult = "La moneda seleccionada no está soportada") }
                 return@launch
             }
 
@@ -219,10 +227,10 @@ class EditInvoiceViewModel @Inject constructor(
                     proveedor = form.proveedor.trim(),
                     tipo = InvoiceType.GASTO,
                     categoria = TransactionCategories.canonicalExpenseCategory(form.categoria),
-                    moneda = form.moneda,
-                    total = total,
-                    ivaPercent = form.ivaPercent.toDoubleOrNull() ?: 0.0,
-                    irpfPercent = form.irpfPercent.toDoubleOrNull() ?: 0.0,
+                    moneda = currency,
+                    total = fiscal.total,
+                    ivaPercent = fiscal.ivaPercent,
+                    irpfPercent = fiscal.irpfPercent,
                     paisCodigo = form.paisCodigo,
                     nifEmisor = form.nifEmisor.trim().takeIf { it.isNotBlank() },
                     nifReceptor = form.nifReceptor.trim().takeIf { it.isNotBlank() },

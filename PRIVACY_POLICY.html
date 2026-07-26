@@ -14,7 +14,7 @@
 <body>
 
 <h1>Política de Privacidad de FinAI</h1>
-<p class="updated">Última actualización: 24 de julio de 2026 (versión 1.2.0)</p>
+<p class="updated">Última actualización: 26 de julio de 2026 (versión 1.2.0)</p>
 
 <div style="background:#f3e9ff; border:1px solid #d9c5ff; border-radius:8px; padding:10px 14px; font-size:.95em; margin: 16px 0 28px;">
   <strong>Aplicación:</strong> FinAI &middot;
@@ -27,33 +27,36 @@
 <p>Esta aplicación es desarrollada y mantenida por <strong>Yhas1984</strong> (<a href="mailto:ymi2021@gmail.com">ymi2021@gmail.com</a>). Si tienes preguntas sobre esta política, contacta a través de ese correo o mediante el email del desarrollador en Google Play.</p>
 
 <h2>2. Datos que recopilamos</h2>
-<p>FinAI recopila y almacena <strong>exclusivamente en tu dispositivo</strong> los siguientes datos:</p>
+<p>FinAI almacena principalmente en tu dispositivo los siguientes datos:</p>
 <ul>
   <li><strong>Datos financieros</strong> que introduces manualmente o mediante IA: gastos, ingresos, facturas, productos, categorías.</li>
   <li><strong>Configuración de la app</strong>: preferencias de moneda, país, tema, e instrucciones del asistente.</li>
   <li><strong>API key de Gemini</strong>: la clave que proporcionas para usar el asistente IA se guarda localmente en tu dispositivo.</li>
+  <li><strong>Cuenta de Google</strong>: si conectas Sheets/Drive, la app obtiene y muestra el correo de la cuenta para identificar la sesión. No lo envía al desarrollador.</li>
 </ul>
 
 <h2>3. Datos que NO recopilamos</h2>
 <ul>
-  <li>No recopilamos datos personales identificables (nombre, email, dirección).</li>
+  <li>No mantenemos una base propia de nombres, correos o direcciones.</li>
   <li>No recopilamos datos de ubicación.</li>
-  <li>No compartimos tus datos con terceros.</li>
-  <li>No tenemos servidores propios; tus datos financieros nunca salen de tu dispositivo salvo que tú decidas exportarlos.</li>
+  <li>No vendemos tus datos ni los usamos para publicidad.</li>
+  <li>No tenemos servidores propios. Algunos datos se transfieren directamente a servicios de Google cuando utilizas Gemini, Sheets o Drive, según se explica abajo.</li>
 </ul>
 
 <h2>4. Google Gemini API</h2>
-<p>Cuando usas el asistente IA, los mensajes que escribes se envían a la <strong>API de Gemini</strong> de Google para ser procesados. Google maneja esos datos según su propia política de privacidad. El historial del chat se guarda localmente, se restaura al volver a abrir la app y se incluye en la copia de seguridad de la base de datos.</p>
+<p>Cuando usas el asistente IA, los mensajes y las imágenes que eliges escanear se envían a la <strong>API de Gemini</strong> de Google para ser procesados. El contexto se limita a los últimos 3 turnos en el plan gratuito y 10 en Premium; las respuestas de consultas calculadas localmente se excluyen del contexto. Google trata esos datos conforme a sus condiciones y política. El historial visible se conserva en la base de datos local y puede borrarse desde la app.</p>
 <ul>
-  <li>Google no utiliza los datos enviados a la API gratuita para entrenar sus modelos (según política de Google AI).</li>
   <li>Puedes consultar la política de Google en: <a href="https://policies.google.com/privacy">https://policies.google.com/privacy</a></li>
 </ul>
+
+<h2>4 bis. Tipos de cambio</h2>
+<p>La app consulta <code>open.er-api.com</code> para descargar tipos de cambio públicos. No envía a ese servicio tus facturas ni importes; como en cualquier conexión de red, el proveedor puede recibir datos técnicos como la dirección IP.</p>
 
 <h2>5. Google Sheets (exportación opcional)</h2>
 <p>Si decides exportar tus datos a Google Sheets, estos se transfieren a tu propia cuenta de Google. FinAI solo accede al spreadsheet que crea durante la exportación y únicamente con tu autorización OAuth. No almacenamos ni tenemos acceso a tus datos fuera de ese spreadsheet.</p>
 
-<h2>6. Google Drive Backup (opcional)</h2>
-<p>Si activas el backup automático en Google Drive, los archivos de la base de datos se copian a tu Drive personal bajo tu control. La app solicita permiso explícito (OAuth con scope drive.file) y solo accede a los archivos que ella misma crea.</p>
+<h2>6. Google Drive (opcional)</h2>
+<p>Si eres Premium y has conectado Google, la foto de una factura escaneada se sube automáticamente a tu Drive después de guardarla, con opción de reintento si falla. FinAI usa el alcance <code>drive.file</code> y solo accede a los archivos que crea. Las copias de la base de datos son locales: actualmente la base de datos no se copia a Drive.</p>
 
 <h2>7. Cámara y micrófono</h2>
 <ul>
@@ -62,10 +65,10 @@
 </ul>
 
 <h2>8. Almacenamiento de datos</h2>
-<p>Tus datos se guardan en una base de datos local SQLite (Room) dentro del almacenamiento interno de la app. Si desinstalas la app, estos datos se eliminan. No se realiza copia en la nube a menos que tú actives el backup en Google Drive.</p>
+<p>Tus datos se guardan en una base de datos local SQLite (Room) dentro del almacenamiento interno de la app. Si desinstalas la app, estos datos se eliminan. Las exportaciones a Sheets y las fotos subidas a Drive permanecen en tu cuenta de Google hasta que las elimines allí.</p>
 
 <h2>9. Seguridad</h2>
-<p>La API key de Gemini y los datos financieros se almacenan localmente en el almacenamiento interno de la app. No tenemos servidores propios.</p>
+<p>La API key de Gemini se protege mediante almacenamiento cifrado de Android. La base de datos financiera reside en el almacenamiento interno protegido por el sistema operativo, pero la app no aplica cifrado adicional a esa base. No tenemos servidores propios.</p>
 
 <h2>10. Tus derechos</h2>
 <p>Puedes en cualquier momento:</p>
@@ -81,8 +84,8 @@
 <h2>12. Permisos de Google y revocación</h2>
 <p>FinAI utiliza las APIs de Google con los siguientes alcances (scopes) OAuth, únicamente para las funciones que tú actives de forma explícita:</p>
 <ul>
-  <li><strong>Google Sheets</strong> &mdash; <code>https://www.googleapis.com/auth/spreadsheets</code>: para crear y sincronizar el spreadsheet donde se exportan tus facturas, nóminas, productos y resumen.</li>
-  <li><strong>Google Drive</strong> &mdash; <code>https://www.googleapis.com/auth/drive.file</code>: para subir a tu Drive las fotos de facturas que tú decidas respaldar. La Aplicación solo accede a los archivos que ella mismo crea.</li>
+  <li><strong>Google Sheets</strong> &mdash; <code>https://www.googleapis.com/auth/spreadsheets</code>: para crear y sincronizar el spreadsheet donde se exportan tus facturas, nóminas, otros ingresos, productos y resumen.</li>
+  <li><strong>Google Drive</strong> &mdash; <code>https://www.googleapis.com/auth/drive.file</code>: para subir a tu Drive fotos de facturas tras escanearlas cuando la función Premium está activa. La Aplicación solo accede a los archivos que ella misma crea.</li>
 </ul>
 <p>Puedes revocar cualquiera de estos permisos en cualquier momento desde <a href="https://myaccount.google.com/permissions">https://myaccount.google.com/permissions</a>. Tras la revocación, FinAI seguirá funcionando con almacenamiento local únicamente.</p>
 

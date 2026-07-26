@@ -16,9 +16,9 @@
 - 📊 **Dashboard** — resumen de ingresos, gastos, balance, actividad de los últimos 7 días y desglose por categoría del mes.
 - 🏷️ **Categorías** — gastos e ingresos con etiquetas predeterminadas o personalizadas, propuestas automáticamente por la IA desde texto, voz y OCR. Filtran listas, alimentan el Dashboard y viajan a Sheets.
 - 🧾 **Gestión completa** de facturas/gastos, productos e ingresos (CRUD).
-- ☁️ **Google Sheets: exportación + sincronización multimoneda** — Sheet AEAT (Facturas Recibidas, Nóminas, Productos, Resumen) con importes convertidos a tu moneda local. Resumen numérico recalculado en cada sync (gastos, ingresos, balance) y soporte de tasas pendientes sin tasa.
+- ☁️ **Google Sheets: exportación + sincronización multimoneda** — Sheet con Facturas Recibidas, Nóminas, otros Ingresos, Productos y Resumen, con importes convertidos a tu moneda local.
 - 🔄 **Sincronización bidireccional** — altas, ediciones y borrados en la app se reflejan automáticamente (upsert/delete por ID de registro). “Forzar sincronización” reexporta el Sheet completo.
-- ☁️ **Google Drive** — subida manual de fotos de facturas Premium con reintento y limpieza del temporal de cámara.
+- ☁️ **Google Drive** — subida automática de la foto tras escanear una factura si Premium y Google están conectados, con reintento y limpieza del temporal de cámara.
 - 💎 **Premium** (pago único vía Google Play Billing, con flag debug independiente) — amplía la memoria del asistente de 3 a 10 turnos y desbloquea Sheets/Drive.
 - 📄 **Exportación CSV y PDF** y copia local de la base de datos.
 - 🌓 **Tema claro/oscuro/sistema**.
@@ -81,7 +81,7 @@ FinAI usa **Gemini** a través de la **API gratuita de Google AI Studio**.
 - **Chat conversacional** con memoria (3 turnos gratis, 10 con Premium) y respuestas en streaming.
 - **Instrucciones personalizables** — define el tono, la moneda por defecto, el comportamiento, etc.
 - **Registro natural** — *"gasté 20€ en café"*, *"cobré 1500€ de nómina"*.
-- **Consultas** — *"¿cuánto gasté este mes?"*, *"mi balance de la semana"*. La IA solo clasifica la consulta; los cálculos se hacen localmente (tus cifras nunca se envían al modelo).
+- **Consultas** — *"¿cuánto gasté este mes?"*, *"mi balance de la semana"*. La IA clasifica la consulta y el cálculo se hace localmente; el resultado financiero se excluye del contexto posterior del modelo.
 - **OCR de documentos** — foto de factura, ticket o nómina desde el chat. Detección multi-país de moneda, IVA e identificación fiscal.
 
 > ⚠️ Tus mensajes se envían a la API de Gemini para procesarse. El historial del chat se guarda localmente y se incluye en la copia de seguridad de la app.
@@ -92,14 +92,14 @@ FinAI usa **Gemini** a través de la **API gratuita de Google AI Studio**.
 
 Desde **Backup** puedes vincular tu cuenta de Google:
 
-1. **Exportar a Sheets** — crea (o reescribe) un spreadsheet con 4 hojas: *Facturas Recibidas*, *Nóminas*, *Productos* y *Resumen* (numérico: gastos, ingresos y balance calculados por la app, no por fórmulas SUM).
+1. **Exportar a Sheets** — crea (o reescribe) un spreadsheet con 5 hojas: *Facturas Recibidas*, *Nóminas*, *Ingresos*, *Productos* y *Resumen*. Los ingresos no salariales ya no se presentan como nóminas.
 2. **Multimoneda** — cada fila conserva el importe original y su moneda; se añade además el **importe convertido a tu moneda local** usando la tasa vigente. La hoja *Resumen* agrega esos importes convertidos para mostrar el balance real.
 3. **Sincronización en segundo plano** — a partir de ahí, cada alta, **edición o borrado** en la app se refleja en el Sheet:
-   - Cada hoja lleva una columna de **ID** al final (ID del registro / InvoiceID en productos).
+   - Cada hoja lleva una columna de **ID** estable (ID del registro / InvoiceID en productos).
    - Alta/edición → *upsert* por ID (actualiza la fila si existe, la añade si no).
    - Borrado de gasto → elimina su fila y las de sus productos.
    - El *Resumen* se refresca tras cada operación.
-4. **Forzar sincronización** — reexporta toda la base de datos al Sheet vinculado (migración automática al esquema v4). Úsalo la primera vez o si el Sheet se creó con una versión antigua de la app.
+4. **Forzar sincronización** — reexporta toda la base de datos al Sheet vinculado (migración automática al esquema v6). Úsalo la primera vez o si el Sheet se creó con una versión antigua de la app.
 
 ---
 
@@ -192,8 +192,10 @@ FinAI/
 
 - Los datos financieros se almacenan **localmente** en tu dispositivo (Room/SQLite).
 - Los **mensajes al asistente** se envían a la API de Gemini para su procesamiento.
+- Las imágenes elegidas para escanear también se envían a Gemini; con Premium y Google conectado, la foto guardada se sube a Drive.
 - La exportación/sincronización con Google Sheets es **opcional** y requiere tu cuenta y tu acción explícita.
 - La API key de Gemini se guarda **cifrada** en el dispositivo (EncryptedSharedPreferences) y no se comparte.
+- La copia de la base de datos es local; no existe actualmente backup de la base de datos en Drive.
 - Los logs con datos financieros solo se emiten en builds de debug (`SafeLog`).
 
 ---

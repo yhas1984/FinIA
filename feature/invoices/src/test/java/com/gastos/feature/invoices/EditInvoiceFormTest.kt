@@ -59,6 +59,14 @@ class EditInvoiceFormTest {
     }
 
     @Test
+    fun `valores no finitos y porcentajes fuera de rango devuelven null`() {
+        assertNull(form("NaN").recalcFiscal())
+        assertNull(form("Infinity").recalcFiscal())
+        assertNull(form("100", iva = "-1").recalcFiscal())
+        assertNull(form("100", irpf = "101").recalcFiscal())
+    }
+
+    @Test
     fun `decimales se respetan con precision de 2 decimales`() {
         // total=84.70 iva=21% → base≈70.0, iva≈14.70
         val r = form("84.70").recalcFiscal()!!

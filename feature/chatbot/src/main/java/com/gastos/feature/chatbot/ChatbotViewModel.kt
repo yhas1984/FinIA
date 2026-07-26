@@ -314,7 +314,11 @@ class ChatbotViewModel @Inject constructor(
                 matchMode = clarification.matchMode,
                 originalQuestion = userAnswer
             )
-            handleAIResult(AIResult(success = true, message = response), userAnswer)
+            handleAIResult(
+                result = AIResult(success = true, message = response),
+                originalQuestion = userAnswer,
+                includeInContext = false
+            )
         }
     }
 
@@ -338,7 +342,11 @@ class ChatbotViewModel @Inject constructor(
         streaming: Boolean = false,
         includeInContext: Boolean = true
     ) {
-        suspend fun showResult(text: String, shouldPersist: Boolean = true) {
+        suspend fun showResult(
+            text: String,
+            shouldPersist: Boolean = true,
+            shouldIncludeInContext: Boolean = includeInContext
+        ) {
             if (streaming) {
                 replacePlaceholder(text)
             } else {
@@ -351,7 +359,7 @@ class ChatbotViewModel @Inject constructor(
                     role = "model",
                     visibleText = text,
                     contextText = text,
-                    includeInContext = includeInContext
+                    includeInContext = shouldIncludeInContext
                 )
             }
         }
@@ -382,26 +390,22 @@ class ChatbotViewModel @Inject constructor(
                 )
                 val driveMessage = driveResult?.let { "\n${if (it.uploaded) "☁️" else "⚠️"} ${it.message}" }.orEmpty()
                 showResult(
-                    "✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}$driveMessage"
+                    "✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}$driveMessage",
+                    shouldIncludeInContext = false
                 )
             }
             // Ingreso detectado por OCR (factura marcada como ingreso)
             result.invoice != null && result.invoice!!.tipo == InvoiceType.INGRESO -> {
                 val invoice = result.invoice!!
-                val income = Income(
-                    fecha = invoice.fecha,
-                    concepto = invoice.proveedor,
-                    monto = invoice.total,
-                    moneda = invoice.moneda,
-                    fuente = invoice.nifEmisor,
-                    ivaPercent = invoice.ivaPercent,
-                    irpfPercent = invoice.irpfPercent,
-                    imagenUri = invoice.imagenUri,
-                    notas = invoice.notas
+                val income = invoice.toIncome().copy(
+                    fuente = invoice.nifEmisor ?: invoice.proveedor
                 )
                 val incomeId = saveIncomeUseCase(income)
                 sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
-                showResult("✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}")
+                showResult(
+                    "✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}",
+                    shouldIncludeInContext = false
+                )
             }
             // Ingreso detectado por texto
             result.income != null -> {
@@ -413,7 +417,10 @@ class ChatbotViewModel @Inject constructor(
                 } else {
                     "${income.monto} ${income.moneda}"
                 }
-                showResult("✅ Ingreso registrado: ${income.concepto} - $display")
+                showResult(
+                    "✅ Ingreso registrado: ${income.concepto} - $display",
+                    shouldIncludeInContext = false
+                )
             }
             // Consulta de datos (JSON con action=query)
             result.queryResult != null -> {
@@ -428,14 +435,15 @@ class ChatbotViewModel @Inject constructor(
                         val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
                         val matchMode = json.optString("match_mode", "").takeIf { it.isNotEmpty() && it != "null" }
                         showResult(
-                            executeQuery(
+                            text = executeQuery(
                                 queryType = queryType,
                                 periodo = periodo,
                                 categoria = categoria,
                                 item = item,
                                 matchMode = matchMode,
                                 originalQuestion = originalQuestion
-                            )
+                            ),
+                            shouldIncludeInContext = false
                         )
                     } else {
                         showResult(result.message)
@@ -473,20 +481,39 @@ class ChatbotViewModel @Inject constructor(
 
     private fun validateAction(result: AIResult): String? {
         result.invoice?.let { invoice ->
-            if (invoice.total <= 0.0) return "El importe detectado debe ser mayor que cero."
+            if (!invoice.total.isFinite() || invoice.total <= 0.0) {
+                return "El importe detectado debe ser un número finito mayor que cero."
+            }
+            if (!invoice.ivaPercent.isFinite() || invoice.ivaPercent !in 0.0..100.0 ||
+                !invoice.irpfPercent.isFinite() || invoice.irpfPercent !in 0.0..100.0
+            ) return "Los porcentajes fiscales detectados no son válidos."
             if (invoice.proveedor.isBlank()) return "No se detectó un proveedor o concepto válido."
             if (invoice.moneda.uppercase() !in SUPPORTED_CURRENCIES) {
                 return "La moneda ${invoice.moneda} no está soportada."
             }
         }
         result.income?.let { income ->
-            if (income.monto <= 0.0) return "El importe detectado debe ser mayor que cero."
+            if (!income.monto.isFinite() || income.monto <= 0.0) {
+                return "El importe detectado debe ser un número finito mayor que cero."
+            }
+            if (!income.ivaPercent.isFinite() || income.ivaPercent !in 0.0..100.0 ||
+                !income.irpfPercent.isFinite() || income.irpfPercent !in 0.0..100.0 ||
+                (income.totalDevengado != 0.0 && (!income.totalDevengado.isFinite() || income.totalDevengado <= 0.0)) ||
+                (income.totalNeto != 0.0 && (!income.totalNeto.isFinite() || income.totalNeto <= 0.0))
+            ) return "Los importes o porcentajes fiscales detectados no son válidos."
             if (income.concepto.isBlank()) return "No se detectó un concepto válido."
             if (income.moneda.uppercase() !in SUPPORTED_CURRENCIES) {
                 return "La moneda ${income.moneda} no está soportada."
             }
         }
-        if (result.products.any { it.descripcion.isBlank() || it.cantidad <= 0.0 || it.subtotal < 0.0 }) {
+        if (result.products.any {
+                it.descripcion.isBlank() ||
+                    !it.cantidad.isFinite() || it.cantidad <= 0.0 ||
+                    !it.precioUnitario.isFinite() || it.precioUnitario < 0.0 ||
+                    !it.subtotal.isFinite() || it.subtotal < 0.0 ||
+                    !it.ivaPercent.isFinite() || it.ivaPercent !in 0.0..100.0
+            }
+        ) {
             return "Las líneas de producto detectadas contienen valores inválidos."
         }
         return null

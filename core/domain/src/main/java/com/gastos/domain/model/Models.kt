@@ -49,7 +49,12 @@ data class Product(
     val precioUnitario: Double,
     val subtotal: Double = cantidad * precioUnitario,
     val ivaPercent: Double = 21.0,
-    val ivaAmount: Double = subtotal * ivaPercent / 100.0,
+    /** Cuota de IVA contenida en [subtotal]; los precios capturados incluyen IVA. */
+    val ivaAmount: Double = if (ivaPercent > 0.0) {
+        subtotal * ivaPercent / (100.0 + ivaPercent)
+    } else {
+        0.0
+    },
     val createdAt: Long = System.currentTimeMillis()
 )
 
