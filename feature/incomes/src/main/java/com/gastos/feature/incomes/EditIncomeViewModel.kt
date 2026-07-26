@@ -3,6 +3,7 @@ package com.gastos.feature.incomes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
+import com.gastos.domain.model.SUPPORTED_CURRENCIES
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.repository.IncomeRepository
 import com.gastos.feature.backup.SheetsSyncManager
@@ -136,8 +137,29 @@ class EditIncomeViewModel @Inject constructor(
         viewModelScope.launch {
             val form = _form.value
             val monto = form.monto.toDoubleOrNull()
-            if (monto == null || monto <= 0) {
+            if (monto == null || !monto.isFinite() || monto <= 0) {
                 _uiState.update { it.copy(saveResult = "El monto debe ser un número positivo") }
+                return@launch
+            }
+            val devengado = form.totalDevengado.toDoubleOrNull()
+            val neto = form.totalNeto.toDoubleOrNull()
+            val iva = form.ivaPercent.toDoubleOrNull()
+            val irpf = form.irpfPercent.toDoubleOrNull()
+            val invalidOptionalAmount = listOf(form.totalDevengado to devengado, form.totalNeto to neto)
+                .any { (raw, value) -> raw.isNotBlank() && (value == null || !value.isFinite() || value <= 0.0) }
+            if (invalidOptionalAmount) {
+                _uiState.update { it.copy(saveResult = "Devengado y neto deben ser importes positivos") }
+                return@launch
+            }
+            if (iva == null || !iva.isFinite() || iva !in 0.0..100.0 ||
+                irpf == null || !irpf.isFinite() || irpf !in 0.0..100.0
+            ) {
+                _uiState.update { it.copy(saveResult = "Los porcentajes deben estar entre 0 y 100") }
+                return@launch
+            }
+            val currency = form.moneda.trim().uppercase()
+            if (currency !in SUPPORTED_CURRENCIES) {
+                _uiState.update { it.copy(saveResult = "La moneda seleccionada no está soportada") }
                 return@launch
             }
             if (form.concepto.isBlank()) {
@@ -148,8 +170,6 @@ class EditIncomeViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true, saveResult = null) }
 
             try {
-                val devengado = form.totalDevengado.toDoubleOrNull() ?: 0.0
-                val neto = form.totalNeto.toDoubleOrNull() ?: 0.0
                 // Conserva la imagen y la fecha de creación del registro
                 // original (no se editan desde el formulario).
                 val original = originalIncome
@@ -158,13 +178,13 @@ class EditIncomeViewModel @Inject constructor(
                     fecha = form.fecha,
                     concepto = form.concepto.trim(),
                     monto = monto,
-                    totalDevengado = if (devengado > 0) devengado else monto,
-                    totalNeto = if (neto > 0) neto else monto,
-                    moneda = form.moneda,
+                    totalDevengado = devengado ?: monto,
+                    totalNeto = neto ?: monto,
+                    moneda = currency,
                     fuente = form.fuente.trim().takeIf { it.isNotBlank() },
                     categoria = TransactionCategories.canonicalIncomeCategory(form.categoria),
-                    ivaPercent = form.ivaPercent.toDoubleOrNull() ?: 0.0,
-                    irpfPercent = form.irpfPercent.toDoubleOrNull() ?: 0.0,
+                    ivaPercent = iva,
+                    irpfPercent = irpf,
                     imagenUri = original?.imagenUri,
                     notas = form.notas.trim().takeIf { it.isNotBlank() },
                     createdAt = original?.createdAt ?: System.currentTimeMillis(),

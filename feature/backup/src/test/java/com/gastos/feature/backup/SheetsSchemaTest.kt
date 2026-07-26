@@ -61,6 +61,8 @@ class SheetsSchemaTest {
         assertEquals(SheetsSchema.productosHeaders.size, row.size)
         assertEquals(9L, row[7])
         assertEquals(17L, row[8])
+        assertEquals(10.0, row[5])
+        assertEquals(10.0, row[11])
     }
 
     @Test
@@ -106,6 +108,24 @@ class SheetsSchemaTest {
         assertEquals(500.0, row[10])
         assertEquals(400.0, row[11])
         assertTrue(row[13] is Double)
+    }
+
+    @Test
+    fun `only payroll category is exported as payroll`() {
+        val payroll = Income(
+            fecha = 1L,
+            concepto = "Salario",
+            monto = 1_000.0,
+            categoria = "nomina"
+        )
+        val fees = payroll.copy(concepto = "Proyecto", categoria = "Honorarios")
+
+        assertTrue(SheetsSchema.isPayrollIncome(payroll))
+        assertTrue(!SheetsSchema.isPayrollIncome(fees))
+        val row = SheetsSchema.genericIncomeRow(fees, snapshot())
+        assertEquals(SheetsSchema.ingresosHeaders.size, row.size)
+        assertEquals("Proyecto", row[0])
+        assertEquals("Honorarios", row[5])
     }
 
     @Test

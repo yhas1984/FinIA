@@ -44,12 +44,13 @@ import javax.inject.Singleton
  * Sincroniza en background los gastos/ingresos con el Google Sheet
  * vinculado, escribiendo en las hojas AEAT (España):
  *   • Gasto (Invoice GASTO) → "Facturas Recibidas"
- *   • Ingreso / Nómina      → "Nóminas"
+ *   • Nómina                → "Nóminas"
+ *   • Otros ingresos        → "Ingresos"
  *   • Productos             → "Productos"
  *
  * Sincronización COMPLETA (alta, edición y borrado), no solo append:
- * cada hoja lleva una columna de ID como ÚLTIMA columna ("ID" en
- * Recibidas/Nóminas, "InvoiceID" en Productos), escrita tanto por
+ * cada hoja lleva una columna de ID estable ("ID" en
+ * Recibidas/Nóminas/Ingresos, "InvoiceID" en Productos), escrita tanto por
  * [SheetsExportService] en la exportación como aquí en cada sync.
  *
  *   • Alta/edición → upsert: si existe fila con ese ID se actualiza
@@ -87,6 +88,7 @@ class SheetsSyncManager @Inject constructor(
         // Hojas AEAT (España, Orden HAC/773/2019).
         private const val SHEET_RECIBIDAS = SheetsSchema.RECIBIDAS
         private const val SHEET_NOMINAS = SheetsSchema.NOMINAS
+        private const val SHEET_INGRESOS = SheetsSchema.INGRESOS
         private const val SHEET_PRODUCTOS = SheetsSchema.PRODUCTOS
 
         // Columnas clave para localizar filas. No tienen por qué ser la
@@ -94,6 +96,7 @@ class SheetsSyncManager @Inject constructor(
         // Productos el ProductID en I.
         private const val COL_ID_RECIBIDAS = SheetsSchema.RECIBIDAS_KEY_COLUMN
         private const val COL_ID_NOMINAS = SheetsSchema.NOMINAS_KEY_COLUMN
+        private const val COL_ID_INGRESOS = SheetsSchema.INGRESOS_KEY_COLUMN
         private const val COL_ID_PRODUCTOS = SheetsSchema.PRODUCTOS_PARENT_COLUMN
     }
 
@@ -144,19 +147,56 @@ class SheetsSyncManager @Inject constructor(
     private fun expenseValues(invoice: Invoice): List<Any> =
         SheetsSchema.expenseRow(invoice, conversionSnapshot())
 
-    /**
-     * Alta o edición de un ingreso/nómina. Requiere [Income.id] > 0.
-     * Columnas: Empresa | Fecha | Devengado | Líquido | IRPF % |
-     * Base Cot. | Seg. Social | Moneda | ID
-     */
+    /** Alta o edición de un ingreso, en la hoja correspondiente a su categoría. */
     fun upsertIncome(income: Income) {
-        upsertRow(
-            SHEET_NOMINAS,
-            COL_ID_NOMINAS,
-            SheetsSchema.NOMINAS_LAST_COLUMN,
-            income.id,
-            SheetsSchema.incomeRow(income, conversionSnapshot())
-        )
+        if (!premiumStatus.isPremium.value || getStoredId().isBlank()) return
+        val spreadsheetId = getStoredId()
+        scope.launch {
+            syncMutex.withLock {
+                try {
+                    val sheets = getSheetsService() ?: return@withLock
+                    if (ensureSchemaCurrent(spreadsheetId)) return@withLock
+                    val isPayroll = SheetsSchema.isPayrollIncome(income)
+                    val targetSheet = if (isPayroll) SHEET_NOMINAS else SHEET_INGRESOS
+                    val targetKeyColumn = if (isPayroll) COL_ID_NOMINAS else COL_ID_INGRESOS
+                    val targetLastColumn = if (isPayroll) {
+                        SheetsSchema.NOMINAS_LAST_COLUMN
+                    } else {
+                        SheetsSchema.INGRESOS_LAST_COLUMN
+                    }
+                    val alternateSheet = if (isPayroll) SHEET_INGRESOS else SHEET_NOMINAS
+                    val alternateKeyColumn = if (isPayroll) COL_ID_INGRESOS else COL_ID_NOMINAS
+
+                    val values = if (isPayroll) {
+                        SheetsSchema.incomeRow(income, conversionSnapshot())
+                    } else {
+                        SheetsSchema.genericIncomeRow(income, conversionSnapshot())
+                    }
+                    upsertRowNow(
+                        sheets,
+                        spreadsheetId,
+                        targetSheet,
+                        targetKeyColumn,
+                        targetLastColumn,
+                        income.id,
+                        values
+                    )
+                    // Escribir primero el destino evita perder el dato remoto si
+                    // la red falla durante un cambio de categoría. Como mucho
+                    // quedará temporalmente una copia antigua, reparable con la
+                    // sincronización completa.
+                    deleteRowsNow(
+                        sheets,
+                        spreadsheetId,
+                        mapOf(alternateSheet to alternateKeyColumn),
+                        income.id
+                    )
+                    refreshSummaryNow(sheets, spreadsheetId)
+                } catch (e: Exception) {
+                    SafeLog.e(TAG, "upsert income FALLO id=${income.id}", e)
+                }
+            }
+        }
     }
 
     /**
@@ -189,25 +229,30 @@ class SheetsSyncManager @Inject constructor(
                         invoice.id,
                         expenseValues(invoice)
                     )
-                    deleteRowsNow(
+                    val previousProductRows = findRowsByKey(
                         sheets,
                         spreadsheetId,
-                        mapOf(SHEET_PRODUCTOS to COL_ID_PRODUCTOS),
+                        SHEET_PRODUCTOS,
+                        COL_ID_PRODUCTOS,
                         invoice.id
                     )
-                    products.forEach { product ->
-                        appendRowNow(
-                            sheets,
-                            spreadsheetId,
-                            SHEET_PRODUCTOS,
-                            SheetsSchema.productRow(
-                                product = product,
-                                provider = invoice.proveedor,
-                                originalCurrency = invoice.moneda,
-                                conversion = conversionSnapshot()
-                            )
+                    val productRows = products.map { product ->
+                        SheetsSchema.productRow(
+                            product = product,
+                            provider = invoice.proveedor,
+                            originalCurrency = invoice.moneda,
+                            conversion = conversionSnapshot()
                         )
                     }
+                    appendRowsNow(sheets, spreadsheetId, SHEET_PRODUCTOS, productRows)
+                    // Añadir primero las nuevas líneas evita borrar las antiguas
+                    // si la red falla a mitad de la escritura. Las filas previas
+                    // se eliminan por su posición original, sin tocar las nuevas.
+                    deleteKnownRowsNow(
+                        sheets,
+                        spreadsheetId,
+                        mapOf(SHEET_PRODUCTOS to previousProductRows)
+                    )
                     refreshSummaryNow(sheets, spreadsheetId)
                 } catch (e: Exception) {
                     SafeLog.e(TAG, "syncExpense FALLO id=${invoice.id}", e)
@@ -230,9 +275,15 @@ class SheetsSyncManager @Inject constructor(
         )
     }
 
-    /** Borrado de un ingreso: elimina su fila de "Nóminas". */
+    /** Borrado de un ingreso: elimina cualquier fila salarial o genérica. */
     fun deleteIncome(incomeId: Long) {
-        deleteRows(mapOf(SHEET_NOMINAS to COL_ID_NOMINAS), incomeId)
+        deleteRows(
+            mapOf(
+                SHEET_NOMINAS to COL_ID_NOMINAS,
+                SHEET_INGRESOS to COL_ID_INGRESOS
+            ),
+            incomeId
+        )
     }
 
     // ------------------------------------------------------------------
@@ -240,8 +291,18 @@ class SheetsSyncManager @Inject constructor(
     // ------------------------------------------------------------------
 
     private fun appendRowNow(sheets: Sheets, spreadsheetId: String, sheet: String, values: List<Any>) {
+        appendRowsNow(sheets, spreadsheetId, sheet, listOf(values))
+    }
+
+    private fun appendRowsNow(
+        sheets: Sheets,
+        spreadsheetId: String,
+        sheet: String,
+        rows: List<List<Any>>
+    ) {
+        if (rows.isEmpty()) return
         val response = sheets.spreadsheets().values()
-            .append(spreadsheetId, "'$sheet'!A:A", ValueRange().setValues(listOf(values)))
+            .append(spreadsheetId, "'$sheet'!A:A", ValueRange().setValues(rows))
             .setValueInputOption("RAW")
             .setInsertDataOption("INSERT_ROWS")
             .execute()
@@ -383,19 +444,31 @@ class SheetsSyncManager @Inject constructor(
         sheetKeyCols: Map<String, String>,
         key: Long
     ) {
+        val rowsBySheet = sheetKeyCols.mapValues { (title, keyCol) ->
+            findRowsByKey(sheets, spreadsheetId, title, keyCol, key)
+        }
+        val deleted = deleteKnownRowsNow(sheets, spreadsheetId, rowsBySheet)
+        if (deleted > 0) SafeLog.d(TAG, "delete OK → id=$key filas=$deleted")
+    }
+
+    /** Elimina filas ya resueltas, útil para no incluir filas añadidas después. */
+    private fun deleteKnownRowsNow(
+        sheets: Sheets,
+        spreadsheetId: String,
+        rowsBySheet: Map<String, List<Int>>
+    ): Int {
         val meta = sheets.spreadsheets().get(spreadsheetId).setIncludeGridData(false).execute()
         val gridIdByTitle = meta.sheets.associate {
             (it.properties.title as String) to (it.properties.sheetId as Int)
         }
         val requests = mutableListOf<Request>()
-        sheetKeyCols.forEach { (title, keyCol) ->
+        rowsBySheet.forEach { (title, rows) ->
             val gridId = gridIdByTitle[title]
             if (gridId == null) {
                 SafeLog.w(TAG, "delete: hoja '$title' no existe en el sheet")
                 return@forEach
             }
-            findRowsByKey(sheets, spreadsheetId, title, keyCol, key)
-                .sortedDescending()
+            rows.sortedDescending()
                 .forEach { row ->
                     requests.add(
                         Request().setDeleteDimension(
@@ -410,12 +483,12 @@ class SheetsSyncManager @Inject constructor(
                     )
                 }
         }
-        if (requests.isEmpty()) return
+        if (requests.isEmpty()) return 0
         sheets.spreadsheets().batchUpdate(
             spreadsheetId,
             BatchUpdateSpreadsheetRequest().setRequests(requests)
         ).execute()
-        SafeLog.d(TAG, "delete OK → id=$key filas=${requests.size}")
+        return requests.size
     }
 
     /**

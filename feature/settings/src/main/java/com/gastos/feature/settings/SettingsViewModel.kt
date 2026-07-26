@@ -112,6 +112,12 @@ class SettingsViewModel @Inject constructor(
                     aiService.configureGemini(apiKey, instructions)
                 }
         }
+        viewModelScope.launch {
+            settingsRepository.settings
+                .map { it.defaultCountry }
+                .distinctUntilChanged()
+                .collect(aiService::setFiscalCountry)
+        }
     }
 
     /** Observa el estado de Premium y los detalles de producto de BillingManager. */
@@ -195,6 +201,11 @@ class SettingsViewModel @Inject constructor(
 
     fun updateDefaultCurrency(currency: String) {
         viewModelScope.launch { settingsRepository.updateDefaultCurrency(currency) }
+    }
+
+    fun updateDefaultCountry(country: String) {
+        if (country !in com.gastos.domain.model.SUPPORTED_FISCAL_COUNTRIES) return
+        viewModelScope.launch { settingsRepository.updateDefaultCountry(country) }
     }
 
     fun updateDarkMode(mode: String) {

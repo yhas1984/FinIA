@@ -51,7 +51,11 @@ data class ProductEntity(
     val precioUnitario: Double,
     val subtotal: Double = cantidad * precioUnitario,
     val ivaPercent: Double = 21.0,
-    val ivaAmount: Double = subtotal * ivaPercent / 100.0,
+    val ivaAmount: Double = if (ivaPercent > 0.0) {
+        subtotal * ivaPercent / (100.0 + ivaPercent)
+    } else {
+        0.0
+    },
     val createdAt: Long = System.currentTimeMillis()
 )
 

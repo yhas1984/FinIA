@@ -13,14 +13,17 @@ import java.util.Locale
 internal object SheetsSchema {
     const val RECIBIDAS = "Facturas Recibidas"
     const val NOMINAS = "Nóminas"
+    const val INGRESOS = "Ingresos"
     const val PRODUCTOS = "Productos"
     const val RESUMEN = "Resumen"
-    const val SCHEMA_VERSION = 5
+    const val SCHEMA_VERSION = 6
 
     const val RECIBIDAS_KEY_COLUMN = "O"
     const val RECIBIDAS_LAST_COLUMN = "U"
     const val NOMINAS_KEY_COLUMN = "J"
     const val NOMINAS_LAST_COLUMN = "P"
+    const val INGRESOS_KEY_COLUMN = "H"
+    const val INGRESOS_LAST_COLUMN = "M"
     const val PRODUCTOS_PARENT_COLUMN = "H"
     const val PRODUCTOS_LAST_COLUMN = "P"
 
@@ -31,7 +34,7 @@ internal object SheetsSchema {
     val recibidasHeaders: List<Any> = listOf(
         "Nº Factura", "Fecha", "NIF País", "NIF Emisor",
         "Emisor (Razón Social)", "Base Imponible", "Tipo IVA", "Cuota IVA",
-        "Recargo Eq.", "IRPF", "Total", "Moneda", "Categoría", "Notas", "ID", "Foto Drive",
+        "Recargo Eq.", "IRPF %", "Total antes de retención", "Moneda", "Categoría", "Notas", "ID", "Foto Drive",
         "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
     )
 
@@ -44,9 +47,14 @@ internal object SheetsSchema {
 
     val productosHeaders: List<Any> = listOf(
         "Descripción", "Cantidad", "Precio Unitario", "Subtotal", "IVA %",
-        "Total + IVA", "Factura (Proveedor)", "InvoiceID", "ProductID",
-        "Precio Unitario Original", "Subtotal Original", "Total + IVA Original",
+        "Total (IVA incluido)", "Factura (Proveedor)", "InvoiceID", "ProductID",
+        "Precio Unitario Original", "Subtotal Original", "Total Original (IVA incluido)",
         "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
+    )
+
+    val ingresosHeaders: List<Any> = listOf(
+        "Concepto", "Fecha", "Importe", "Moneda", "Fuente", "Categoría", "Notas", "ID",
+        "Importe Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
     )
 
     data class ConversionSnapshot(
@@ -202,6 +210,28 @@ internal object SheetsSchema {
         )
     }
 
+    fun isPayrollIncome(income: Income): Boolean =
+        TransactionCategories.matchesCategory(income.categoria, "Nómina")
+
+    fun genericIncomeRow(income: Income, conversion: ConversionSnapshot): List<Any> {
+        val amount = conversion.convert(income.monto, income.moneda)
+        return listOf(
+            income.concepto,
+            formatDate(income.fecha),
+            amount.convertedAmount ?: "",
+            conversion.targetCurrency,
+            income.fuente ?: "",
+            TransactionCategories.displayCategory(income.categoria),
+            income.notas ?: "",
+            income.id,
+            amount.originalAmount,
+            amount.originalCurrency,
+            amount.appliedRate ?: "",
+            amount.rateTimestampLabel,
+            amount.status
+        )
+    }
+
     fun productRow(
         product: Product,
         provider: String,
@@ -210,7 +240,9 @@ internal object SheetsSchema {
     ): List<Any> {
         val unit = conversion.convert(product.precioUnitario, originalCurrency)
         val subtotal = conversion.convert(product.subtotal, originalCurrency)
-        val totalWithVatOriginal = product.subtotal * (1 + product.ivaPercent / 100.0)
+        // El OCR y el modelo de dominio definen precio/subtotal como importes
+        // finales con IVA incluido. No se vuelve a sumar aquí.
+        val totalWithVatOriginal = product.subtotal
         val totalWithVat = conversion.convert(totalWithVatOriginal, originalCurrency)
         val primary = if (subtotal.status == CONVERSION_PENDING) subtotal else totalWithVat
         return listOf(

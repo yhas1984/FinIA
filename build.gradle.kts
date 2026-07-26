@@ -8,9 +8,12 @@ plugins {
 }
 
 subprojects {
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        compilerOptions {
-            freeCompilerArgs.add("-Xskip-metadata-version-check")
+    pluginManager.withPlugin("org.jetbrains.kotlin.android") {
+        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension> {
+            compilerOptions {
+                jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+                freeCompilerArgs.add("-Xannotation-default-target=param-property")
+            }
         }
     }
 }

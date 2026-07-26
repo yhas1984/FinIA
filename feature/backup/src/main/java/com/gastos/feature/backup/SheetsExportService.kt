@@ -50,12 +50,13 @@ import javax.inject.Singleton
  * (Orden HAC/773/2019) para España:
  *   • Facturas Recibidas (gastos del usuario como receptor)
  *   • Nóminas            (recibos salariales)
- *   • Productos          (con Total + IVA)
+ *   • Ingresos           (ventas, honorarios, alquileres, etc.)
+ *   • Productos          (precios con IVA incluido)
  *   • Resumen            (fórmulas SUM que recalculan al sincronizar)
  *
  * Usa la cuenta Google autenticada del dispositivo (OAuth) vía
- * GoogleSignIn.  Base imponible y cuota IVA se CALCULAN en el export
- * (base = total/(1+iva%)), sin necesidad de migrar el esquema de Room.
+ * GoogleSignIn. El total de una factura es el bruto con IVA antes de
+ * retención; base y cuota se calculan como base = total/(1+iva%).
  */
 @Singleton
 class SheetsExportService @Inject constructor(
@@ -136,6 +137,7 @@ class SheetsExportService @Inject constructor(
         val sheetTitles = listOf(
             SheetsSchema.RECIBIDAS,
             SheetsSchema.NOMINAS,
+            SheetsSchema.INGRESOS,
             SheetsSchema.PRODUCTOS,
             SheetsSchema.RESUMEN
         )
@@ -167,7 +169,8 @@ class SheetsExportService @Inject constructor(
 
         // Poblar las hojas (estructura AEAT para España).
         //   • Facturas Recibidas  ← Invoice con tipo=GASTO (gastos del usuario)
-        //   • Nóminas             ← Income (todos los ingresos)
+        //   • Nóminas             ← Income con categoría Nómina
+        //   • Ingresos            ← resto de Income
         // Los Invoice con tipo=INGRESO (factura_emitida) no se exportan:
         // el usuario no genera facturas expedidas.
         val recibidas = invoices.filter { it.tipo == InvoiceType.GASTO }
@@ -176,7 +179,18 @@ class SheetsExportService @Inject constructor(
             exchangeRateProvider = exchangeRateProvider
         )
         writeRecibidas(sheetsService, spreadsheetId, recibidas, conversion)
-        writeNominas(sheetsService, spreadsheetId, incomes, conversion)
+        writeNominas(
+            sheetsService,
+            spreadsheetId,
+            incomes.filter(SheetsSchema::isPayrollIncome),
+            conversion
+        )
+        writeIngresos(
+            sheetsService,
+            spreadsheetId,
+            incomes.filterNot(SheetsSchema::isPayrollIncome),
+            conversion
+        )
         writeProductos(sheetsService, spreadsheetId, products, invoices, conversion)
         writeResumenAeat(
             sheets = sheetsService,
@@ -235,6 +249,21 @@ class SheetsExportService @Inject constructor(
         values.addAll(nominas.map { SheetsSchema.incomeRow(it, conversion) })
         sheets.spreadsheets().values()
             .update(id, "'${SheetsSchema.NOMINAS}'!A1", ValueRange().setValues(values))
+            .setValueInputOption("RAW")
+            .execute()
+    }
+
+    /** Escribe ingresos no salariales sin forzarlos al esquema de nómina. */
+    private fun writeIngresos(
+        sheets: Sheets,
+        id: String,
+        incomes: List<Income>,
+        conversion: SheetsSchema.ConversionSnapshot
+    ) {
+        val values = mutableListOf<List<Any>>(SheetsSchema.ingresosHeaders)
+        values.addAll(incomes.map { SheetsSchema.genericIncomeRow(it, conversion) })
+        sheets.spreadsheets().values()
+            .update(id, "'${SheetsSchema.INGRESOS}'!A1", ValueRange().setValues(values))
             .setValueInputOption("RAW")
             .execute()
     }
@@ -419,6 +448,7 @@ class SheetsExportService @Inject constructor(
         val numericColumns = mapOf(
             SheetsSchema.RECIBIDAS to listOf(5..5, 6..6, 7..7, 8..8, 9..9, 10..10, 15..15, 17..17),
             SheetsSchema.NOMINAS to listOf(2..2, 3..3, 4..4, 9..10, 12..12),
+            SheetsSchema.INGRESOS to listOf(2..2, 8..8, 10..10),
             SheetsSchema.PRODUCTOS to listOf(1..1, 2..2, 3..3, 4..4, 5..5, 9..11, 13..13)
         )
         numericColumns.forEach { (title, ranges) ->
