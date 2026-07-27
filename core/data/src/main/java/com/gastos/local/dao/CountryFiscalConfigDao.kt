@@ -16,8 +16,8 @@ interface CountryFiscalConfigDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConfig(config: CountryFiscalConfigEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertConfigs(configs: List<CountryFiscalConfigEntity>)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertConfigsIfMissing(configs: List<CountryFiscalConfigEntity>)
 
     @Update
     suspend fun updateConfig(config: CountryFiscalConfigEntity)
@@ -25,6 +25,4 @@ interface CountryFiscalConfigDao {
     @Delete
     suspend fun deleteConfig(config: CountryFiscalConfigEntity)
 
-    @Query("SELECT COUNT(*) FROM country_fiscal_config")
-    suspend fun getConfigCount(): Int
 }

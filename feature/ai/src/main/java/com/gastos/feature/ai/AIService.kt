@@ -77,7 +77,7 @@ class AIService @Inject constructor(
      *  necesario. Llamado desde suspend (processInvoiceFromImage). */
     private suspend fun currentFiscalConfig(): CountryFiscalConfig? {
         val code = currentFiscalCountry
-        if (cachedFiscalCountryForConfig != code) {
+        if (cachedFiscalCountryForConfig != code || cachedFiscalConfig == null) {
             cachedFiscalConfig = fiscalConfigRepository.getConfigByCountry(code)
             cachedFiscalCountryForConfig = code
         }
@@ -244,6 +244,10 @@ class AIService @Inject constructor(
             chatHistory.add(content(role = "model") { text(model) })
         }
         trimHistory()
+        // Chat mantiene su propio historial interno. Reconstruir la sesión es
+        // necesario para que el límite gratuito/Premium se aplique también
+        // durante una conversación activa, no solo al restaurar la app.
+        rebuildSession()
     }
 
     /** Convierte el texto crudo del modelo (recogido del stream) en un AIResult. */
@@ -259,7 +263,16 @@ class AIService @Inject constructor(
             val bitmap = uriToBitmap(imageUri)
                 ?: return AIResult(success = false, message = "Error al cargar la imagen")
 
-            val prompt = UNIVERSAL_OCR_PROMPT
+            val fiscalConfig = currentFiscalConfig()
+            val prompt = if (fiscalConfig == null) {
+                UNIVERSAL_OCR_PROMPT
+            } else {
+                "$UNIVERSAL_OCR_PROMPT\n\n" +
+                    "PAÍS DE RESPALDO: si el documento no permite detectar el país, usa " +
+                    "${fiscalConfig.paisCodigo} (${fiscalConfig.nombrePais}). " +
+                    "Sus tipos habituales de ${fiscalConfig.nombreLeyFiscal} son " +
+                    "${fiscalConfig.ivaRates.joinToString()}%. No sustituyas valores legibles del documento."
+            }
 
             val response = model.generateContent(
                 content {
@@ -701,7 +714,7 @@ class AIService @Inject constructor(
             - Colombia: IVA 0/5/19%
             - Chile: IVA 19%
             - Perú: IGV 18%
-            - Ecuador: IVA 12%
+            - Ecuador: IVA general 15% (además de tarifas 0% y 5% según el bien)
             Si el documento no muestra el IVA, pon 0.
 
             SOBRE LA IDENTIFICACIÓN FISCAL — detecta el formato del país:

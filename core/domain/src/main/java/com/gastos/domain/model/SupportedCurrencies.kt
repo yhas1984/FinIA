@@ -13,6 +13,11 @@ val SUPPORTED_CURRENCIES: List<String> = listOf(
     "BOB", "GTQ", "NIO", "PYG", "UYU", "VES"
 )
 
+/** País fiscal usado como respaldo cuando un documento no permite detectarlo. */
+val SUPPORTED_FISCAL_COUNTRIES: List<String> = listOf(
+    "ES", "MX", "AR", "CO", "CL", "PE", "EC", "US"
+)
+
 /** Devuelve un símbolo legible para el código de moneda. */
 fun currencySymbol(code: String): String = when (code.uppercase()) {
     "EUR" -> "€"

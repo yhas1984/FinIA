@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -66,5 +67,27 @@ class EditIncomeViewModelTest {
                         it.createdAt == 555L
                 })
             }
+        }
+
+    @Test
+    fun `saveIncome rechaza importes no finitos y porcentajes fuera de rango`() =
+        runTest(dispatcher) {
+            val repo = mockk<com.gastos.repository.IncomeRepository>(relaxed = true)
+            val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+            every { repo.getAllIncomes() } returns flowOf(emptyList())
+            val vm = EditIncomeViewModel(repo, sync)
+
+            vm.updateConcepto("Ingreso")
+            vm.updateMonto("NaN")
+            vm.saveIncome()
+            advanceUntilIdle()
+            assertEquals("El monto debe ser un número positivo", vm.uiState.value.saveResult)
+
+            vm.updateMonto("100")
+            vm.updateIvaPercent("101")
+            vm.saveIncome()
+            advanceUntilIdle()
+            assertEquals("Los porcentajes deben estar entre 0 y 100", vm.uiState.value.saveResult)
+            coVerify(exactly = 0) { repo.insertIncome(any()) }
         }
 }

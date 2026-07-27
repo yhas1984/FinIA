@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,6 +31,7 @@ fun EditIncomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val form by viewModel.form.collectAsStateWithLifecycle()
+    val locale = LocalLocale.current.platformLocale
     val scrollState = rememberScrollState()
     var showDatePicker by remember { mutableStateOf(false) }
     var showCurrencyPicker by remember { mutableStateOf(false) }
@@ -61,7 +63,9 @@ fun EditIncomeScreen(
                 actions = {
                     IconButton(
                         onClick = { viewModel.saveIncome() },
-                        enabled = !uiState.isSaving && form.monto.toDoubleOrNull()?.let { it > 0 } == true && form.concepto.isNotBlank()
+                        enabled = !uiState.isSaving &&
+                            form.monto.toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true &&
+                            form.concepto.isNotBlank()
                     ) {
                         Icon(Icons.Default.Save, contentDescription = "Guardar")
                     }
@@ -88,7 +92,7 @@ fun EditIncomeScreen(
 
             // Fecha
             OutlinedTextField(
-                value = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(form.fecha)),
+                value = SimpleDateFormat("dd/MM/yyyy", locale).format(Date(form.fecha)),
                 onValueChange = {},
                 label = { Text("Fecha") },
                 modifier = Modifier.fillMaxWidth(),

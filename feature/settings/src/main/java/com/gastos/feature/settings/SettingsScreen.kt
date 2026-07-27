@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -36,6 +37,7 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val locale = LocalLocale.current.platformLocale
 
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var apiKeyInput by remember { mutableStateOf(uiState.settings.geminiApiKey) }
@@ -255,6 +257,21 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                SettingsDropdown(
+                    label = "País fiscal por defecto",
+                    value = uiState.settings.defaultCountry,
+                    options = com.gastos.domain.model.SUPPORTED_FISCAL_COUNTRIES,
+                    onValueChange = { viewModel.updateDefaultCountry(it) }
+                )
+                Text(
+                    text = "Se usa solo si el país no puede detectarse en el documento.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
                 // Tarjeta de tipos de cambio
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -286,7 +303,7 @@ fun SettingsScreen(
                                     uiState.isRefreshingRates -> "Actualizando…"
                                     uiState.ratesAsOf != null -> {
                                         val d = java.text.SimpleDateFormat(
-                                            "dd/MM/yyyy HH:mm", java.util.Locale.getDefault()
+                                            "dd/MM/yyyy HH:mm", locale
                                         ).format(java.util.Date(uiState.ratesAsOf!!))
                                         "${uiState.ratesCount} monedas · actualizado $d"
                                     }
