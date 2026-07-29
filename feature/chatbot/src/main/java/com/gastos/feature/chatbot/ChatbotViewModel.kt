@@ -56,7 +56,14 @@ private data class PendingProductClarification(
 internal data class ResolvedFinancialQuery(
     val queryType: String?,
     val item: String?,
-    val matchMode: String?
+    val matchMode: String?,
+    val category: String?,
+    val provider: String?
+)
+
+private data class ExecutedFinancialQuery(
+    val text: String,
+    val contextText: String
 )
 
 internal data class ResolvedProductClarification(
@@ -67,9 +74,9 @@ internal data class ResolvedProductClarification(
 internal object FinancialQueryResolver {
     fun normalizePeriod(value: String?): String = when (normalizeProductName(value.orEmpty())) {
         "hoy" -> "hoy"
-        "semana", "esta semana" -> "semana"
-        "ano", "este ano" -> "año"
-        "mes", "este mes" -> "mes"
+        "semana", "esta semana", "semana actual", "lo que va de semana" -> "semana"
+        "ano", "este ano", "ano actual", "lo que va de ano" -> "año"
+        "mes", "este mes", "mes actual", "lo que va de mes" -> "mes"
         else -> "mes"
     }
 
@@ -78,22 +85,64 @@ internal object FinancialQueryResolver {
         item: String?,
         matchMode: String?,
         originalQuestion: String?,
-        productNames: List<String>
+        productNames: List<String>,
+        category: String? = null,
+        provider: String? = null,
+        providerNames: List<String> = emptyList(),
+        categoryNames: List<String> = emptyList()
     ): ResolvedFinancialQuery {
         val normalizedType = queryType?.lowercase(Locale.ROOT)
         val explicitItem = item?.trim()?.takeIf { it.isNotEmpty() }
-        val inferredItem = explicitItem ?: inferKnownProduct(originalQuestion, productNames)
+        val explicitCategory = category?.trim()?.takeIf { it.isNotEmpty() }
+        val explicitProvider = provider?.trim()?.takeIf { it.isNotEmpty() }
+        val knownProduct = explicitItem?.let { findKnownName(it, productNames) }
+        val knownCategory = explicitCategory?.let { findKnownExactName(it, categoryNames) }
+        val providerFromCategory = explicitCategory
+            ?.takeIf { !questionRequestsCategory(originalQuestion) }
+            ?.takeIf { findKnownName(it, providerNames) != null }
+        val providerFromItem = explicitItem
+            ?.takeIf { knownProduct == null }
+            ?.takeIf { findKnownName(it, providerNames) != null }
+        val inferredProvider = inferKnownName(originalQuestion, providerNames)
+        val resolvedProvider = explicitProvider
+            ?: providerFromCategory
+            ?: providerFromItem
+            ?: inferredProvider
+        val inferredProduct = explicitItem ?: inferKnownProduct(originalQuestion, productNames)
+        val resolvedItem = when {
+            knownProduct != null -> explicitItem
+            explicitItem != null && normalizedType in PRODUCT_QUERY_TYPES && resolvedProvider == null -> explicitItem
+            explicitItem == null && inferredProduct != null && resolvedProvider == null -> inferredProduct
+            else -> null
+        }
+        val resolvedCategory = if (providerFromCategory != null) {
+            null
+        } else {
+            knownCategory ?: explicitCategory?.takeIf {
+                resolvedProvider == null && questionRequestsCategory(originalQuestion)
+            }
+        }
+        val inferredMetric = inferMetric(originalQuestion)
         val resolvedType = when {
-            inferredItem != null -> "productos"
+            resolvedItem != null -> "productos"
+            inferredMetric != null -> inferredMetric
+            resolvedProvider != null && normalizedType in PRODUCT_QUERY_TYPES -> "gastos"
             normalizedType in SUPPORTED_QUERY_TYPES -> normalizedType
+            resolvedProvider != null -> "gastos"
             else -> null
         }
         val resolvedMode = when {
-            inferredItem == null -> null
+            resolvedItem == null -> null
             matchMode.equals("group", ignoreCase = true) -> "group"
             else -> "exact"
         }
-        return ResolvedFinancialQuery(resolvedType, inferredItem, resolvedMode)
+        return ResolvedFinancialQuery(
+            queryType = resolvedType,
+            item = resolvedItem,
+            matchMode = resolvedMode,
+            category = resolvedCategory,
+            provider = resolvedProvider
+        )
     }
 
     fun normalizeProductName(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFD)
@@ -104,10 +153,17 @@ internal object FinancialQueryResolver {
         .replace("\\s+".toRegex(), " ")
 
     fun isRelatedProductName(candidate: String, requestedItem: String): Boolean {
-        val candidateTokens = normalizeProductName(candidate).split(' ').filter(String::isNotBlank)
-        val requestedTokens = normalizeProductName(requestedItem).split(' ').filter(String::isNotBlank)
-        if (requestedTokens.isEmpty() || requestedTokens.size > candidateTokens.size) return false
-        return candidateTokens.windowed(requestedTokens.size).any { it == requestedTokens }
+        return containsTokenSequence(candidate, requestedItem)
+    }
+
+    fun matchesProvider(candidate: String, requestedProvider: String): Boolean {
+        return containsTokenSequence(candidate, requestedProvider) ||
+            containsTokenSequence(requestedProvider, candidate)
+    }
+
+    fun requestsNetBalance(question: String?): Boolean {
+        val normalizedQuestion = normalizeProductName(question.orEmpty())
+        return NET_TERMS.any(normalizedQuestion::contains)
     }
 
     fun resolveClarification(
@@ -133,10 +189,14 @@ internal object FinancialQueryResolver {
     }
 
     private fun inferKnownProduct(question: String?, productNames: List<String>): String? {
+        return inferKnownName(question, productNames)
+    }
+
+    private fun inferKnownName(question: String?, knownNames: List<String>): String? {
         val normalizedQuestion = normalizeProductName(question.orEmpty())
         if (normalizedQuestion.isBlank()) return null
         val paddedQuestion = " $normalizedQuestion "
-        return productNames
+        return knownNames
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .distinct()
@@ -147,9 +207,50 @@ internal object FinancialQueryResolver {
             }
     }
 
+    private fun findKnownName(value: String, knownNames: List<String>): String? {
+        return knownNames.firstOrNull { matchesProvider(it, value) }
+    }
+
+    private fun findKnownExactName(value: String, knownNames: List<String>): String? {
+        val normalizedValue = normalizeProductName(value)
+        return knownNames.firstOrNull { normalizeProductName(it) == normalizedValue }
+    }
+
+    private fun containsTokenSequence(candidate: String, requested: String): Boolean {
+        val candidateTokens = normalizeProductName(candidate).split(' ').filter(String::isNotBlank)
+        val requestedTokens = normalizeProductName(requested).split(' ').filter(String::isNotBlank)
+        if (requestedTokens.isEmpty() || requestedTokens.size > candidateTokens.size) return false
+        return candidateTokens.windowed(requestedTokens.size).any { it == requestedTokens }
+    }
+
+    private fun questionRequestsCategory(question: String?): Boolean {
+        val normalizedQuestion = normalizeProductName(question.orEmpty())
+        return normalizedQuestion.contains("categoria")
+    }
+
+    private fun inferMetric(question: String?): String? {
+        val normalizedQuestion = normalizeProductName(question.orEmpty())
+        if (normalizedQuestion.isBlank()) return null
+        return when {
+            NET_TERMS.any(normalizedQuestion::contains) -> "balance"
+            INCOME_TERMS.any(normalizedQuestion::contains) -> "ingresos"
+            EXPENSE_TERMS.any(normalizedQuestion::contains) -> "gastos"
+            else -> null
+        }
+    }
+
     private val SUPPORTED_QUERY_TYPES = setOf(
         "gastos", "ingresos", "balance", "productos", "producto"
     )
+    private val PRODUCT_QUERY_TYPES = setOf("productos", "producto")
+    private val NET_TERMS = setOf(
+        "balance", "ganado", "ganancia", "beneficio", "neto", "lo que me queda",
+        "ingresos menos gastos"
+    )
+    private val INCOME_TERMS = setOf(
+        "ingreso", "ingresado", "cobrado", "recibido", "salario", "sueldo", "nomina"
+    )
+    private val EXPENSE_TERMS = setOf("gasto", "gastado", "comprado", "pagado")
 }
 
 data class ChatbotUiState(
@@ -310,14 +411,16 @@ class ChatbotViewModel @Inject constructor(
                 queryType = "productos",
                 periodo = pending.periodo,
                 categoria = null,
+                provider = null,
                 item = clarification.item,
                 matchMode = clarification.matchMode,
                 originalQuestion = userAnswer
             )
             handleAIResult(
-                result = AIResult(success = true, message = response),
+                result = AIResult(success = true, message = response.text),
                 originalQuestion = userAnswer,
-                includeInContext = false
+                includeInContext = true,
+                contextTextOverride = response.contextText
             )
         }
     }
@@ -340,12 +443,14 @@ class ChatbotViewModel @Inject constructor(
         result: AIResult,
         originalQuestion: String? = null,
         streaming: Boolean = false,
-        includeInContext: Boolean = true
+        includeInContext: Boolean = true,
+        contextTextOverride: String? = null
     ) {
         suspend fun showResult(
             text: String,
             shouldPersist: Boolean = true,
-            shouldIncludeInContext: Boolean = includeInContext
+            shouldIncludeInContext: Boolean = includeInContext,
+            contextText: String? = contextTextOverride ?: text
         ) {
             if (streaming) {
                 replacePlaceholder(text)
@@ -358,7 +463,7 @@ class ChatbotViewModel @Inject constructor(
                 persistMessage(
                     role = "model",
                     visibleText = text,
-                    contextText = text,
+                    contextText = contextText,
                     includeInContext = shouldIncludeInContext
                 )
             }
@@ -432,18 +537,22 @@ class ChatbotViewModel @Inject constructor(
                             json.optString("periodo", "mes")
                         )
                         val categoria = json.optString("categoria", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val provider = json.optString("proveedor", "").takeIf { it.isNotEmpty() && it != "null" }
                         val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
                         val matchMode = json.optString("match_mode", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val response = executeQuery(
+                            queryType = queryType,
+                            periodo = periodo,
+                            categoria = categoria,
+                            provider = provider,
+                            item = item,
+                            matchMode = matchMode,
+                            originalQuestion = originalQuestion
+                        )
                         showResult(
-                            text = executeQuery(
-                                queryType = queryType,
-                                periodo = periodo,
-                                categoria = categoria,
-                                item = item,
-                                matchMode = matchMode,
-                                originalQuestion = originalQuestion
-                            ),
-                            shouldIncludeInContext = false
+                            text = response.text,
+                            shouldIncludeInContext = true,
+                            contextText = response.contextText
                         )
                     } else {
                         showResult(result.message)
@@ -585,26 +694,42 @@ class ChatbotViewModel @Inject constructor(
         queryType: String?,
         periodo: String,
         categoria: String?,
+        provider: String?,
         item: String?,
         matchMode: String?,
         originalQuestion: String?
-    ): String {
+    ): ExecutedFinancialQuery {
         val (start, end) = getDateRange(periodo)
-        val normalizedCategory = TransactionCategories.normalizeCategory(categoria)
         val target = currencyPreference.defaultCurrency.value
         val fmt = java.text.NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-ES")).apply {
             try { currency = java.util.Currency.getInstance(target) } catch (_: Exception) { /* fallback al locale */ }
         }
-
         val invoices = invoiceRepository.getAllInvoices().first()
         val incomes = incomeRepository.getAllIncomes().first()
         val allProducts = productRepository.getAllProducts().first()
-
-        // Filter by date range
+        val categoryNames = TransactionCategories.defaultExpenseCategories +
+            TransactionCategories.defaultIncomeCategories +
+            invoices.mapNotNull { it.categoria } +
+            incomes.mapNotNull { it.categoria }
+        val resolvedQuery = FinancialQueryResolver.resolve(
+            queryType = queryType,
+            item = item,
+            matchMode = matchMode,
+            originalQuestion = originalQuestion,
+            productNames = allProducts.map { it.descripcion },
+            category = categoria,
+            provider = provider,
+            providerNames = invoices.map { it.proveedor },
+            categoryNames = categoryNames
+        )
+        val resolvedQueryType = resolvedQuery.queryType
+        val normalizedCategory = TransactionCategories.normalizeCategory(resolvedQuery.category)
+        val resolvedProvider = resolvedQuery.provider
         val periodInvoices = invoices.filter { it.fecha in start..end }
         val periodIncomes = incomes.filter { it.fecha in start..end }
         val filteredInvoices = periodInvoices.filter {
-            TransactionCategories.matchesCategory(it.categoria, normalizedCategory)
+            TransactionCategories.matchesCategory(it.categoria, normalizedCategory) &&
+                (resolvedProvider == null || FinancialQueryResolver.matchesProvider(it.proveedor, resolvedProvider))
         }
         val filteredIncomes = periodIncomes.filter {
             TransactionCategories.matchesCategory(it.categoria, normalizedCategory)
@@ -612,28 +737,32 @@ class ChatbotViewModel @Inject constructor(
         val filteredInvoiceIds = filteredInvoices.map { it.id }.toSet()
         val periodProducts = allProducts.filter { it.invoiceId in filteredInvoiceIds }
         val invoiceById = filteredInvoices.associateBy { it.id }
-        val scopeLabel = buildString {
-            append(periodo)
-            normalizedCategory?.let {
-                append(" en ")
-                append(TransactionCategories.displayCategory(it))
-            }
+        val periodLabel = when (periodo) {
+            "hoy" -> "hoy"
+            "semana" -> "esta semana"
+            "año" -> "este año"
+            else -> "este mes"
         }
-
+        val scopeLabel = buildString {
+            append(periodLabel)
+            resolvedProvider?.let { append(" en $it") }
+            normalizedCategory?.let { append(" · categoría ${TransactionCategories.displayCategory(it)}") }
+        }
+        val contextText = buildString {
+            append("Consulta financiera ejecutada: tipo=${resolvedQueryType ?: "desconocido"}; periodo=$periodo")
+            append("; proveedor=${resolvedProvider ?: "ninguno"}")
+            append("; categoria=${normalizedCategory ?: "ninguna"}")
+            append("; producto=${resolvedQuery.item ?: "ninguno"}.")
+        }
+        fun result(text: String): ExecutedFinancialQuery = ExecutedFinancialQuery(text, contextText)
         fun convertedInvoiceAmount(invoice: com.gastos.domain.model.Invoice): Double =
             exchangeRateProvider.convert(invoice.total, invoice.moneda, target) ?: 0.0
-
         fun convertedIncomeAmount(income: Income): Double =
             exchangeRateProvider.convert(income.monto, income.moneda, target) ?: 0.0
-
         fun convertedProductAmount(product: com.gastos.domain.model.Product): Double {
             val currency = invoiceById[product.invoiceId]?.moneda ?: return 0.0
             return exchangeRateProvider.convert(product.subtotal, currency, target) ?: 0.0
         }
-
-        // Totales convertidos a la moneda por defecto del usuario (mismo
-        // mecanismo que el Dashboard): si falta la tasa de una moneda, su
-        // importe se excluye y no se suma como si fuera la moneda destino.
         val totalGastos = filteredInvoices
             .filter { it.tipo == InvoiceType.GASTO }
             .sumOf(::convertedInvoiceAmount)
@@ -643,23 +772,20 @@ class ChatbotViewModel @Inject constructor(
             filteredIncomes.sumOf(::convertedIncomeAmount)
         val countGastos = filteredInvoices.count { it.tipo == InvoiceType.GASTO }
         val countIngresos = filteredInvoices.count { it.tipo == InvoiceType.INGRESO } + filteredIncomes.size
-
-        val resolvedQuery = FinancialQueryResolver.resolve(
-            queryType = queryType,
-            item = item,
-            matchMode = matchMode,
-            originalQuestion = originalQuestion,
-            productNames = allProducts.map { it.descripcion }
-        )
-        val resolvedQueryType = resolvedQuery.queryType
-        SafeLog.d(TAG, "Query: type=$resolvedQueryType, period=$periodo, category=$normalizedCategory, gastos=$totalGastos, ingresos=$totalIngresos, products=${periodProducts.size}")
-
         return when (resolvedQueryType) {
             "gastos" -> {
-                val sb = StringBuilder("💰 Gastos de $scopeLabel:\n")
+                if (resolvedProvider != null && countGastos == 0) {
+                    return result("🛒 No encontré compras en $resolvedProvider $periodLabel.")
+                }
+                val title = if (resolvedProvider != null) {
+                    "🛒 Gastos en $resolvedProvider $periodLabel:\n"
+                } else {
+                    "💰 Gastos de $scopeLabel:\n"
+                }
+                val sb = StringBuilder(title)
                 sb.append("• Total: ${fmt.format(totalGastos)}\n")
-                sb.append("• Cantidad: $countGastos transacciones\n")
-                if (filteredInvoices.isNotEmpty()) {
+                sb.append("• Cantidad: $countGastos ${if (resolvedProvider != null) "compras" else "transacciones"}\n")
+                if (resolvedProvider == null && filteredInvoices.isNotEmpty()) {
                     val byProvider = filteredInvoices.filter { it.tipo == InvoiceType.GASTO }
                         .groupBy { it.proveedor }
                         .mapValues { (_, values) -> values.sumOf(::convertedInvoiceAmount) }
@@ -671,7 +797,7 @@ class ChatbotViewModel @Inject constructor(
                         }
                     }
                 }
-                sb.toString().trimEnd()
+                result(sb.toString().trimEnd())
             }
             "ingresos" -> {
                 val sb = StringBuilder("💵 Ingresos de $scopeLabel:\n")
@@ -688,12 +814,21 @@ class ChatbotViewModel @Inject constructor(
                         }
                     }
                 }
-                sb.toString().trimEnd()
+                result(sb.toString().trimEnd())
             }
             "balance" -> {
                 val balance = totalIngresos - totalGastos
                 val emoji = if (balance >= 0) "✅" else "⚠️"
-                "📊 Balance de $scopeLabel:\n• Ingresos: ${fmt.format(totalIngresos)} ($countIngresos)\n• Gastos: ${fmt.format(totalGastos)} ($countGastos)\n• Balance: $emoji ${fmt.format(balance)}"
+                val title = if (FinancialQueryResolver.requestsNetBalance(originalQuestion)) {
+                    "📊 Ganancia neta de $scopeLabel:"
+                } else {
+                    "📊 Balance de $scopeLabel:"
+                }
+                result(
+                    "$title\n• Ingresos: ${fmt.format(totalIngresos)} ($countIngresos)\n" +
+                        "• Gastos: ${fmt.format(totalGastos)} ($countGastos)\n" +
+                        "• Te queda: $emoji ${fmt.format(balance)}"
+                )
             }
             "productos", "producto" -> {
                 val resolvedItem = resolvedQuery.item
@@ -705,10 +840,10 @@ class ChatbotViewModel @Inject constructor(
                             requestedItem = resolvedItem,
                             variants = matchResult.variants
                         )
-                        return buildProductClarification(periodo, resolvedItem, matchResult.variants)
+                        return result(buildProductClarification(periodo, resolvedItem, matchResult.variants))
                     }
                     if (matchResult.matches.isEmpty()) {
-                        return "📦 No encontré un producto exacto para '$resolvedItem' en el periodo: $scopeLabel"
+                        return result("📦 No encontré un producto exacto para '$resolvedItem' durante $scopeLabel.")
                     }
                     val total = matchResult.matches.sumOf(::convertedProductAmount)
                     val totalUnits = matchResult.matches.sumOf { it.cantidad }
@@ -720,18 +855,17 @@ class ChatbotViewModel @Inject constructor(
                     } else {
                         "📦 Gasto en '$resolvedItem' durante $scopeLabel:"
                     }
-                    return buildString {
+                    return result(buildString {
                         appendLine(intro)
                         appendLine("• Total: ${fmt.format(total)}")
                         appendLine("• Cantidad: ${if (totalUnits % 1.0 == 0.0) totalUnits.toInt() else totalUnits} uds")
                         append("• Coincidencias: $variantsText")
-                    }
+                    })
                 }
                 if (periodProducts.isEmpty()) {
-                    return "📦 No hay productos registrados en el periodo: $scopeLabel"
+                    return result("📦 No hay productos registrados durante $scopeLabel.")
                 }
                 val sb = StringBuilder("📦 Productos de $scopeLabel:\n")
-                // Most bought by frequency
                 val byFrequency = periodProducts.groupBy { it.descripcion.lowercase().trim() }
                     .mapValues { (_, values) ->
                         values.sumOf { p -> p.cantidad }.toInt() to
@@ -743,8 +877,6 @@ class ChatbotViewModel @Inject constructor(
                 byFrequency.forEachIndexed { i, (name, pair) ->
                     sb.append("  ${i + 1}. ${name.replaceFirstChar { it.uppercase() }}: ${pair.first} uds - ${fmt.format(pair.second)}\n")
                 }
-
-                // Most expensive
                 val byAmount = periodProducts.groupBy { it.descripcion.lowercase().trim() }
                     .mapValues { (_, values) -> values.sumOf(::convertedProductAmount) }
                     .toList().sortedByDescending { it.second }.take(5)
@@ -753,12 +885,14 @@ class ChatbotViewModel @Inject constructor(
                 byAmount.forEachIndexed { i, (name, total) ->
                     sb.append("  ${i + 1}. ${name.replaceFirstChar { it.uppercase() }}: ${fmt.format(total)}\n")
                 }
-
                 sb.append("\n📊 Total productos: ${periodProducts.size} items - ${fmt.format(periodProducts.sumOf(::convertedProductAmount))}")
-                sb.toString().trimEnd()
+                result(sb.toString().trimEnd())
             }
             else -> {
-                "No entendí del todo la consulta. Pídeme gastos, ingresos, balance o un producto concreto indicando el periodo."
+                result(
+                    "No entendí del todo la consulta. Pídeme gastos por comercio, categoría o producto, " +
+                        "tus ingresos o tu balance indicando el periodo."
+                )
             }
         }
     }

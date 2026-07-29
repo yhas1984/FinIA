@@ -81,6 +81,58 @@ class FinancialQueryResolverTest {
     }
 
     @Test
+    fun `category field containing a known merchant is reclassified as provider`() {
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "gastos",
+            item = null,
+            matchMode = null,
+            originalQuestion = "Cuánto gasté en Mercadona",
+            productNames = listOf("Banana"),
+            category = "Mercadona",
+            provider = null,
+            providerNames = listOf("Mercadona", "Lidl"),
+            categoryNames = listOf("Alimentación", "Transporte")
+        )
+
+        assertEquals("gastos", resolved.queryType)
+        assertEquals("Mercadona", resolved.provider)
+        assertNull(resolved.category)
+    }
+
+    @Test
+    fun `known category remains separate from provider`() {
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "gastos",
+            item = null,
+            matchMode = null,
+            originalQuestion = "Cuánto gasté en Alimentación",
+            productNames = emptyList(),
+            category = "Alimentación",
+            provider = null,
+            providerNames = listOf("Mercadona"),
+            categoryNames = listOf("Alimentación", "Transporte")
+        )
+
+        assertEquals("gastos", resolved.queryType)
+        assertEquals("Alimentación", resolved.category)
+        assertNull(resolved.provider)
+    }
+
+    @Test
+    fun `earned wording resolves to net balance rather than income`() {
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "ingresos",
+            item = null,
+            matchMode = null,
+            originalQuestion = "Cuánto he ganado este mes",
+            productNames = emptyList()
+        )
+
+        assertEquals("balance", resolved.queryType)
+        assertEquals(true, FinancialQueryResolver.requestsNetBalance("Cuánto he ganado"))
+    }
+
+    @Test
     fun `normalization ignores accents case and punctuation`() {
         assertEquals(
             "cafe con leche",

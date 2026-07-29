@@ -26,6 +26,7 @@ import com.google.api.services.sheets.v4.model.AddSheetRequest
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest
 import com.google.api.services.sheets.v4.model.CellFormat
 import com.google.api.services.sheets.v4.model.Color
+import com.google.api.services.sheets.v4.model.DeleteSheetRequest
 import com.google.api.services.sheets.v4.model.GridProperties
 import com.google.api.services.sheets.v4.model.NumberFormat
 import com.google.api.services.sheets.v4.model.RepeatCellRequest
@@ -49,8 +50,7 @@ import javax.inject.Singleton
  * Exporta los datos de FinAI a un Google Sheet con estructura AEAT
  * (Orden HAC/773/2019) para España:
  *   • Facturas Recibidas (gastos del usuario como receptor)
- *   • Nóminas            (recibos salariales)
- *   • Ingresos           (ventas, honorarios, alquileres, etc.)
+ *   • Ingresos           (nóminas, ventas, honorarios, alquileres, etc.)
  *   • Productos          (precios con IVA incluido)
  *   • Resumen            (fórmulas SUM que recalculan al sincronizar)
  *
@@ -136,7 +136,6 @@ class SheetsExportService @Inject constructor(
         val spreadsheetId: String
         val sheetTitles = listOf(
             SheetsSchema.RECIBIDAS,
-            SheetsSchema.NOMINAS,
             SheetsSchema.INGRESOS,
             SheetsSchema.PRODUCTOS,
             SheetsSchema.RESUMEN
@@ -166,11 +165,15 @@ class SheetsExportService @Inject constructor(
             // Añadir las hojas restantes.
             ensureSheetsExist(sheetsService, spreadsheetId, sheetTitles)
         }
+        deleteLegacySheets(
+            sheets = sheetsService,
+            id = spreadsheetId,
+            titles = listOf(SheetsSchema.LEGACY_NOMINAS)
+        )
 
         // Poblar las hojas (estructura AEAT para España).
         //   • Facturas Recibidas  ← Invoice con tipo=GASTO (gastos del usuario)
-        //   • Nóminas             ← Income con categoría Nómina
-        //   • Ingresos            ← resto de Income
+        //   • Ingresos            ← todos los Income, incluidos salarios
         // Los Invoice con tipo=INGRESO (factura_emitida) no se exportan:
         // el usuario no genera facturas expedidas.
         val recibidas = invoices.filter { it.tipo == InvoiceType.GASTO }
@@ -179,16 +182,10 @@ class SheetsExportService @Inject constructor(
             exchangeRateProvider = exchangeRateProvider
         )
         writeRecibidas(sheetsService, spreadsheetId, recibidas, conversion)
-        writeNominas(
-            sheetsService,
-            spreadsheetId,
-            incomes.filter(SheetsSchema::isPayrollIncome),
-            conversion
-        )
         writeIngresos(
             sheetsService,
             spreadsheetId,
-            incomes.filterNot(SheetsSchema::isPayrollIncome),
+            incomes,
             conversion
         )
         writeProductos(sheetsService, spreadsheetId, products, invoices, conversion)
@@ -234,26 +231,7 @@ class SheetsExportService @Inject constructor(
 
     // (Facturas Expedidas retirada — el usuario no genera facturas emitidas)
 
-    /**
-     * Escribe la hoja "Nóminas" con: Empresa, Fecha, Devengado, Líquido,
-     * IRPF %, Base Cot., Seg. Social, Moneda y, como ÚLTIMA columna,
-     * el "ID" del ingreso en Room (clave del sync upsert/delete).
-     */
-    private fun writeNominas(
-        sheets: Sheets,
-        id: String,
-        nominas: List<Income>,
-        conversion: SheetsSchema.ConversionSnapshot
-    ) {
-        val values = mutableListOf<List<Any>>(SheetsSchema.nominasHeaders)
-        values.addAll(nominas.map { SheetsSchema.incomeRow(it, conversion) })
-        sheets.spreadsheets().values()
-            .update(id, "'${SheetsSchema.NOMINAS}'!A1", ValueRange().setValues(values))
-            .setValueInputOption("RAW")
-            .execute()
-    }
-
-    /** Escribe ingresos no salariales sin forzarlos al esquema de nómina. */
+    /** Escribe todos los ingresos; los campos salariales son opcionales. */
     private fun writeIngresos(
         sheets: Sheets,
         id: String,
@@ -261,7 +239,7 @@ class SheetsExportService @Inject constructor(
         conversion: SheetsSchema.ConversionSnapshot
     ) {
         val values = mutableListOf<List<Any>>(SheetsSchema.ingresosHeaders)
-        values.addAll(incomes.map { SheetsSchema.genericIncomeRow(it, conversion) })
+        values.addAll(incomes.map { SheetsSchema.incomeRow(it, conversion) })
         sheets.spreadsheets().values()
             .update(id, "'${SheetsSchema.INGRESOS}'!A1", ValueRange().setValues(values))
             .setValueInputOption("RAW")
@@ -324,7 +302,7 @@ class SheetsExportService @Inject constructor(
     private fun clearSheets(sheets: Sheets, id: String, titles: List<String>) {
         // 1) Limpiar valores en A2:Z (no toca cabecera).
         //    IMPORTANTE: los nombres de hoja con espacios o acentos
-        //    ("Facturas Recibidas", "Nóminas") requieren comillas
+        //    ("Facturas Recibidas") requieren comillas
         //    simples en A1 notation, si no la API devuelve 400
         //    "Unable to parse range". Si la hoja no existe (reexport a
         //    un sheet viejo con "Gastos/Ingresos"), se ignora el error
@@ -374,7 +352,7 @@ class SheetsExportService @Inject constructor(
      * batchUpdate (AddSheet) las que falten. Idempotente: si todas
      * existen, no hace nada. Esencial al reexportar sobre un sheet
      * viejo con "Gastos/Ingresos" (de versiones anteriores de la app),
-     * porque [writeRecibidas]/[writeExpedidas]/[writeNominas] harían
+     * porque [writeRecibidas]/[writeIngresos] harían
      * 400 "Unable to parse range" si la hoja destino no existe.
      */
     private fun ensureSheetsExist(sheets: Sheets, id: String, titles: List<String>) {
@@ -392,6 +370,24 @@ class SheetsExportService @Inject constructor(
             id,
             BatchUpdateSpreadsheetRequest().setRequests(addReqs)
         ).execute()
+    }
+
+    /** Retira pestañas de esquemas anteriores una vez creadas las actuales. */
+    private fun deleteLegacySheets(sheets: Sheets, id: String, titles: List<String>) {
+        val meta = sheets.spreadsheets().get(id).setIncludeGridData(false).execute()
+        val sheetIdByTitle = meta.sheets.associate {
+            (it.properties.title as String) to (it.properties.sheetId as Int)
+        }
+        val requests = titles.mapNotNull { title ->
+            val sheetId = sheetIdByTitle[title] ?: return@mapNotNull null
+            Request().setDeleteSheet(DeleteSheetRequest().setSheetId(sheetId))
+        }
+        if (requests.isNotEmpty()) {
+            sheets.spreadsheets().batchUpdate(
+                id,
+                BatchUpdateSpreadsheetRequest().setRequests(requests)
+            ).execute()
+        }
     }
 
     /**
@@ -443,12 +439,11 @@ class SheetsExportService @Inject constructor(
         //    las hojas AEAT para que SUM() las sume siempre (índices
         //    0-based): Recibidas F(base=5),G(IVA=6),H(cuota=7),I(recargo=8),
         //    J(IRPF=9),K(total=10),P(total original=15),R(tasa=17) —
-        //    Nóminas C(devengado=2),D(líquido=3),E(IRPF=4),J/K originales,
-        //    M(tasa) — Productos B,C,D,E,F y J/K/L/N.
+        //    Ingresos C-F (importe/devengado/líquido/IRPF), L-N originales,
+        //    P(tasa) — Productos B,C,D,E,F y J/K/L/N.
         val numericColumns = mapOf(
             SheetsSchema.RECIBIDAS to listOf(5..5, 6..6, 7..7, 8..8, 9..9, 10..10, 15..15, 17..17),
-            SheetsSchema.NOMINAS to listOf(2..2, 3..3, 4..4, 9..10, 12..12),
-            SheetsSchema.INGRESOS to listOf(2..2, 8..8, 10..10),
+            SheetsSchema.INGRESOS to listOf(2..5, 11..13, 15..15),
             SheetsSchema.PRODUCTOS to listOf(1..1, 2..2, 3..3, 4..4, 5..5, 9..11, 13..13)
         )
         numericColumns.forEach { (title, ranges) ->

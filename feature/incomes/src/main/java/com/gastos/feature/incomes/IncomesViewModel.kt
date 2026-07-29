@@ -129,7 +129,7 @@ class IncomesViewModel @Inject constructor(
             try {
                 incomeRepository.deleteIncome(income)
                 invoiceImageStorage.delete(income.imagenUri)
-                // Propaga el borrado a la hoja "Nóminas" del Sheet vinculado.
+                // Propaga el borrado a la hoja unificada "Ingresos".
                 sheetsSyncManager.deleteIncome(income.id)
             } catch (e: Exception) {
                 _uiState.update {

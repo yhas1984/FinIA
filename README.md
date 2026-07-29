@@ -16,7 +16,7 @@
 - 📊 **Dashboard** — resumen de ingresos, gastos, balance, actividad de los últimos 7 días y desglose por categoría del mes.
 - 🏷️ **Categorías** — gastos e ingresos con etiquetas predeterminadas o personalizadas, propuestas automáticamente por la IA desde texto, voz y OCR. Filtran listas, alimentan el Dashboard y viajan a Sheets.
 - 🧾 **Gestión completa** de facturas/gastos, productos e ingresos (CRUD).
-- ☁️ **Google Sheets: exportación + sincronización multimoneda** — Sheet con Facturas Recibidas, Nóminas, otros Ingresos, Productos y Resumen, con importes convertidos a tu moneda local.
+- ☁️ **Google Sheets: exportación + sincronización multimoneda** — Sheet con Facturas Recibidas, Ingresos unificados, Productos y Resumen, con importes convertidos a tu moneda local.
 - 🔄 **Sincronización bidireccional** — altas, ediciones y borrados en la app se reflejan automáticamente (upsert/delete por ID de registro). “Forzar sincronización” reexporta el Sheet completo.
 - ☁️ **Google Drive** — subida automática de la foto tras escanear una factura si Premium y Google están conectados, con reintento y limpieza del temporal de cámara.
 - 💎 **Premium** (pago único vía Google Play Billing, con flag debug independiente) — amplía la memoria del asistente de 3 a 10 turnos y desbloquea Sheets/Drive.
@@ -92,14 +92,14 @@ FinAI usa **Gemini** a través de la **API gratuita de Google AI Studio**.
 
 Desde **Backup** puedes vincular tu cuenta de Google:
 
-1. **Exportar a Sheets** — crea (o reescribe) un spreadsheet con 5 hojas: *Facturas Recibidas*, *Nóminas*, *Ingresos*, *Productos* y *Resumen*. Los ingresos no salariales ya no se presentan como nóminas.
+1. **Exportar a Sheets** — crea (o reescribe) un spreadsheet con 4 hojas: *Facturas Recibidas*, *Ingresos*, *Productos* y *Resumen*. Nóminas y otros ingresos comparten una hoja con campos salariales opcionales.
 2. **Multimoneda** — cada fila conserva el importe original y su moneda; se añade además el **importe convertido a tu moneda local** usando la tasa vigente. La hoja *Resumen* agrega esos importes convertidos para mostrar el balance real.
 3. **Sincronización en segundo plano** — a partir de ahí, cada alta, **edición o borrado** en la app se refleja en el Sheet:
    - Cada hoja lleva una columna de **ID** estable (ID del registro / InvoiceID en productos).
    - Alta/edición → *upsert* por ID (actualiza la fila si existe, la añade si no).
    - Borrado de gasto → elimina su fila y las de sus productos.
    - El *Resumen* se refresca tras cada operación.
-4. **Forzar sincronización** — reexporta toda la base de datos al Sheet vinculado (migración automática al esquema v6). Úsalo la primera vez o si el Sheet se creó con una versión antigua de la app.
+4. **Forzar sincronización** — reexporta toda la base de datos al Sheet vinculado (migración automática al esquema v7). Úsalo la primera vez o si el Sheet se creó con una versión antigua de la app.
 
 ---
 
