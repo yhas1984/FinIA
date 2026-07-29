@@ -99,7 +99,7 @@ Desde **Backup** puedes vincular tu cuenta de Google:
    - Alta/edición → *upsert* por ID (actualiza la fila si existe, la añade si no).
    - Borrado de gasto → elimina su fila y las de sus productos.
    - El *Resumen* se refresca tras cada operación.
-4. **Forzar sincronización** — reexporta toda la base de datos al Sheet vinculado (migración automática al esquema v6). Úsalo la primera vez o si el Sheet se creó con una versión antigua de la app.
+4. **Forzar sincronización** — reexporta toda la base de datos al Sheet vinculado (migración automática al esquema v7). Úsalo la primera vez o si el Sheet se creó con una versión antigua de la app.
 
 ---
 

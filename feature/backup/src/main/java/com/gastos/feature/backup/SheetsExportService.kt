@@ -352,7 +352,7 @@ class SheetsExportService @Inject constructor(
      * batchUpdate (AddSheet) las que falten. Idempotente: si todas
      * existen, no hace nada. Esencial al reexportar sobre un sheet
      * viejo con "Gastos/Ingresos" (de versiones anteriores de la app),
-     * porque [writeRecibidas]/[writeExpedidas]/[writeNominas] harían
+     * porque [writeRecibidas]/[writeIngresos] harían
      * 400 "Unable to parse range" si la hoja destino no existe.
      */
     private fun ensureSheetsExist(sheets: Sheets, id: String, titles: List<String>) {
