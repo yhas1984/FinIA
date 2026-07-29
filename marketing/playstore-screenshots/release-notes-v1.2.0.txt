@@ -1,0 +1,74 @@
+# FinAI · Release notes · v1.2.0 (versionCode 7)
+## Para Google Play Console
+
+> **Nota:** estas notas NO duplican las de v1.1.0. Cambios nuevos basados
+> en los commits `76c9309..HEAD` (PRs #34, #35, #36 y fixes fiscales).
+
+---
+
+## Nombre de la versión (Release name)
+```
+v1.2.0 — Categorías por transacción
+```
+
+---
+
+## Notas de la versión — Español (es-ES)
+
+### Versión completa (~500 caracteres)
+```
+• Categorías automáticas por transacción: la IA las asigna desde texto, voz y OCR
+• Dashboard y Gastos: totales y desglose actualizados por categoría
+• Sheets v5: categorias a nivel de fila y totales por categoría
+• Historial del chat persistente: se guarda entre reinicios
+• Configuración fiscal completa por país (IVA, IRPF, NIF, etc.)
+• Filtros de categorías siempre visibles aunque no haya resultados
+• Mejoras de privacidad y sincronización
+```
+
+### Versión corta (~250 caracteres)
+```
+Categorías automáticas por transacción en Dashboard y Gastos, Sheets v5 con totales por categoría y chat con historial persistente entre reinicios.
+```
+
+---
+
+## Idioma Play Console sugerido
+| Locale | Prioridad |
+|---|---|
+| es-ES | Principal (España, mercado primario) |
+| en-US | Internacional (LATAM, descargas globales) |
+
+### Versión EN-US (de respaldo)
+```
+• Automatic per-transaction categories: AI assigns them from text, voice and OCR
+• Dashboard and Expenses updated totals and breakdown by category
+• Sheets v5: row-level categories and totals per category
+• Persistent chat history saved between app restarts
+• Full country-specific tax configuration (VAT, IRPF, NIF, etc.)
+• Category filters always visible even when empty
+• Privacy and sync improvements
+```
+
+---
+
+## Changelog interno (basado en commits v1.1.0 → v1.2.0)
+
+| Commit | Tipo | Descripción |
+|---|---|---|
+| `56a5d6a` #35 | feat | Categorías por transacción con IA en Dashboard y Sheets v5 |
+| `750a729` #34 | feat | Chat: persistencia local de historial + streaming para Premium |
+| `46ad433` #36 | fix | Categorías: filtros siempre visibles para resultados vacíos |
+| `5830e62` | fix | Reconciliación fiscal, privacidad y sync |
+| `e553048` | fix | Seed de configuraciones fiscales por país |
+
+**Excluido del changelog de Play Store:**
+- PRs #30–#33: sitio web OAuth público, no afectan a la app móvil.
+- Nota: el `streaming` de chat ya estaba en v1.1, no se duplica aquí.
+
+**Cambios de v1.1 NO duplicados en v1.2:**
+- ❌ "Chat IA con Gemini 3.6 Flash (streaming + memoria)" → ya en v1.1
+- ❌ "Google Drive restaurado" → ya en v1.1
+- ❌ "Google Sheets multimoneda" → ya en v1.1
+- ❌ "Chat más claro: entiende mejor periodos" → ya en v1.1
+- ❌ "Premium: modo debug persistente" → ya en v1.1
