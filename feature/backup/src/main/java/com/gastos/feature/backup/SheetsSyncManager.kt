@@ -44,20 +44,19 @@ import javax.inject.Singleton
  * Sincroniza en background los gastos/ingresos con el Google Sheet
  * vinculado, escribiendo en las hojas AEAT (España):
  *   • Gasto (Invoice GASTO) → "Facturas Recibidas"
- *   • Nómina                → "Nóminas"
- *   • Otros ingresos        → "Ingresos"
+ *   • Todos los ingresos    → "Ingresos"
  *   • Productos             → "Productos"
  *
  * Sincronización COMPLETA (alta, edición y borrado), no solo append:
  * cada hoja lleva una columna de ID estable ("ID" en
- * Recibidas/Nóminas/Ingresos, "InvoiceID" en Productos), escrita tanto por
+ * Recibidas/Ingresos, "InvoiceID" en Productos), escrita tanto por
  * [SheetsExportService] en la exportación como aquí en cada sync.
  *
  *   • Alta/edición → upsert: si existe fila con ese ID se actualiza
  *     en sitio; si no, se añade al final.
  *   • Borrado de gasto → elimina su fila de Recibidas Y las filas de
  *     sus productos (mismo InvoiceID).
- *   • Borrado de ingreso → elimina su fila de Nóminas.
+ *   • Borrado de ingreso → elimina su fila de Ingresos.
  *
  * Las fórmulas SUM de la hoja Resumen se recalculan solas al cambiar
  * las filas.
@@ -87,7 +86,6 @@ class SheetsSyncManager @Inject constructor(
         private const val KEY_SCHEMA_PREFIX = "schema_v${SheetsSchema.SCHEMA_VERSION}_"
         // Hojas AEAT (España, Orden HAC/773/2019).
         private const val SHEET_RECIBIDAS = SheetsSchema.RECIBIDAS
-        private const val SHEET_NOMINAS = SheetsSchema.NOMINAS
         private const val SHEET_INGRESOS = SheetsSchema.INGRESOS
         private const val SHEET_PRODUCTOS = SheetsSchema.PRODUCTOS
 
@@ -95,7 +93,6 @@ class SheetsSyncManager @Inject constructor(
         // última columna escrita: Recibidas añade el enlace Drive en O y
         // Productos el ProductID en I.
         private const val COL_ID_RECIBIDAS = SheetsSchema.RECIBIDAS_KEY_COLUMN
-        private const val COL_ID_NOMINAS = SheetsSchema.NOMINAS_KEY_COLUMN
         private const val COL_ID_INGRESOS = SheetsSchema.INGRESOS_KEY_COLUMN
         private const val COL_ID_PRODUCTOS = SheetsSchema.PRODUCTOS_PARENT_COLUMN
     }
@@ -147,56 +144,15 @@ class SheetsSyncManager @Inject constructor(
     private fun expenseValues(invoice: Invoice): List<Any> =
         SheetsSchema.expenseRow(invoice, conversionSnapshot())
 
-    /** Alta o edición de un ingreso, en la hoja correspondiente a su categoría. */
+    /** Alta o edición de cualquier ingreso en la hoja unificada. */
     fun upsertIncome(income: Income) {
-        if (!premiumStatus.isPremium.value || getStoredId().isBlank()) return
-        val spreadsheetId = getStoredId()
-        scope.launch {
-            syncMutex.withLock {
-                try {
-                    val sheets = getSheetsService() ?: return@withLock
-                    if (ensureSchemaCurrent(spreadsheetId)) return@withLock
-                    val isPayroll = SheetsSchema.isPayrollIncome(income)
-                    val targetSheet = if (isPayroll) SHEET_NOMINAS else SHEET_INGRESOS
-                    val targetKeyColumn = if (isPayroll) COL_ID_NOMINAS else COL_ID_INGRESOS
-                    val targetLastColumn = if (isPayroll) {
-                        SheetsSchema.NOMINAS_LAST_COLUMN
-                    } else {
-                        SheetsSchema.INGRESOS_LAST_COLUMN
-                    }
-                    val alternateSheet = if (isPayroll) SHEET_INGRESOS else SHEET_NOMINAS
-                    val alternateKeyColumn = if (isPayroll) COL_ID_INGRESOS else COL_ID_NOMINAS
-
-                    val values = if (isPayroll) {
-                        SheetsSchema.incomeRow(income, conversionSnapshot())
-                    } else {
-                        SheetsSchema.genericIncomeRow(income, conversionSnapshot())
-                    }
-                    upsertRowNow(
-                        sheets,
-                        spreadsheetId,
-                        targetSheet,
-                        targetKeyColumn,
-                        targetLastColumn,
-                        income.id,
-                        values
-                    )
-                    // Escribir primero el destino evita perder el dato remoto si
-                    // la red falla durante un cambio de categoría. Como mucho
-                    // quedará temporalmente una copia antigua, reparable con la
-                    // sincronización completa.
-                    deleteRowsNow(
-                        sheets,
-                        spreadsheetId,
-                        mapOf(alternateSheet to alternateKeyColumn),
-                        income.id
-                    )
-                    refreshSummaryNow(sheets, spreadsheetId)
-                } catch (e: Exception) {
-                    SafeLog.e(TAG, "upsert income FALLO id=${income.id}", e)
-                }
-            }
-        }
+        upsertRow(
+            SHEET_INGRESOS,
+            COL_ID_INGRESOS,
+            SheetsSchema.INGRESOS_LAST_COLUMN,
+            income.id,
+            SheetsSchema.incomeRow(income, conversionSnapshot())
+        )
     }
 
     /**
@@ -275,13 +231,10 @@ class SheetsSyncManager @Inject constructor(
         )
     }
 
-    /** Borrado de un ingreso: elimina cualquier fila salarial o genérica. */
+    /** Borrado de un ingreso en la hoja unificada. */
     fun deleteIncome(incomeId: Long) {
         deleteRows(
-            mapOf(
-                SHEET_NOMINAS to COL_ID_NOMINAS,
-                SHEET_INGRESOS to COL_ID_INGRESOS
-            ),
+            mapOf(SHEET_INGRESOS to COL_ID_INGRESOS),
             incomeId
         )
     }

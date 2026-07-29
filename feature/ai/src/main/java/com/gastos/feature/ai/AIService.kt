@@ -347,8 +347,23 @@ class AIService @Inject constructor(
 
             Reglas de acción:
             1. CONSULTA FINANCIERA: si pregunta cuánto gastó, sus ingresos, balance, totales,
-               productos comprados, etc.:
-               {"action":"query","query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":null,"item":null,"match_mode":"exact|group|auto|null"}
+               comercios, proveedores, productos comprados, etc.:
+               {"action":"query","query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+
+               Diferencia siempre estos filtros:
+               - COMERCIO/PROVEEDOR: Mercadona, Lidl, Amazon, Repsol, etc. Usa
+                 query_type="gastos", proveedor="nombre", categoria=null e item=null.
+               - CATEGORÍA: Alimentación, Transporte, Vivienda, Ocio, etc. Usa
+                 categoria="nombre" y proveedor=null.
+               - PRODUCTO: café, agua, pan, gasolina, etc. Usa query_type="productos"
+                 e item="nombre". Una tienda o empresa NUNCA es un producto.
+               - "ganado", "ganancia", "beneficio", "neto" o "lo que me queda"
+                 significan balance (ingresos menos gastos).
+               - "ingresado", "cobrado", "recibido", "salario" o "nómina"
+                 significan ingresos, no balance.
+               - "lo que va de mes", "este mes" y "mes actual" usan periodo="mes".
+               - En seguimientos como "ese comercio", "esa tienda" o "ahí", conserva
+                 el proveedor mencionado en la conversación anterior.
 
                Reglas extra para productos:
                - Una pregunta por un producto concreto SIEMPRE usa query_type="productos" y match_mode="exact". Ejemplo: "cuánto gasté en banana" => item="banana".
@@ -376,12 +391,16 @@ class AIService @Inject constructor(
 
     private fun queryExtractionPrompt(query: String): String = """
         Extrae los parámetros de esta consulta financiera y devuelve SOLO el JSON:
-        {"query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
+        {"query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
 
         Reglas:
+        - comercio, tienda, supermercado, empresa o proveedor => proveedor, nunca item
+        - categoría financiera (Alimentación, Transporte, etc.) => categoria
         - "solo", "únicamente", "exactamente" + producto => match_mode="exact"
         - "todos", "variantes", "incluidos", "incluyendo" + producto => match_mode="group"
         - si la consulta es sobre un producto, usa query_type="productos", nunca "balance"
+        - "ganado", "ganancia", "beneficio", "neto" o "lo que me queda" => balance
+        - "ingresado", "cobrado", "recibido", "salario" o "nómina" => ingresos
 
         Consulta: "$query"
     """.trimIndent()

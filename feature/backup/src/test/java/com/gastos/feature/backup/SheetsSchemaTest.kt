@@ -102,30 +102,40 @@ class SheetsSchemaTest {
             snapshot()
         )
 
-        assertEquals(SheetsSchema.nominasHeaders.size, row.size)
-        assertEquals("EUR", row[7])
+        assertEquals(SheetsSchema.ingresosHeaders.size, row.size)
+        assertEquals("EUR", row[6])
         assertEquals("Sin categoría", row[8])
-        assertEquals(500.0, row[10])
         assertEquals(400.0, row[11])
-        assertTrue(row[13] is Double)
+        assertEquals(500.0, row[12])
+        assertEquals(400.0, row[13])
+        assertTrue(row[15] is Double)
     }
 
     @Test
-    fun `only payroll category is exported as payroll`() {
-        val payroll = Income(
+    fun `generic and payroll incomes share one row shape`() {
+        val fees = Income(
             fecha = 1L,
-            concepto = "Salario",
+            concepto = "Proyecto",
             monto = 1_000.0,
-            categoria = "nomina"
+            categoria = "Honorarios"
         )
-        val fees = payroll.copy(concepto = "Proyecto", categoria = "Honorarios")
 
-        assertTrue(SheetsSchema.isPayrollIncome(payroll))
-        assertTrue(!SheetsSchema.isPayrollIncome(fees))
-        val row = SheetsSchema.genericIncomeRow(fees, snapshot())
+        val row = SheetsSchema.incomeRow(fees, snapshot())
         assertEquals(SheetsSchema.ingresosHeaders.size, row.size)
         assertEquals("Proyecto", row[0])
-        assertEquals("Honorarios", row[5])
+        assertEquals("", row[3])
+        assertEquals("", row[4])
+        assertEquals("Honorarios", row[8])
+        assertEquals("", row[12])
+        assertEquals("", row[13])
+    }
+
+    @Test
+    fun `schema v7 uses one income sheet with stable id column`() {
+        assertEquals(7, SheetsSchema.SCHEMA_VERSION)
+        assertEquals("K", SheetsSchema.INGRESOS_KEY_COLUMN)
+        assertEquals("R", SheetsSchema.INGRESOS_LAST_COLUMN)
+        assertEquals("ID", SheetsSchema.ingresosHeaders[10])
     }
 
     @Test

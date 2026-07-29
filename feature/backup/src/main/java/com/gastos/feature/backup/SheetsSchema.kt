@@ -12,18 +12,16 @@ import java.util.Locale
 
 internal object SheetsSchema {
     const val RECIBIDAS = "Facturas Recibidas"
-    const val NOMINAS = "Nóminas"
     const val INGRESOS = "Ingresos"
     const val PRODUCTOS = "Productos"
     const val RESUMEN = "Resumen"
-    const val SCHEMA_VERSION = 6
+    const val LEGACY_NOMINAS = "Nóminas"
+    const val SCHEMA_VERSION = 7
 
     const val RECIBIDAS_KEY_COLUMN = "O"
     const val RECIBIDAS_LAST_COLUMN = "U"
-    const val NOMINAS_KEY_COLUMN = "J"
-    const val NOMINAS_LAST_COLUMN = "P"
-    const val INGRESOS_KEY_COLUMN = "H"
-    const val INGRESOS_LAST_COLUMN = "M"
+    const val INGRESOS_KEY_COLUMN = "K"
+    const val INGRESOS_LAST_COLUMN = "R"
     const val PRODUCTOS_PARENT_COLUMN = "H"
     const val PRODUCTOS_LAST_COLUMN = "P"
 
@@ -38,13 +36,6 @@ internal object SheetsSchema {
         "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
     )
 
-    val nominasHeaders: List<Any> = listOf(
-        "Empresa", "Fecha", "Devengado", "Líquido", "IRPF %",
-        "Base Cot.", "Seg. Social", "Moneda", "Categoría", "ID",
-        "Devengado Original", "Líquido Original", "Moneda Original",
-        "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
-    )
-
     val productosHeaders: List<Any> = listOf(
         "Descripción", "Cantidad", "Precio Unitario", "Subtotal", "IVA %",
         "Total (IVA incluido)", "Factura (Proveedor)", "InvoiceID", "ProductID",
@@ -53,8 +44,10 @@ internal object SheetsSchema {
     )
 
     val ingresosHeaders: List<Any> = listOf(
-        "Concepto", "Fecha", "Importe", "Moneda", "Fuente", "Categoría", "Notas", "ID",
-        "Importe Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
+        "Concepto", "Fecha", "Importe", "Devengado", "Líquido", "IRPF %",
+        "Moneda", "Fuente", "Categoría", "Notas", "ID", "Importe Original",
+        "Devengado Original", "Líquido Original", "Moneda Original",
+        "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
     )
 
     data class ConversionSnapshot(
@@ -185,46 +178,26 @@ internal object SheetsSchema {
     }
 
     fun incomeRow(income: Income, conversion: ConversionSnapshot): List<Any> {
-        val originalDevengado = if (income.totalDevengado > 0) income.totalDevengado else income.monto
-        val originalLiquido = if (income.totalNeto > 0) income.totalNeto else income.monto
-        val devengado = conversion.convert(originalDevengado, income.moneda)
-        val liquido = conversion.convert(originalLiquido, income.moneda)
-        val primary = if (devengado.status == CONVERSION_PENDING) devengado else liquido
-        return listOf(
-            income.fuente ?: income.concepto,
-            formatDate(income.fecha),
-            devengado.convertedAmount ?: "",
-            liquido.convertedAmount ?: "",
-            income.irpfPercent,
-            "",
-            "",
-            conversion.targetCurrency,
-            TransactionCategories.displayCategory(income.categoria),
-            income.id,
-            devengado.originalAmount,
-            liquido.originalAmount,
-            primary.originalCurrency,
-            primary.appliedRate ?: "",
-            primary.rateTimestampLabel,
-            primary.status
-        )
-    }
-
-    fun isPayrollIncome(income: Income): Boolean =
-        TransactionCategories.matchesCategory(income.categoria, "Nómina")
-
-    fun genericIncomeRow(income: Income, conversion: ConversionSnapshot): List<Any> {
         val amount = conversion.convert(income.monto, income.moneda)
+        val devengado = income.totalDevengado.takeIf { it > 0.0 }
+            ?.let { conversion.convert(it, income.moneda) }
+        val liquido = income.totalNeto.takeIf { it > 0.0 }
+            ?.let { conversion.convert(it, income.moneda) }
         return listOf(
             income.concepto,
             formatDate(income.fecha),
             amount.convertedAmount ?: "",
+            devengado?.convertedAmount ?: "",
+            liquido?.convertedAmount ?: "",
+            income.irpfPercent,
             conversion.targetCurrency,
             income.fuente ?: "",
             TransactionCategories.displayCategory(income.categoria),
             income.notas ?: "",
             income.id,
             amount.originalAmount,
+            devengado?.originalAmount ?: "",
+            liquido?.originalAmount ?: "",
             amount.originalCurrency,
             amount.appliedRate ?: "",
             amount.rateTimestampLabel,
