@@ -1,6 +1,9 @@
 package com.gastos
 
 import android.app.Application
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
+import com.gastos.feature.backup.CloudBackupScheduler
 import com.gastos.repository.CountryFiscalConfigRepository
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -10,8 +13,15 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltAndroidApp
-class GastosApp : Application() {
+class GastosApp : Application(), Configuration.Provider {
     @Inject lateinit var fiscalConfigRepository: CountryFiscalConfigRepository
+    @Inject lateinit var workerFactory: HiltWorkerFactory
+    @Inject lateinit var cloudBackupScheduler: CloudBackupScheduler
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .build()
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -20,5 +30,6 @@ class GastosApp : Application() {
         applicationScope.launch {
             runCatching { fiscalConfigRepository.insertDefaultConfigs() }
         }
+        cloudBackupScheduler.reconcile()
     }
 }

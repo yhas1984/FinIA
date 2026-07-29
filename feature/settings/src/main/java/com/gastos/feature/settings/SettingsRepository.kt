@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.gastos.repository.CurrencyPreference
+import com.gastos.repository.BackupSettingsProvider
+import com.gastos.repository.RestorableSettings
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -32,7 +35,7 @@ data class AppSettings(
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secureStorage: SecureStorage
-) : CurrencyPreference {
+) : CurrencyPreference, BackupSettingsProvider {
 
     // Scope propio para stateIn (el repo es un @Singleton a nivel app).
     private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -99,6 +102,25 @@ class SettingsRepository @Inject constructor(
     suspend fun updateDarkMode(mode: String) {
         context.dataStore.edit { preferences ->
             preferences[Keys.DARK_MODE] = mode
+        }
+    }
+
+    override suspend fun snapshotSettings(): RestorableSettings {
+        val current = settings.first()
+        return RestorableSettings(
+            systemInstructions = current.systemInstructions,
+            defaultCurrency = current.defaultCurrency,
+            defaultCountry = current.defaultCountry,
+            darkMode = current.darkMode
+        )
+    }
+
+    override suspend fun restoreSettings(settings: RestorableSettings) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.SYSTEM_INSTRUCTIONS] = settings.systemInstructions
+            preferences[Keys.DEFAULT_CURRENCY] = settings.defaultCurrency
+            preferences[Keys.DEFAULT_COUNTRY] = settings.defaultCountry
+            preferences[Keys.DARK_MODE] = settings.darkMode
         }
     }
 

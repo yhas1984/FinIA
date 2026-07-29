@@ -14,7 +14,7 @@
 <body>
 
 <h1>Política de Privacidad de FinAI</h1>
-<p class="updated">Última actualización: 26 de julio de 2026 (versión 1.2.0)</p>
+<p class="updated">Última actualización: 29 de julio de 2026 (versión 1.2.0)</p>
 
 <div style="background:#f3e9ff; border:1px solid #d9c5ff; border-radius:8px; padding:10px 14px; font-size:.95em; margin: 16px 0 28px;">
   <strong>Aplicación:</strong> FinAI &middot;
@@ -56,7 +56,7 @@
 <p>Si decides exportar tus datos a Google Sheets, estos se transfieren a tu propia cuenta de Google. FinAI solo accede al spreadsheet que crea durante la exportación y únicamente con tu autorización OAuth. No almacenamos ni tenemos acceso a tus datos fuera de ese spreadsheet.</p>
 
 <h2>6. Google Drive (opcional)</h2>
-<p>Si eres Premium y has conectado Google, la foto de una factura escaneada se sube automáticamente a tu Drive después de guardarla, con opción de reintento si falla. FinAI usa el alcance <code>drive.file</code> y solo accede a los archivos que crea. Las copias de la base de datos son locales: actualmente la base de datos no se copia a Drive.</p>
+<p>Si eres Premium y has conectado Google, la foto de una factura escaneada puede subirse a tu Drive mediante el alcance <code>drive.file</code>. También puedes activar copias automáticas cifradas mediante el alcance <code>drive.appdata</code>; FinAI conserva hasta cinco versiones en el espacio privado de datos de la aplicación. Estas copias contienen datos financieros, historial, ajustes no sensibles e imágenes, pero no incluyen la API key de Gemini, credenciales OAuth ni el estado Premium. FinAI no guarda tu contraseña de recuperación en Drive y no puede descifrar las copias sin ella.</p>
 
 <h2>7. Cámara y micrófono</h2>
 <ul>
@@ -65,7 +65,7 @@
 </ul>
 
 <h2>8. Almacenamiento de datos</h2>
-<p>Tus datos se guardan en una base de datos local SQLite (Room) dentro del almacenamiento interno de la app. Si desinstalas la app, estos datos se eliminan. Las exportaciones a Sheets y las fotos subidas a Drive permanecen en tu cuenta de Google hasta que las elimines allí.</p>
+<p>Tus datos se guardan en una base de datos local SQLite (Room) dentro del almacenamiento interno de la app. Si desinstalas la app, estos datos se eliminan. Los archivos <code>.finai</code> que exportes manualmente permanecen en la ubicación elegida. Las exportaciones a Sheets, las fotos y los backups Premium permanecen en tu cuenta de Google hasta que los elimines desde FinAI o mediante la gestión de aplicaciones de Google Drive.</p>
 
 <h2>9. Seguridad</h2>
 <p>La API key de Gemini se protege mediante almacenamiento cifrado de Android. La base de datos financiera reside en el almacenamiento interno protegido por el sistema operativo, pero la app no aplica cifrado adicional a esa base. No tenemos servidores propios.</p>
@@ -74,7 +74,8 @@
 <p>Puedes en cualquier momento:</p>
 <ul>
   <li>Eliminar todos tus datos desinstalando la app.</li>
-  <li>Exportar tus datos mediante las opciones de backup (CSV, PDF, Google Sheets).</li>
+  <li>Exportar o restaurar tus datos mediante backup cifrado, CSV, PDF o Google Sheets.</li>
+  <li>Eliminar desde FinAI todas las copias cifradas almacenadas en Google Drive.</li>
   <li>Dejar de usar la IA eliminando la API key en Ajustes.</li>
 </ul>
 
@@ -86,6 +87,7 @@
 <ul>
   <li><strong>Google Sheets</strong> &mdash; <code>https://www.googleapis.com/auth/spreadsheets</code>: para crear y sincronizar el spreadsheet donde se exportan tus facturas, nóminas, otros ingresos, productos y resumen.</li>
   <li><strong>Google Drive</strong> &mdash; <code>https://www.googleapis.com/auth/drive.file</code>: para subir a tu Drive fotos de facturas tras escanearlas cuando la función Premium está activa. La Aplicación solo accede a los archivos que ella misma crea.</li>
+  <li><strong>Datos privados de Google Drive</strong> &mdash; <code>https://www.googleapis.com/auth/drive.appdata</code>: para crear, listar, restaurar y eliminar tus backups Premium cifrados en el espacio privado de FinAI.</li>
 </ul>
 <p>Puedes revocar cualquiera de estos permisos en cualquier momento desde <a href="https://myaccount.google.com/permissions">https://myaccount.google.com/permissions</a>. Tras la revocación, FinAI seguirá funcionando con almacenamiento local únicamente.</p>
 

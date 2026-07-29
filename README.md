@@ -20,7 +20,8 @@
 - 🔄 **Sincronización bidireccional** — altas, ediciones y borrados en la app se reflejan automáticamente (upsert/delete por ID de registro). “Forzar sincronización” reexporta el Sheet completo.
 - ☁️ **Google Drive** — subida automática de la foto tras escanear una factura si Premium y Google están conectados, con reintento y limpieza del temporal de cámara.
 - 💎 **Premium** (pago único vía Google Play Billing, con flag debug independiente) — amplía la memoria del asistente de 3 a 10 turnos y desbloquea Sheets/Drive.
-- 📄 **Exportación CSV y PDF** y copia local de la base de datos.
+- 🔐 **Backup recuperable** — archivo `.finai` cifrado para todos; copia automática versionada en Google Drive para Premium.
+- 📄 **Exportación CSV y PDF** para informes y uso externo.
 - 🌓 **Tema claro/oscuro/sistema**.
 
 ---
@@ -36,6 +37,7 @@
 | **Voz** | SpeechRecognizer de Android (es-ES) |
 | **Cámara** | `ActivityResultContracts.TakePicture` (app de cámara del sistema) + FileProvider |
 | **Sheets** | Google Sheets API v4 + Google Sign-In (Play Services Auth `21.6.0`) |
+| **Backup** | WorkManager `2.11.2`, Drive `appDataFolder`, AES-256-GCM + PBKDF2 |
 | **Monetización** | Google Play Billing `9.1.0` |
 | **Asincronía** | Kotlin Coroutines `1.10.2` |
 
@@ -100,6 +102,22 @@ Desde **Backup** puedes vincular tu cuenta de Google:
    - Borrado de gasto → elimina su fila y las de sus productos.
    - El *Resumen* se refresca tras cada operación.
 4. **Forzar sincronización** — reexporta toda la base de datos al Sheet vinculado (migración automática al esquema v7). Úsalo la primera vez o si el Sheet se creó con una versión antigua de la app.
+
+---
+
+## 🔐 Backup y recuperación
+
+FinAI usa un formato portable `.finai` para que una copia sobreviva a la desinstalación y pueda recuperarse en otro dispositivo:
+
+1. **Backup manual gratuito** — configura una contraseña de recuperación y exporta el archivo con el selector de Android a Drive, Descargas, USB u otra ubicación elegida por ti.
+2. **Contenido** — conserva facturas, productos, ingresos, categorías fiscales, historial del chat, imágenes gestionadas y ajustes no sensibles.
+3. **Datos excluidos** — no copia la API key de Gemini, credenciales OAuth, estado Premium ni caché de tipos de cambio.
+4. **Cifrado** — el contenido se cifra con AES-256-GCM; la clave de datos se protege mediante PBKDF2 y la contraseña elegida por el usuario.
+5. **Restauración** — selecciona el archivo, revisa el resumen y confirma. La operación valida y descifra toda la copia antes de reemplazar los datos actuales en una única transacción de Room.
+6. **Premium Drive** — crea una copia automática aproximadamente cada 24 horas cuando hay red y batería suficiente, y conserva las cinco versiones más recientes en el espacio privado `appDataFolder` de Google Drive.
+7. **Nueva instalación** — activa Premium, conecta la misma cuenta Google, elige una copia e introduce la contraseña de recuperación.
+
+> ⚠️ FinAI no guarda la contraseña en Drive y no puede recuperarla. Sin ella no es posible descifrar el backup después de desinstalar la app.
 
 ---
 
@@ -180,7 +198,7 @@ FinAI/
 │   ├── voice/                # Reconocimiento de voz
 │   ├── ai/                   # Servicio IA (Gemini): prompts, parseo, OCR
 │   ├── settings/             # Ajustes, API key (cifrada), Premium/Billing
-│   └── backup/               # Backup local, export CSV/PDF, Sheets (export + sync)
+│   └── backup/               # Backup cifrado manual/Drive, CSV/PDF y Sheets
 ├── gradle/
 │   └── libs.versions.toml    # Catálogo de versiones
 └── settings.gradle.kts       # Definición de módulos
@@ -195,7 +213,7 @@ FinAI/
 - Las imágenes elegidas para escanear también se envían a Gemini; con Premium y Google conectado, la foto guardada se sube a Drive.
 - La exportación/sincronización con Google Sheets es **opcional** y requiere tu cuenta y tu acción explícita.
 - La API key de Gemini se guarda **cifrada** en el dispositivo (EncryptedSharedPreferences) y no se comparte.
-- La copia de la base de datos es local; no existe actualmente backup de la base de datos en Drive.
+- El backup manual `.finai` está cifrado; Premium puede guardar hasta cinco copias cifradas en el espacio privado de Drive y eliminarlas desde la app.
 - Los logs con datos financieros solo se emiten en builds de debug (`SafeLog`).
 
 ---
