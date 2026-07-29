@@ -13,7 +13,7 @@
 </head>
 <body>
   <h1>Eliminación de Datos de FinAI</h1>
-  <p class="updated">Última actualización: 4 de julio de 2026</p>
+  <p class="updated">Última actualización: 29 de julio de 2026</p>
 
   <h2>1. ¿Qué datos se eliminan?</h2>
   <p>Al desinstalar FinAI o solicitar la eliminación de tu cuenta, se eliminan <strong>todos los datos almacenados en tu dispositivo</strong>:</p>
@@ -21,20 +21,21 @@
     <li>Gastos, ingresos, facturas, productos y categorías.</li>
     <li>Configuración de la app (moneda, país, tema, instrucciones del asistente).</li>
     <li>API key de Gemini que hayas configurado.</li>
-    <li>Backups locales en la carpeta de la app.</li>
+    <li>Claves locales y configuración del backup cifrado.</li>
   </ul>
-  <p>No almacenamos datos en servidores propios. Los datos exportados a Google Sheets o Google Drive bajo tu control NO se eliminan automáticamente; debes gestionarlos en tu cuenta de Google.</p>
+  <p>No almacenamos datos en servidores propios. Los archivos <code>.finai</code> exportados a una ubicación elegida por ti y los datos de Sheets/Drive no se eliminan al desinstalar; debes eliminarlos desde esa ubicación, desde FinAI o desde tu cuenta de Google.</p>
 
   <h2>2. ¿Cómo solicitar la eliminación?</h2>
   <p>Para solicitar la eliminación de los datos asociados a tu cuenta de Google (si usaste la integración con Google Sheets o Drive):</p>
   <ol>
-    <li>Desde FinAI: ve a <strong>Ajustes → Backup → Cerrar sesión de Google</strong>.</li>
+    <li>Desde FinAI: ve a <strong>Backup → Backup automático en Drive → Eliminar copias de Drive</strong>.</li>
+    <li>Después puedes usar <strong>Cerrar sesión de Google</strong> para desvincular la cuenta.</li>
     <li>O desde Google: <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a> → busca "FinAI" → "Quitar acceso".</li>
   </ol>
   <p>Si solo quieres eliminar los datos locales del dispositivo, desinstala la app desde Ajustes del sistema.</p>
 
   <h2>3. Plazo de eliminación</h2>
-  <p>Los datos locales se eliminan al borrar los datos de la app o desinstalarla. Cerrar sesión o revocar permisos impide nuevos accesos, pero no borra automáticamente los archivos ya creados en tu cuenta de Google.</p>
+  <p>Los datos locales se eliminan al borrar los datos de la app o desinstalarla. El botón de eliminación borra inmediatamente los backups cifrados del espacio privado de Drive. Cerrar sesión o revocar permisos impide nuevos accesos, pero no borra por sí solo Sheets, fotos ni archivos exportados.</p>
 
   <h2>4. Contacto</h2>
   <p>Para cualquier duda sobre eliminación de datos, contacta a: <a href="mailto:ymi2021@gmail.com">ymi2021@gmail.com</a></p>

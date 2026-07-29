@@ -112,6 +112,8 @@ dependencies {
     // Coroutines
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
+    implementation(libs.work.runtime.ktx)
+    implementation(libs.hilt.work)
 
     // Core modules
     implementation(project(":core:domain"))

@@ -57,6 +57,39 @@ class InvoiceImageStorage @Inject constructor(
         return runCatching { fileFor(Uri.parse(uri)).delete() }.getOrDefault(false)
     }
 
+    fun managedFile(uri: String?): File? {
+        if (!isManaged(uri)) return null
+        return runCatching { fileFor(Uri.parse(uri)) }
+            .getOrNull()
+            ?.takeIf(File::isFile)
+    }
+
+    suspend fun restoreManagedFiles(files: Map<String, File>): Map<String, String> =
+        withContext(Dispatchers.IO) {
+            imageDir.mkdirs()
+            files.mapValues { (fileName, source) ->
+                require(
+                    fileName.length in 1..255 &&
+                        fileName != "." &&
+                        fileName != ".." &&
+                        SAFE_FILE_NAME.matches(fileName)
+                ) { "Nombre de imagen no válido" }
+                val destination = File(imageDir, fileName)
+                source.copyTo(destination, overwrite = true)
+                FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    destination
+                ).toString()
+            }
+        }
+
+    fun pruneManagedFiles(keepFileNames: Set<String>) {
+        imageDir.listFiles().orEmpty()
+            .filter { it.isFile && it.name !in keepFileNames }
+            .forEach(File::delete)
+    }
+
     fun deleteTemporaryCameraCopy(uri: Uri?): Boolean {
         if (uri == null) return false
         return runCatching {
@@ -73,5 +106,6 @@ class InvoiceImageStorage @Inject constructor(
         private const val DIRECTORY_NAME = "invoice_images"
         private const val CAMERA_DIRECTORY_NAME = "camera"
         private val SUPPORTED_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "heic", "heif")
+        private val SAFE_FILE_NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]*")
     }
 }

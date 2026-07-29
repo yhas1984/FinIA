@@ -25,8 +25,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun incomeDao(): IncomeDao
     abstract fun countryFiscalConfigDao(): CountryFiscalConfigDao
     abstract fun chatMessageDao(): ChatMessageDao
+    abstract fun backupDao(): BackupDao
 
     companion object {
         const val DATABASE_NAME = "gastos_ingresos_db"
+        const val DATABASE_VERSION = 8
     }
 }

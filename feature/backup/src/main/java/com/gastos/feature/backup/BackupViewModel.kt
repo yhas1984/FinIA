@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -57,9 +58,22 @@ data class BackupUiState(
     val backupResult: BackupResult? = null,
     val exportResult: BackupResult? = null,
     val sheetsUrl: String? = null,
-    val localBackups: List<File> = emptyList(),
+    val isBackupKeyConfigured: Boolean = false,
+    val cloudBackupStatus: CloudBackupStatus = CloudBackupStatus(false, null, null),
+    val cloudBackups: List<CloudBackupInfo> = emptyList(),
+    val isCloudLoading: Boolean = false,
+    val pendingRestore: PendingBackupRestore? = null,
     val error: String? = null
 )
+
+sealed interface PendingBackupRestore {
+    val preview: BackupPreview
+
+    data class Manual(val uri: Uri, override val preview: BackupPreview) : PendingBackupRestore
+    data class Cloud(val backup: CloudBackupInfo) : PendingBackupRestore {
+        override val preview: BackupPreview = backup.preview
+    }
+}
 
 data class BackupResult(
     val success: Boolean,
@@ -70,7 +84,10 @@ data class BackupResult(
 
 @HiltViewModel
 class BackupViewModel @Inject constructor(
-    private val backupService: BackupService,
+    private val backupArchiveService: BackupArchiveService,
+    private val cloudBackupService: CloudBackupService,
+    private val cloudBackupScheduler: CloudBackupScheduler,
+    private val cloudBackupPreferences: CloudBackupPreferences,
     private val sheetsExportService: SheetsExportService,
     private val sheetsSyncManager: SheetsSyncManager,
     private val invoiceDriveService: InvoiceDriveService,
@@ -91,11 +108,12 @@ class BackupViewModel @Inject constructor(
 
     init {
         checkSignInStatus()
-        loadLocalBackups()
+        refreshBackupState()
         // Observa el estado Premium para habilitar/ocultar la sección Sheets.
         viewModelScope.launch {
             premiumStatus.isPremium.collect { premium ->
                 _uiState.update { it.copy(isPremium = premium) }
+                if (premium && sheetsExportService.isSignedIn()) loadCloudBackups()
             }
         }
     }
@@ -110,9 +128,13 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    private fun loadLocalBackups() {
-        val backups = backupService.getLocalBackups()
-        _uiState.update { it.copy(localBackups = backups) }
+    private fun refreshBackupState() {
+        _uiState.update {
+            it.copy(
+                isBackupKeyConfigured = backupArchiveService.isPasswordConfigured(),
+                cloudBackupStatus = cloudBackupPreferences.status()
+            )
+        }
     }
 
     /** Devuelve el Intent para lanzar el flujo de Sign-In de Google con scope Sheets. */
@@ -134,6 +156,7 @@ class BackupViewModel @Inject constructor(
                     error = null
                 )
             }
+            if (premiumStatus.isPremium.value) loadCloudBackups()
         } catch (e: ApiException) {
             _uiState.update {
                 it.copy(error = "Error al iniciar sesión con Google (código ${e.statusCode}): ${e.message ?: "sin detalle"}")
@@ -214,21 +237,53 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun createBackup() {
+    fun configureBackupPassword(password: String, confirmation: String) {
+        if (password.length < 8) {
+            _uiState.update { it.copy(error = "La contraseña debe tener al menos 8 caracteres.") }
+            return
+        }
+        if (password != confirmation) {
+            _uiState.update { it.copy(error = "Las contraseñas no coinciden.") }
+            return
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            val chars = password.toCharArray()
+            try {
+                backupArchiveService.configurePassword(chars)
+                _uiState.update {
+                    it.copy(
+                        isBackupKeyConfigured = true,
+                        backupResult = BackupResult(true, "Contraseña de recuperación configurada."),
+                        error = null
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update { it.copy(error = error.message ?: "No se pudo configurar la contraseña.") }
+            } finally {
+                chars.fill('\u0000')
+            }
+        }
+    }
+
+    fun exportEncryptedBackup(context: Context, uri: Uri) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, backupResult = null, error = null) }
-
             try {
-                val result = backupService.createBackup()
+                check(backupArchiveService.isPasswordConfigured()) {
+                    "Configura una contraseña de recuperación primero."
+                }
+                val output = context.contentResolver.openOutputStream(uri)
+                    ?: error("No se pudo abrir el archivo de destino.")
+                val preview = output.use { backupArchiveService.createArchive(it) }
                 _uiState.update {
                     it.copy(
                         isLoading = false,
-                        backupResult = result,
-                        error = if (!result.success) result.message else null
+                        backupResult = BackupResult(
+                            success = true,
+                            message = "Backup cifrado creado: ${preview.invoiceCount} facturas, " +
+                                "${preview.productCount} productos y ${preview.incomeCount} ingresos."
+                        )
                     )
-                }
-                if (result.success) {
-                    loadLocalBackups()
                 }
             } catch (e: Exception) {
                 _uiState.update {
@@ -236,6 +291,159 @@ class BackupViewModel @Inject constructor(
                         isLoading = false,
                         error = e.message ?: "Error al crear backup"
                     )
+                }
+            }
+        }
+    }
+
+    fun inspectManualBackup(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val input = context.contentResolver.openInputStream(uri)
+                    ?: error("No se pudo abrir el backup seleccionado.")
+                val preview = input.use(backupArchiveService::inspect)
+                _uiState.update {
+                    it.copy(pendingRestore = PendingBackupRestore.Manual(uri, preview), error = null)
+                }
+            } catch (error: Exception) {
+                _uiState.update { it.copy(error = error.message ?: "Backup no válido.") }
+            }
+        }
+    }
+
+    fun requestCloudRestore(backup: CloudBackupInfo) {
+        _uiState.update { it.copy(pendingRestore = PendingBackupRestore.Cloud(backup), error = null) }
+    }
+
+    fun dismissRestore() {
+        _uiState.update { it.copy(pendingRestore = null) }
+    }
+
+    fun restorePendingBackup(context: Context, password: String) {
+        val pending = _uiState.value.pendingRestore ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            val chars = password.toCharArray()
+            var downloaded: File? = null
+            try {
+                val input = when (pending) {
+                    is PendingBackupRestore.Manual -> context.contentResolver.openInputStream(pending.uri)
+                        ?: error("No se pudo abrir el backup seleccionado.")
+                    is PendingBackupRestore.Cloud -> {
+                        downloaded = cloudBackupService.downloadBackup(pending.backup.fileId)
+                        requireNotNull(downloaded).inputStream()
+                    }
+                }
+                val result = input.use { backupArchiveService.restore(it, chars) }
+                refreshBackupState()
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        pendingRestore = null,
+                        backupResult = BackupResult(
+                            true,
+                            "Restauración completada: ${result.preview.invoiceCount} facturas, " +
+                                "${result.preview.productCount} productos, ${result.preview.incomeCount} ingresos " +
+                                "y ${result.restoredImages} imágenes."
+                        )
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(isLoading = false, error = error.message ?: "No se pudo restaurar el backup.")
+                }
+            } finally {
+                chars.fill('\u0000')
+                downloaded?.delete()
+            }
+        }
+    }
+
+    fun setAutomaticCloudBackup(enabled: Boolean) {
+        if (enabled) {
+            when {
+                !_uiState.value.isPremium -> {
+                    _uiState.update { it.copy(error = "El backup automático en Drive requiere Premium.") }
+                    return
+                }
+                !_uiState.value.isSignedIn -> {
+                    _uiState.update { it.copy(error = "Conecta tu cuenta Google primero.") }
+                    return
+                }
+                !backupArchiveService.isPasswordConfigured() -> {
+                    _uiState.update { it.copy(error = "Configura una contraseña de recuperación primero.") }
+                    return
+                }
+            }
+        }
+        cloudBackupScheduler.setEnabled(enabled)
+        refreshBackupState()
+    }
+
+    fun createCloudBackupNow() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCloudLoading = true, error = null) }
+            try {
+                val backup = cloudBackupService.createBackup()
+                cloudBackupPreferences.recordSuccess()
+                val backups = cloudBackupService.listBackups()
+                _uiState.update {
+                    it.copy(
+                        isCloudLoading = false,
+                        cloudBackups = backups,
+                        cloudBackupStatus = cloudBackupPreferences.status(),
+                        backupResult = BackupResult(true, "Backup guardado en Drive: ${backup.name}")
+                    )
+                }
+            } catch (error: Exception) {
+                cloudBackupPreferences.recordError(error.message ?: "No se pudo crear el backup en Drive.")
+                _uiState.update {
+                    it.copy(
+                        isCloudLoading = false,
+                        cloudBackupStatus = cloudBackupPreferences.status(),
+                        error = error.message ?: "No se pudo crear el backup en Drive."
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadCloudBackups() {
+        if (!premiumStatus.isPremium.value || !sheetsExportService.isSignedIn()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCloudLoading = true) }
+            try {
+                val backups = cloudBackupService.listBackups()
+                _uiState.update {
+                    it.copy(
+                        isCloudLoading = false,
+                        cloudBackups = backups,
+                        cloudBackupStatus = cloudBackupPreferences.status()
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(isCloudLoading = false, error = error.message ?: "No se pudieron cargar los backups.")
+                }
+            }
+        }
+    }
+
+    fun deleteCloudBackups() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCloudLoading = true, error = null) }
+            try {
+                val deleted = cloudBackupService.deleteAllBackups()
+                _uiState.update {
+                    it.copy(
+                        isCloudLoading = false,
+                        cloudBackups = emptyList(),
+                        backupResult = BackupResult(true, "$deleted copias eliminadas de Google Drive.")
+                    )
+                }
+            } catch (error: Exception) {
+                _uiState.update {
+                    it.copy(isCloudLoading = false, error = error.message ?: "No se pudieron eliminar las copias.")
                 }
             }
         }
@@ -519,19 +727,6 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun deleteBackup(file: File) {
-        viewModelScope.launch {
-            try {
-                backupService.deleteBackup(file)
-                loadLocalBackups()
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(error = e.message ?: "Error al eliminar backup")
-                }
-            }
-        }
-    }
-
     fun clearExportResult() {
         _uiState.update { it.copy(exportResult = null) }
     }
@@ -544,6 +739,7 @@ class BackupViewModel @Inject constructor(
     fun signOut() {
         viewModelScope.launch {
             sheetsExportService.signOut()
+            cloudBackupScheduler.setEnabled(false)
             sheetsSyncManager.clearSpreadsheetId()
             invoiceDriveService.clearAccountCache()
             _uiState.update {
@@ -551,7 +747,9 @@ class BackupViewModel @Inject constructor(
                     isSignedIn = false,
                     email = null,
                     hasSheetLink = false,
-                    sheetsUrl = null
+                    sheetsUrl = null,
+                    cloudBackups = emptyList(),
+                    cloudBackupStatus = cloudBackupPreferences.status()
                 )
             }
         }

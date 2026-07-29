@@ -22,6 +22,7 @@ import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.SheetsScopes
+import com.google.api.services.drive.DriveScopes
 import com.google.api.services.sheets.v4.model.AddSheetRequest
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest
 import com.google.api.services.sheets.v4.model.CellFormat
@@ -69,13 +70,14 @@ class SheetsExportService @Inject constructor(
         // Scopes necesarios: crear/editar Sheets y archivos en Drive.
         private val SHEETS_SCOPE = Scope(SheetsScopes.SPREADSHEETS)
         private val DRIVE_FILE_SCOPE = Scope("https://www.googleapis.com/auth/drive.file")
+        private val DRIVE_APPDATA_SCOPE = Scope(DriveScopes.DRIVE_APPDATA)
     }
 
     /** Cliente de Google Sign-In con los scopes de Sheets. */
     fun getSignInClient(): GoogleSignInClient {
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(SHEETS_SCOPE, DRIVE_FILE_SCOPE)
+            .requestScopes(SHEETS_SCOPE, DRIVE_FILE_SCOPE, DRIVE_APPDATA_SCOPE)
             .build()
         return GoogleSignIn.getClient(context, gso)
     }
@@ -92,7 +94,7 @@ class SheetsExportService @Inject constructor(
     fun isSignedIn(): Boolean {
         val account = GoogleSignIn.getLastSignedInAccount(context)
         return account != null &&
-            GoogleSignIn.hasPermissions(account, SHEETS_SCOPE, DRIVE_FILE_SCOPE)
+            GoogleSignIn.hasPermissions(account, SHEETS_SCOPE, DRIVE_FILE_SCOPE, DRIVE_APPDATA_SCOPE)
     }
 
     fun getSignedInEmail(): String? =

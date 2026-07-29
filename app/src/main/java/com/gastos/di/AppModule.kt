@@ -255,4 +255,8 @@ object AppModule {
     @Provides
     @Singleton
     fun provideChatMessageDao(database: AppDatabase): ChatMessageDao = database.chatMessageDao()
+
+    @Provides
+    @Singleton
+    fun provideBackupDao(database: AppDatabase): BackupDao = database.backupDao()
 }
