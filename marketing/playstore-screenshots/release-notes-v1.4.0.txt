@@ -1,0 +1,6 @@
+# FinAI · Release notes · v1.4.0 (versionCode 9)
+
+- Añadimos soporte fiscal para Bolivia, Guatemala, Nicaragua, Paraguay, Uruguay y Venezuela.
+- Mejoras visuales para que importes largos se adapten en todo el dashboard.
+- Los formularios de facturas e ingresos ahora se desplazan correctamente al abrir el teclado.
+- Mejoras de estabilidad en backup, restauración, Premium y Gemini.
