@@ -3,6 +3,8 @@ package com.gastos.feature.dashboard
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -16,8 +18,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -97,7 +103,7 @@ fun DashboardScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 )
-                Text(
+                AutoSizeMonetaryText(
                     text = fmt(uiState.balanceMes),
                     style = MaterialTheme.typography.displayLarge.copy(
                         fontWeight = FontWeight.Bold,
@@ -106,7 +112,11 @@ fun DashboardScreen(
                         else
                             MaterialTheme.colorScheme.error
                     ),
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .fillMaxWidth(),
+                    minFontSize = 20.sp,
+                    textAlign = TextAlign.Start
                 )
             }
 
@@ -186,33 +196,41 @@ fun DashboardScreen(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             "Gastos",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
+                        AutoSizeMonetaryText(
                             text = fmt(uiState.totalGastosSemana),
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.error
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f),
+                            minFontSize = 12.sp,
+                            textAlign = TextAlign.End
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             "Ingresos",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
+                        AutoSizeMonetaryText(
                             text = fmt(uiState.totalIngresosSemana),
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.secondary
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.weight(1f),
+                            minFontSize = 12.sp,
+                            textAlign = TextAlign.End
                         )
                     }
                 }
@@ -251,33 +269,41 @@ fun DashboardScreen(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             "Gastos",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
+                        AutoSizeMonetaryText(
                             text = fmt(uiState.totalGastosHoy),
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.error
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f),
+                            minFontSize = 12.sp,
+                            textAlign = TextAlign.End
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
                             "Ingresos",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Text(
+                        AutoSizeMonetaryText(
                             text = fmt(uiState.totalIngresosHoy),
                             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.secondary
+                            color = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.weight(1f),
+                            minFontSize = 12.sp,
+                            textAlign = TextAlign.End
                         )
                     }
                 }
@@ -393,10 +419,13 @@ private fun CategoryBreakdownCard(
                 )
             }
             Spacer(modifier = Modifier.height(4.dp))
-            Text(
+            AutoSizeMonetaryText(
                 text = fmt(row.total),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+                minFontSize = 9.sp,
+                textAlign = TextAlign.Start
             )
             Spacer(modifier = Modifier.height(12.dp))
         }
@@ -414,41 +443,49 @@ fun CashflowCard(totalGastos: String, totalIngresos: String) {
         Column(modifier = Modifier.padding(24.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Gastos column
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Gastos",
                         style = MaterialTheme.typography.labelMedium.copy(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
-                    Text(
+                    AutoSizeMonetaryText(
                         text = totalGastos,
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.error
                         ),
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .fillMaxWidth(),
+                        minFontSize = 12.sp,
+                        textAlign = TextAlign.Start
                     )
                 }
                 // Ingresos column
-                Column(horizontalAlignment = Alignment.End) {
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                     Text(
                         text = "Ingresos",
                         style = MaterialTheme.typography.labelMedium.copy(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
-                    Text(
+                    AutoSizeMonetaryText(
                         text = totalIngresos,
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.secondary
                         ),
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .fillMaxWidth(),
+                        minFontSize = 12.sp,
+                        textAlign = TextAlign.End
                     )
                 }
             }
@@ -475,17 +512,53 @@ private fun ConversionRow(
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
-            Text(
+            AutoSizeMonetaryText(
                 text = "${formatMoney(rec.montoOriginal, rec.monedaOriginal)} · 1 ${rec.monedaOriginal} = ${"%.6f".format(rec.rateApplied)} $defaultCurrency",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+                minFontSize = 9.sp,
+                textAlign = TextAlign.Start
             )
         }
-        Text(
+        AutoSizeMonetaryText(
             text = fmt(rec.montoConvertido),
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            modifier = Modifier.weight(0.38f),
+            minFontSize = 12.sp,
+            textAlign = TextAlign.End
         )
     }
+}
+
+@Composable
+private fun AutoSizeMonetaryText(
+    text: String,
+    style: TextStyle,
+    modifier: Modifier = Modifier,
+    color: Color? = null,
+    minFontSize: TextUnit,
+    textAlign: TextAlign? = null
+) {
+    val resolvedColor: Color = color
+        ?: style.color.takeUnless { it == Color.Unspecified }
+        ?: LocalContentColor.current
+    BasicText(
+        text = text,
+        style = style.copy(
+            color = resolvedColor,
+            textAlign = textAlign ?: style.textAlign
+        ),
+        modifier = modifier,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Clip,
+        autoSize = TextAutoSize.StepBased(
+            maxFontSize = style.fontSize,
+            minFontSize = minFontSize,
+            stepSize = 1.sp
+        )
+    )
 }
 
 @Composable

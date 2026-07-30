@@ -99,6 +99,54 @@ class CountryFiscalConfigRepositoryImpl @Inject constructor(
             irpfRate = null,
             nifFormat = "XXXXXXXXXXXXX",
             nombreLeyFiscal = "IVA"
+        ),
+        CountryFiscalConfig(
+            paisCodigo = "BO",
+            nombrePais = "Bolivia",
+            ivaRates = listOf(0.0, 13.0),
+            irpfRate = null,
+            nifFormat = "XXXXXXXXXXXX",
+            nombreLeyFiscal = "IVA"
+        ),
+        CountryFiscalConfig(
+            paisCodigo = "GT",
+            nombrePais = "Guatemala",
+            ivaRates = listOf(0.0, 12.0),
+            irpfRate = null,
+            nifFormat = "XXXXXXXX-X",
+            nombreLeyFiscal = "IVA"
+        ),
+        CountryFiscalConfig(
+            paisCodigo = "NI",
+            nombrePais = "Nicaragua",
+            ivaRates = listOf(0.0, 15.0),
+            irpfRate = null,
+            nifFormat = "XXXXXXXXXXXXX",
+            nombreLeyFiscal = "IVA"
+        ),
+        CountryFiscalConfig(
+            paisCodigo = "PY",
+            nombrePais = "Paraguay",
+            ivaRates = listOf(0.0, 5.0, 10.0),
+            irpfRate = null,
+            nifFormat = "XXXXXXXX-X",
+            nombreLeyFiscal = "IVA"
+        ),
+        CountryFiscalConfig(
+            paisCodigo = "UY",
+            nombrePais = "Uruguay",
+            ivaRates = listOf(0.0, 10.0, 22.0),
+            irpfRate = null,
+            nifFormat = "XXXXXXXXXXXX",
+            nombreLeyFiscal = "IVA"
+        ),
+        CountryFiscalConfig(
+            paisCodigo = "VE",
+            nombrePais = "Venezuela",
+            ivaRates = listOf(0.0, 8.0, 16.0, 31.0),
+            irpfRate = null,
+            nifFormat = "X-XXXXXXXX-X",
+            nombreLeyFiscal = "IVA"
         )
     )
 }
