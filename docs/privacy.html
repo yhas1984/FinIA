@@ -85,8 +85,7 @@
 <h2>12. Permisos de Google y revocación</h2>
 <p>FinAI utiliza las APIs de Google con los siguientes alcances (scopes) OAuth, únicamente para las funciones que tú actives de forma explícita:</p>
 <ul>
-  <li><strong>Google Sheets</strong> &mdash; <code>https://www.googleapis.com/auth/spreadsheets</code>: para crear y sincronizar el spreadsheet donde se exportan tus facturas, nóminas, otros ingresos, productos y resumen.</li>
-  <li><strong>Google Drive</strong> &mdash; <code>https://www.googleapis.com/auth/drive.file</code>: para subir a tu Drive fotos de facturas tras escanearlas cuando la función Premium está activa. La Aplicación solo accede a los archivos que ella misma crea.</li>
+  <li><strong>Google Sheets y archivos de Google Drive</strong> &mdash; <code>https://www.googleapis.com/auth/drive.file</code>: para crear y sincronizar el spreadsheet generado por FinAI y subir fotos de facturas cuando la función Premium está activa. La Aplicación solo accede a los archivos que ella misma crea.</li>
   <li><strong>Datos privados de Google Drive</strong> &mdash; <code>https://www.googleapis.com/auth/drive.appdata</code>: para crear, listar, restaurar y eliminar tus backups Premium cifrados en el espacio privado de FinAI.</li>
 </ul>
 <p>Puedes revocar cualquiera de estos permisos en cualquier momento desde <a href="https://myaccount.google.com/permissions">https://myaccount.google.com/permissions</a>. Tras la revocación, FinAI seguirá funcionando con almacenamiento local únicamente.</p>
