@@ -19,7 +19,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -82,7 +83,7 @@ fun BackupScreen(
             TopAppBar(
                 title = { Text("Backup") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = onNavigateBack, enabled = !uiState.isRestoring) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
                     }
                 },
@@ -137,7 +138,7 @@ fun BackupScreen(
                                 exportBackupLauncher.launch("finai_backup_$timestamp.$BACKUP_FILE_EXTENSION")
                             },
                             modifier = Modifier.weight(1f),
-                            enabled = uiState.isBackupKeyConfigured && !uiState.isLoading
+                            enabled = uiState.isBackupKeyConfigured && !uiState.isLoading && !uiState.isRestoring
                         ) {
                             Icon(Icons.Default.Save, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
@@ -146,7 +147,7 @@ fun BackupScreen(
                         OutlinedButton(
                             onClick = { importBackupLauncher.launch(arrayOf(BACKUP_MIME_TYPE, "application/octet-stream")) },
                             modifier = Modifier.weight(1f),
-                            enabled = !uiState.isLoading
+                            enabled = !uiState.isLoading && !uiState.isRestoring
                         ) {
                             Icon(Icons.Default.Restore, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
@@ -277,6 +278,7 @@ fun BackupScreen(
                                     CloudBackupRow(
                                         backup = backup,
                                         locale = locale,
+                                        enabled = !uiState.isCloudLoading && !uiState.isRestoring,
                                         onRestore = { viewModel.requestCloudRestore(backup) }
                                     )
                                 }
@@ -556,14 +558,16 @@ fun BackupScreen(
                         value = password,
                         onValueChange = { password = it },
                         label = { Text("Contraseña") },
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = rememberTimedPasswordVisualTransformation(password),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true
                     )
                     OutlinedTextField(
                         value = passwordConfirmation,
                         onValueChange = { passwordConfirmation = it },
                         label = { Text("Confirmar contraseña") },
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = rememberTimedPasswordVisualTransformation(passwordConfirmation),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true
                     )
                 }
@@ -581,8 +585,9 @@ fun BackupScreen(
     }
 
     uiState.pendingRestore?.let { pending ->
+        val running = uiState.restoreState as? BackupRestoreState.Running
         AlertDialog(
-            onDismissRequest = viewModel::dismissRestore,
+            onDismissRequest = { if (running == null) viewModel.dismissRestore() },
             title = { Text("Restaurar backup") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -599,21 +604,42 @@ fun BackupScreen(
                         value = restorePassword,
                         onValueChange = { restorePassword = it },
                         label = { Text("Contraseña de recuperación") },
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = rememberTimedPasswordVisualTransformation(restorePassword),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = running == null,
                         singleLine = true
                     )
+                    if (running != null) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                            Text(running.stage, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.restorePendingBackup(context, restorePassword)
-                        restorePassword = ""
-                    },
-                    enabled = restorePassword.length >= 8 && !uiState.isLoading
-                ) { Text("Reemplazar y restaurar") }
+                if (running == null) {
+                    TextButton(
+                        onClick = {
+                            viewModel.restorePendingBackup(context, restorePassword)
+                            restorePassword = ""
+                        },
+                        enabled = restorePassword.length >= 8 && !uiState.isLoading
+                    ) { Text("Reemplazar y restaurar") }
+                }
             },
-            dismissButton = { TextButton(onClick = viewModel::dismissRestore) { Text("Cancelar") } }
+            dismissButton = {
+                if (running == null || running.canCancel) {
+                    TextButton(
+                        onClick = if (running == null) viewModel::dismissRestore else viewModel::cancelRestore
+                    ) {
+                        Text(if (running == null) "Cancelar" else "Cancelar restauración")
+                    }
+                }
+            },
         )
     }
 
@@ -639,6 +665,7 @@ fun BackupScreen(
 private fun CloudBackupRow(
     backup: CloudBackupInfo,
     locale: Locale,
+    enabled: Boolean,
     onRestore: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", locale)
@@ -659,8 +686,10 @@ private fun CloudBackupRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        IconButton(onClick = onRestore) {
-            Icon(Icons.Default.Restore, contentDescription = "Restaurar backup")
+        OutlinedButton(onClick = onRestore, enabled = enabled) {
+            Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Restaurar")
         }
     }
 }

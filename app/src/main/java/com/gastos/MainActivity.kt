@@ -127,7 +127,9 @@ fun FinAIApp(defaultCurrency: String = "EUR") {
                     defaultCurrency = defaultCurrency,
                     onNavigateToChat = { navController.navigate(Routes.CHATBOT) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
-                    onNavigateToBackup = { navController.navigate(Routes.BACKUP) }
+                    onNavigateToBackup = {
+                        navController.navigate(Routes.BACKUP) { launchSingleTop = true }
+                    }
                 )
             }
             composable(Screen.Invoices.route) {
@@ -155,7 +157,9 @@ fun FinAIApp(defaultCurrency: String = "EUR") {
                 SettingsScreen(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToPremium = { navController.navigate(Routes.PREMIUM) },
-                    onNavigateToBackup = { navController.navigate(Routes.BACKUP) }
+                    onNavigateToBackup = {
+                        navController.navigate(Routes.BACKUP) { launchSingleTop = true }
+                    }
                 )
             }
             composable(Routes.PREMIUM) {

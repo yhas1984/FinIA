@@ -11,7 +11,8 @@ import com.gastos.repository.RestorableSettings
 import com.gastos.storage.InvoiceImageStorage
 import kotlinx.serialization.Serializable
 
-internal const val BACKUP_FORMAT_VERSION = 1
+internal const val LEGACY_BACKUP_FORMAT_VERSION = 1
+internal const val BACKUP_FORMAT_VERSION = 2
 internal const val BACKUP_FILE_EXTENSION = "finai"
 internal const val BACKUP_MIME_TYPE = "application/vnd.finai.backup"
 
@@ -30,7 +31,7 @@ internal data class EncryptedBackupHeader(
     val salt: String,
     val keyIv: String,
     val wrappedKey: String,
-    val payloadIv: String
+    val payloadIv: String? = null
 )
 
 data class BackupPreview(
