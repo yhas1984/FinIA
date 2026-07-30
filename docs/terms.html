@@ -41,8 +41,7 @@
 <p>La Aplicación utiliza las siguientes APIs de Google:</p>
 <ul>
   <li><strong>Gemini API:</strong> para procesar mensajes del asistente IA. Los últimos 3 turnos en el plan gratis y 10 en Premium se envían como contexto. El historial visible se guarda localmente y puede borrarse desde la app.</li>
-  <li><strong>Google Sheets API (alcance <code>https://www.googleapis.com/auth/spreadsheets</code>):</strong> para crear y mantener un spreadsheet en tu propio Google Drive con los datos que exportas o sincronizas. Solo se accede con tu autorización explícita.</li>
-  <li><strong>Google Drive API (alcance <code>https://www.googleapis.com/auth/drive.file</code>):</strong> para guardar automáticamente la foto tras escanear una factura cuando Premium y Google están conectados. La Aplicación solo accede a los archivos que ella misma crea.</li>
+  <li><strong>Google Sheets y Drive API (alcance <code>https://www.googleapis.com/auth/drive.file</code>):</strong> para crear y mantener el spreadsheet generado por FinAI y guardar fotos de facturas cuando Premium y Google están conectados. La Aplicación solo accede a los archivos que ella misma crea y siempre con tu autorización explícita.</li>
   <li><strong>Google Drive API (alcance <code>https://www.googleapis.com/auth/drive.appdata</code>):</strong> para mantener hasta cinco backups cifrados Premium en el espacio privado de FinAI y permitir su restauración o eliminación.</li>
 </ul>
 
