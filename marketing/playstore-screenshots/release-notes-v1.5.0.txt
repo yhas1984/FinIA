@@ -1,0 +1,6 @@
+# FinAI · Release notes · v1.5.0 (versionCode 10)
+
+- Arreglado el enlace a Google AI Studio desde Ajustes: ya no muestra "No hay ninguna aplicación disponible para abrir este enlace" y abre la URL en el navegador.
+- Misma plataforma de la versión 1.4.0: países fiscales, dashboard autoajustable, formularios con IME, backup cifrado y Premium.
+
+(End of file - total 3 lines)
