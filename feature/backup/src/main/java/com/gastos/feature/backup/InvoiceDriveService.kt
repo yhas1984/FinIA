@@ -15,7 +15,9 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import com.google.api.services.drive.model.File as DriveFile
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import java.util.Collections
 import javax.inject.Inject
@@ -81,6 +83,8 @@ class InvoiceDriveService @Inject constructor(
                 uploaded = true,
                 message = "Foto guardada en Google Drive."
             )
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             InvoiceDriveUploadResult(
                 invoice = invoice.copy(driveUploadPending = true),
@@ -108,14 +112,16 @@ class InvoiceDriveService @Inject constructor(
             .build()
     }
 
-    private fun ensureFinAiFolder(drive: Drive, accountKey: String): String {
+    private suspend fun ensureFinAiFolder(drive: Drive, accountKey: String): String {
         val preferenceKey = "$KEY_FOLDER_ID_PREFIX${accountKey.hashCode()}"
         val storedId = prefs.getString(preferenceKey, null)
         if (!storedId.isNullOrBlank()) {
             try {
-                val stored = drive.files().get(storedId)
-                    .setFields("id,mimeType,trashed")
-                    .execute()
+                val stored = runInterruptible {
+                    drive.files().get(storedId)
+                        .setFields("id,mimeType,trashed")
+                        .execute()
+                }
                 if (stored.mimeType == FOLDER_MIME_TYPE && stored.trashed != true) return stored.id
             } catch (error: GoogleJsonResponseException) {
                 if (error.statusCode != 404) throw error
@@ -123,47 +129,53 @@ class InvoiceDriveService @Inject constructor(
             prefs.edit().remove(preferenceKey).apply()
         }
 
-        val existing = drive.files().list()
-            .setSpaces("drive")
-            .setQ(
-                "mimeType='$FOLDER_MIME_TYPE' and 'root' in parents and trashed=false " +
-                    "and appProperties has { key='finaiRoot' and value='true' }"
-            )
-            .setFields("files(id)")
-            .execute()
-            .files
-            .orEmpty()
-            .firstOrNull()
+        val existing = runInterruptible {
+            drive.files().list()
+                .setSpaces("drive")
+                .setQ(
+                    "mimeType='$FOLDER_MIME_TYPE' and 'root' in parents and trashed=false " +
+                        "and appProperties has { key='finaiRoot' and value='true' }"
+                )
+                .setFields("files(id)")
+                .execute()
+                .files
+                .orEmpty()
+                .firstOrNull()
+        }
 
-        val folderId = existing?.id ?: drive.files().create(
-            DriveFile()
-                .setName(FOLDER_NAME)
-                .setMimeType(FOLDER_MIME_TYPE)
-                .setParents(Collections.singletonList("root"))
-                .setAppProperties(mapOf("finaiRoot" to "true"))
-        )
-            .setFields("id")
-            .execute()
-            .id
+        val folderId = existing?.id ?: runInterruptible {
+            drive.files().create(
+                DriveFile()
+                    .setName(FOLDER_NAME)
+                    .setMimeType(FOLDER_MIME_TYPE)
+                    .setParents(Collections.singletonList("root"))
+                    .setAppProperties(mapOf("finaiRoot" to "true"))
+            )
+                .setFields("id")
+                .execute()
+                .id
+        }
 
         prefs.edit().putString(preferenceKey, folderId).apply()
         return folderId
     }
 
-    private fun findInvoiceFile(drive: Drive, folderId: String, invoiceId: Long): DriveFile? =
-        drive.files().list()
-            .setSpaces("drive")
-            .setQ(
-                "'$folderId' in parents and trashed=false " +
-                    "and appProperties has { key='finaiInvoiceId' and value='$invoiceId' }"
-            )
-            .setFields("files(id,name,webViewLink)")
-            .execute()
-            .files
-            .orEmpty()
-            .firstOrNull()
+    private suspend fun findInvoiceFile(drive: Drive, folderId: String, invoiceId: Long): DriveFile? =
+        runInterruptible {
+            drive.files().list()
+                .setSpaces("drive")
+                .setQ(
+                    "'$folderId' in parents and trashed=false " +
+                        "and appProperties has { key='finaiInvoiceId' and value='$invoiceId' }"
+                )
+                .setFields("files(id,name,webViewLink)")
+                .execute()
+                .files
+                .orEmpty()
+                .firstOrNull()
+        }
 
-    private fun createInvoiceFile(drive: Drive, folderId: String, invoice: Invoice): DriveFile {
+    private suspend fun createInvoiceFile(drive: Drive, folderId: String, invoice: Invoice): DriveFile {
         val uri = android.net.Uri.parse(invoice.imagenUri)
         val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
         val extension = MimeTypeMap.getSingleton()
@@ -179,21 +191,24 @@ class InvoiceDriveService @Inject constructor(
             "No se pudo abrir la imagen local de la factura"
         }
         input.use {
-            return drive.files().create(metadata, InputStreamContent(mimeType, it))
-                .setFields("id,name,webViewLink")
-                .execute()
+            return runInterruptible {
+                drive.files().create(metadata, InputStreamContent(mimeType, it))
+                    .setFields("id,name,webViewLink")
+                    .execute()
+            }
         }
     }
 
-    private fun friendlyMessage(error: Exception): String = when (error) {
-        is GoogleJsonResponseException -> when (error.statusCode) {
-            401 -> "La autorización de Google caducó. Vuelve a conectar la cuenta."
-            403 -> "Google Drive rechazó el permiso o la cuota disponible."
-            else -> "No se pudo subir la foto a Drive (${error.statusCode}). Podrás reintentarlo."
-        }
-        is java.io.IOException -> "Sin conexión con Google Drive. Podrás reintentar la subida."
-        else -> "No se pudo subir la foto a Drive. Podrás reintentarlo."
-    }
+    private fun friendlyMessage(error: Exception): String = GoogleApiErrorClassifier.classify(
+        error,
+        GoogleApiErrorContext(
+            featureLabel = "la subida a Drive",
+            networkMessage = "Sin conexión con Google Drive. Podrás reintentar la subida.",
+            transientMessage = "Google Drive no responde temporalmente. Podrás reintentar la subida.",
+            quotaMessage = "Google Drive rechazó el permiso o la cuota disponible.",
+            genericMessage = "No se pudo subir la foto a Drive. Podrás reintentarlo."
+        )
+    ).message
 
     companion object {
         private const val PREFS_NAME = "finai_drive_sync"

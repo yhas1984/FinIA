@@ -80,6 +80,20 @@ fun IncomesScreen(
             val target = uiState.defaultCurrency
 
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                uiState.error?.let { message ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    ) {
+                        Text(
+                            text = message,
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -239,10 +253,13 @@ private fun IncomeCard(
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(TransactionCategories.displayCategory(income.categoria)) }
-                    )
+                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Text(
+                            text = TransactionCategories.displayCategory(income.categoria),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(

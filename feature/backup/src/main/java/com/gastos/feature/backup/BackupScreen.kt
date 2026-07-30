@@ -1,7 +1,9 @@
 package com.gastos.feature.backup
 
 import android.content.Context
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -40,8 +42,10 @@ fun BackupScreen(
     var showPasswordSetup by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
     var passwordConfirmation by remember { mutableStateOf("") }
+    var passwordValidationError by remember { mutableStateOf<String?>(null) }
     var restorePassword by remember { mutableStateOf("") }
     var showDeleteCloudConfirmation by remember { mutableStateOf(false) }
+    var externalLinkError by remember { mutableStateOf<String?>(null) }
 
     val exportBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(BACKUP_MIME_TYPE)
@@ -102,6 +106,18 @@ fun BackupScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            externalLinkError?.let { message ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Text(
+                        text = message,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
             // Backup portable cifrado
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -392,8 +408,11 @@ fun BackupScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedButton(
                                     onClick = {
-                                        val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))
-                                        context.startActivity(intent)
+                                        externalLinkError = openTrustedUrl(
+                                            context = context,
+                                            rawUrl = url,
+                                            allowedHosts = setOf("docs.google.com")
+                                        )
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
@@ -570,17 +589,31 @@ fun BackupScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true
                     )
+                    passwordValidationError?.let { message ->
+                        Text(
+                            text = message,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
+                    passwordValidationError = when {
+                        password.length < 8 -> "La contraseña debe tener al menos 8 caracteres."
+                        password != passwordConfirmation -> "Las contraseñas no coinciden."
+                        else -> null
+                    }
+                    if (passwordValidationError != null) return@TextButton
                     viewModel.configureBackupPassword(password, passwordConfirmation)
                     password = ""
                     passwordConfirmation = ""
+                    passwordValidationError = null
                     showPasswordSetup = false
                 }) { Text("Guardar") }
             },
-            dismissButton = { TextButton(onClick = { showPasswordSetup = false }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { passwordValidationError = null; showPasswordSetup = false }) { Text("Cancelar") } }
         )
     }
 
@@ -658,6 +691,28 @@ fun BackupScreen(
                 TextButton(onClick = { showDeleteCloudConfirmation = false }) { Text("Cancelar") }
             }
         )
+    }
+}
+
+private fun openTrustedUrl(
+    context: Context,
+    rawUrl: String,
+    allowedHosts: Set<String>
+): String? {
+    val uri = Uri.parse(rawUrl)
+    val host = uri.host?.lowercase(Locale.ROOT)
+    if (uri.scheme != "https" || host !in allowedHosts) {
+        return "El enlace generado no es válido o ya no es seguro abrirlo."
+    }
+    val intent = Intent(Intent.ACTION_VIEW, uri)
+    if (intent.resolveActivity(context.packageManager) == null) {
+        return "No hay ninguna aplicación disponible para abrir este enlace."
+    }
+    return try {
+        context.startActivity(intent)
+        null
+    } catch (_: ActivityNotFoundException) {
+        "No se pudo abrir el enlace solicitado."
     }
 }
 

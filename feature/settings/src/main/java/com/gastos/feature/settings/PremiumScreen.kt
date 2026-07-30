@@ -100,6 +100,14 @@ fun PremiumScreen(
                         )
                     }
                 }
+                uiState.billingNotice?.let { notice ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = notice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             } else {
                 // Lista de funciones premium
                 PremiumFeature.entries.forEach { feature ->
@@ -118,6 +126,14 @@ fun PremiumScreen(
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
                 }
+                uiState.billingNotice?.let { notice ->
+                    Text(
+                        text = notice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
 
                 // Precio y botón de compra
                 val price = uiState.productDetails?.oneTimePurchaseOfferDetails?.formattedPrice
@@ -131,11 +147,17 @@ fun PremiumScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = uiState.productDetails != null && !uiState.isBillingConnecting
+                    enabled = uiState.productDetails != null && !uiState.isBillingConnecting && !uiState.hasPendingPurchase
                 ) {
                     Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (price == "Cargando precio...") "Cargando..." else "Desbloquear Premium · $price")
+                    Text(
+                        when {
+                            uiState.hasPendingPurchase -> "Compra pendiente en Google Play"
+                            price == "Cargando precio..." -> "Cargando..."
+                            else -> "Desbloquear Premium · $price"
+                        }
+                    )
                 }
 
                 if (uiState.isBillingConnecting) {

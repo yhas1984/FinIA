@@ -86,7 +86,9 @@ class Migration6To7Test {
             db.version = 6
         }
 
-        val db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName).addMigrations(MIGRATION_6_7).build()
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
+            .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
+            .build()
         db.openHelper.writableDatabase.use { sqlite ->
             sqlite.query("SELECT COUNT(*) FROM chat_messages").use { c -> assertTrue(c.moveToFirst()) }
             sqlite.execSQL("INSERT INTO chat_messages (role, visibleText, contextText, includeInContext, createdAt) VALUES ('user','Hola','Hola',1,123)")

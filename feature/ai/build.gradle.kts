@@ -43,8 +43,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.coroutines.android)
 
-    // Google AI (Gemini API - cloud)
-    implementation(libs.google.generative.ai)
+    // Gemini REST
+    implementation(libs.okhttp)
 
     // Project modules
     implementation(project(":core:domain"))
@@ -52,4 +52,6 @@ dependencies {
     implementation(project(":core:common"))
 
     testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
 }

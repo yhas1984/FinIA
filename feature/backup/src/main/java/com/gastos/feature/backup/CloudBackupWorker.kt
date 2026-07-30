@@ -8,7 +8,7 @@ import com.gastos.extension.SafeLog
 import com.gastos.repository.PremiumStatusProvider
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import java.io.IOException
+import kotlinx.coroutines.CancellationException
 
 @HiltWorker
 class CloudBackupWorker @AssistedInject constructor(
@@ -32,18 +32,29 @@ class CloudBackupWorker @AssistedInject constructor(
             cloudBackupService.createBackup()
             preferences.recordSuccess()
             Result.success()
-        } catch (error: IOException) {
-            SafeLog.w(TAG, "Backup automático aplazado por error de red", error)
-            preferences.recordError("Sin conexión. FinAI volverá a intentarlo automáticamente.")
-            Result.retry()
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
-            SafeLog.e(TAG, "Backup automático falló", error)
-            preferences.recordError(error.message ?: "No se pudo crear el backup automático.")
-            Result.success()
+            val classified = GoogleApiErrorClassifier.classify(
+                error,
+                GoogleApiErrorContext(
+                    featureLabel = "el backup automático",
+                    networkMessage = "Sin conexión con Google Drive. FinAI volverá a intentarlo automáticamente.",
+                    transientMessage = "Google Drive no responde temporalmente. FinAI volverá a intentarlo automáticamente.",
+                    quotaMessage = "Google Drive no pudo guardar la copia por permisos o cuota. No se reintentará automáticamente.",
+                    genericMessage = "No se pudo crear el backup automático. Revisa la configuración del backup."
+                )
+            )
+            if (classified.category != GoogleApiErrorCategory.CANCELLATION) {
+                SafeLog.e(TAG, "Backup automático falló (${classified.category})", error)
+            }
+            preferences.recordError(classified.message)
+            if (classified.shouldRetry && runAttemptCount < MAX_RETRY_ATTEMPTS) Result.retry() else Result.success()
         }
     }
 
     private companion object {
         const val TAG = "CloudBackupWorker"
+        const val MAX_RETRY_ATTEMPTS = 3
     }
 }

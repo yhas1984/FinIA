@@ -2,22 +2,21 @@ package com.gastos.feature.ai
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Bitmap.CompressFormat
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Base64
+import com.gastos.domain.model.ChatMessageRecord
 import com.gastos.domain.model.CountryFiscalConfig
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
-import com.gastos.domain.model.ChatMessageRecord
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.extension.SafeLog
 import com.gastos.repository.CountryFiscalConfigRepository
-import com.google.ai.client.generativeai.Chat
-import com.google.ai.client.generativeai.GenerativeModel
-import com.google.ai.client.generativeai.type.GenerateContentResponse
-import com.google.ai.client.generativeai.type.content
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -26,6 +25,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -42,29 +42,22 @@ data class AIResult(
 @Singleton
 class AIService @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val fiscalConfigRepository: CountryFiscalConfigRepository
+    private val fiscalConfigRepository: CountryFiscalConfigRepository,
+    private val geminiRestClient: GeminiRestClient
 ) {
-    @Volatile
-    private var generativeModel: GenerativeModel? = null
-    private var chatSession: Chat? = null
     @Volatile
     private var currentApiKey: String = ""
     private var systemInstructions: String = ""
     private val chatMutex = Mutex()
-
-    /** País fiscal usado al escanear documentos (por defecto España).
-     *  La UI puede cambiarlo con [setFiscalCountry]. Esto aplica las
-     *  reglas de extracción fiscales del país (sólo España tiene reglas
-     *  AEAT específicas hoy; resto del mundo usa un prompt genérico). */
     @Volatile
     private var currentFiscalCountry: String = "ES"
     @Volatile
     private var cachedFiscalConfig: CountryFiscalConfig? = null
     @Volatile
     private var cachedFiscalCountryForConfig: String? = null
+    private val chatHistory: MutableList<GeminiContent> = mutableListOf()
+    private var maxHistoryTurns: Int = FREE_MAX_HISTORY_TURNS
 
-    /** Cambia el país fiscal de referencia para el escaneo de documentos.
-     *  Recarga la [CountryFiscalConfig] correspondiente en caché. */
     suspend fun setFiscalCountry(countryCode: String) {
         val code = countryCode.uppercase()
         if (code == currentFiscalCountry && cachedFiscalConfig != null) return
@@ -73,8 +66,6 @@ class AIService @Inject constructor(
         cachedFiscalCountryForConfig = code
     }
 
-    /** Devuelve la config fiscal del país actual, cargándola en caché si es
-     *  necesario. Llamado desde suspend (processInvoiceFromImage). */
     private suspend fun currentFiscalConfig(): CountryFiscalConfig? {
         val code = currentFiscalCountry
         if (cachedFiscalCountryForConfig != code || cachedFiscalConfig == null) {
@@ -84,185 +75,129 @@ class AIService @Inject constructor(
         return cachedFiscalConfig
     }
 
-    /** Número máximo de turnos (usuario+modelo) que se conservan en la memoria. */
-    private val chatHistory = mutableListOf<com.google.ai.client.generativeai.type.Content>()
-    private var maxHistoryTurns = FREE_MAX_HISTORY_TURNS
-
-    /**
-     * Ajusta los límites de IA según el estado Premium.
-     * - Premium: memoria conversacional de hasta [PREMIUM_MAX_HISTORY_TURNS] turnos.
-     * - Gratuito: memoria limitada a [FREE_MAX_HISTORY_TURNS] turnos.
-     */
     suspend fun setPremiumLimits(isPremium: Boolean) {
         chatMutex.withLock {
             val newMax = if (isPremium) PREMIUM_MAX_HISTORY_TURNS else FREE_MAX_HISTORY_TURNS
             if (newMax != maxHistoryTurns) {
                 maxHistoryTurns = newMax
                 trimHistory()
-                rebuildSession()
             }
         }
     }
 
-    /**
-     * Configura el modelo de Gemini 3.6 Flash con la API key del usuario y las
-     * instrucciones del sistema (prompt base + personalizadas). Reinicia la
-     * sesión de chat para aplicar las nuevas instrucciones.
-     */
     suspend fun configureGemini(apiKey: String, systemInstructions: String) {
         chatMutex.withLock {
             currentApiKey = apiKey
             this.systemInstructions = systemInstructions
-
             if (apiKey.isBlank()) {
-                generativeModel = null
                 chatHistory.clear()
-                rebuildSession()
-                return@withLock
             }
-
-            val sysContent = content { text(buildSystemPrompt(systemInstructions)) }
-            generativeModel = GenerativeModel(
-                modelName = MODEL_NAME,
-                apiKey = apiKey,
-                systemInstruction = sysContent
-            )
-            rebuildSession()
         }
     }
 
-    /** Reinicia la memoria conversacional (historial) y la sesión de chat. */
     suspend fun resetChat() {
-        chatMutex.withLock {
-            chatHistory.clear()
-            rebuildSession()
-        }
+        chatMutex.withLock { chatHistory.clear() }
     }
 
     suspend fun replaceChatHistory(messages: List<ChatMessageRecord>) {
         chatMutex.withLock {
             chatHistory.clear()
-            buildChatContents(messages, maxHistoryTurns).forEach { chatHistory.add(it) }
-            rebuildSession()
+            buildChatContents(messages, maxHistoryTurns).forEach(chatHistory::add)
         }
     }
 
-    internal fun buildChatContents(messages: List<ChatMessageRecord>, limitTurns: Int): List<com.google.ai.client.generativeai.type.Content> {
+    internal fun buildChatContents(messages: List<ChatMessageRecord>, limitTurns: Int): List<GeminiContent> {
         return selectContextMessages(messages, limitTurns).map { message ->
-            content(role = message.role) {
-                text((message.contextText ?: message.visibleText).trim())
-            }
+            GeminiContent(
+                role = sanitizeRole(message.role),
+                textParts = listOf(GeminiTextPart((message.contextText ?: message.visibleText).trim()))
+            )
         }
     }
 
-    private fun rebuildSession() {
-        chatSession = generativeModel?.startChat(history = chatHistory.toList())
-    }
-
-    /**
-     * Trunca el historial cuando supera el máximo de turnos, conservando los
-     * mensajes más recientes. Se llama tras cada intercambio.
-     */
     private fun trimHistory() {
         while (chatHistory.size > maxHistoryTurns * 2) {
             chatHistory.removeAt(0)
         }
     }
 
-    /** Indica si hay una API key válida configurada. */
-    fun isConfigured(): Boolean = currentApiKey.isNotBlank() && generativeModel != null
+    fun isConfigured(): Boolean = currentApiKey.isNotBlank()
 
-    /**
-     * Valida una API key haciendo una petición mínima. Se usa al guardarla desde
-     * Ajustes para dar feedback inmediato al usuario.
-     */
     suspend fun validateApiKey(apiKey: String): Result<Unit> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext Result.failure(Exception("API key vacía"))
         try {
-            val testModel = GenerativeModel(MODEL_NAME, apiKey)
-            testModel.generateContent("ping")
+            geminiRestClient.generateContent(
+                GeminiGenerateRequest(
+                    apiKey = apiKey,
+                    systemInstruction = "Responde solo con pong.",
+                    contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart("ping"))))
+                )
+            )
             Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
 
-    // ------------------------------------------------------------------
-    // Procesamiento de comandos (chat / voz)
-    // ------------------------------------------------------------------
-
-    /**
-     * Procesa un comando usando la sesión de chat con memoria conversacional.
-     * Devuelve un AIResult ya parseado.
-     */
     suspend fun processCommand(command: String): AIResult {
         return chatMutex.withLock {
-            val chat = chatSession ?: return@withLock notConfiguredResult()
+            if (!isConfigured()) return@withLock notConfiguredResult()
             try {
-                val response = chat.sendMessage(command)
-                val responseText = response.text ?: ""
+                val responseText = geminiRestClient.generateContent(
+                    buildRequest(listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(command)))))
+                )
                 recordTurn(command, responseText)
                 parseCommandResponse(responseText)
-            } catch (e: Exception) {
-                SafeLog.e(TAG, "Error en processCommand", e)
-                AIResult(success = false, message = friendlyError(e))
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                SafeLog.e(TAG, "Error en processCommand", error)
+                AIResult(success = false, message = friendlyError(error))
             }
         }
     }
 
-    /**
-     * Versión en streaming de processCommand. Emite los fragmentos de texto a
-     * medida que el modelo los genera, para que la UI los muestre en vivo.
-     * El llamador debe parsear el texto final con [parseCommandResponse].
-     */
     fun processCommandStreaming(command: String): Flow<String> {
         val userMsg = command
         return flow {
             chatMutex.withLock {
-                val activeChat = chatSession ?: throw IllegalStateException(NO_API_KEY_MESSAGE)
+                if (!isConfigured()) throw IllegalStateException(NO_API_KEY_MESSAGE)
                 val collected = StringBuilder()
-                activeChat.sendMessageStream(userMsg).collect { resp: GenerateContentResponse ->
-                    resp.text?.takeIf { it.isNotEmpty() }?.let {
-                        collected.append(it)
-                        emit(it)
+                geminiRestClient.streamGenerateContent(
+                    buildRequest(listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(userMsg)))))
+                ).collect { chunk ->
+                    if (chunk.isNotEmpty()) {
+                        collected.append(chunk)
+                        emit(chunk)
                     }
                 }
                 recordTurn(userMsg, collected.toString())
             }
-        }.catch { e ->
-            SafeLog.e(TAG, "Error en streaming", e)
-            throw e
+        }.catch { error ->
+            if (error is CancellationException) throw error
+            SafeLog.e(TAG, "Error en streaming", error)
+            throw error
         }
     }
 
-    /** Registra un turno (usuario + respuesta) en la memoria conversacional. */
     private fun recordTurn(user: String, model: String) {
         if (user.isNotBlank()) {
-            chatHistory.add(content(role = "user") { text(user) })
+            chatHistory.add(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(user))))
         }
         if (model.isNotBlank()) {
-            chatHistory.add(content(role = "model") { text(model) })
+            chatHistory.add(GeminiContent(role = ROLE_MODEL, textParts = listOf(GeminiTextPart(model))))
         }
         trimHistory()
-        // Chat mantiene su propio historial interno. Reconstruir la sesión es
-        // necesario para que el límite gratuito/Premium se aplique también
-        // durante una conversación activa, no solo al restaurar la app.
-        rebuildSession()
     }
 
-    /** Convierte el texto crudo del modelo (recogido del stream) en un AIResult. */
     fun parseStreamingResult(responseText: String): AIResult = parseCommandResponse(responseText)
 
-    // ------------------------------------------------------------------
-    // OCR de facturas (multimodal)
-    // ------------------------------------------------------------------
-
     suspend fun processInvoiceFromImage(imageUri: Uri): AIResult {
-        val model = generativeModel ?: return notConfiguredResult()
+        if (!isConfigured()) return notConfiguredResult()
         return try {
-            val bitmap = uriToBitmap(imageUri)
-                ?: return AIResult(success = false, message = "Error al cargar la imagen")
-
+            val bitmap = uriToBitmap(imageUri) ?: return AIResult(success = false, message = "Error al cargar la imagen")
             val fiscalConfig = currentFiscalConfig()
             val prompt = if (fiscalConfig == null) {
                 UNIVERSAL_OCR_PROMPT
@@ -273,60 +208,79 @@ class AIService @Inject constructor(
                     "Sus tipos habituales de ${fiscalConfig.nombreLeyFiscal} son " +
                     "${fiscalConfig.ivaRates.joinToString()}%. No sustituyas valores legibles del documento."
             }
-
-            val response = model.generateContent(
-                content {
-                    image(bitmap)
-                    text(prompt)
-                }
+            val raw = geminiRestClient.generateContent(
+                GeminiGenerateRequest(
+                    apiKey = currentApiKey,
+                    systemInstruction = buildSystemPrompt(systemInstructions),
+                    contents = listOf(
+                        GeminiContent(
+                            role = ROLE_USER,
+                            textParts = listOf(GeminiTextPart(prompt)),
+                            inlineDataParts = listOf(bitmap.toInlineImagePart())
+                        )
+                    )
+                )
             )
-            val raw = response.text ?: ""
-            // Solo en debug: el OCR contiene datos financieros del documento.
             SafeLog.d(TAG, "OCR raw response: $raw")
             parseInvoiceResponse(raw, imageUri.toString(), currentFiscalCountry)
-        } catch (e: Exception) {
-            SafeLog.e(TAG, "Error procesando imagen", e)
-            AIResult(success = false, message = friendlyError(e))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            SafeLog.e(TAG, "Error procesando imagen", error)
+            AIResult(success = false, message = friendlyError(error))
         }
     }
-
-    // ------------------------------------------------------------------
-    // Consultas de datos
-    // ------------------------------------------------------------------
 
     suspend fun queryData(query: String): AIResult {
-        val model = generativeModel ?: return notConfiguredResult()
+        if (!isConfigured()) return notConfiguredResult()
         return try {
-            val response = model.generateContent(queryExtractionPrompt(query))
-            AIResult(success = true, message = "Consulta procesada", queryResult = response.text ?: "")
-        } catch (e: Exception) {
-            SafeLog.e(TAG, "Error en queryData", e)
-            AIResult(success = false, message = friendlyError(e))
+            val responseText = geminiRestClient.generateContent(
+                GeminiGenerateRequest(
+                    apiKey = currentApiKey,
+                    systemInstruction = buildSystemPrompt(systemInstructions),
+                    contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(queryExtractionPrompt(query)))))
+                )
+            )
+            AIResult(success = true, message = "Consulta procesada", queryResult = responseText)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            SafeLog.e(TAG, "Error en queryData", error)
+            AIResult(success = false, message = friendlyError(error))
         }
     }
 
-    // ------------------------------------------------------------------
-    // Helpers de prompts y errores
-    // ------------------------------------------------------------------
+    private fun notConfiguredResult(): AIResult = AIResult(success = false, message = NO_API_KEY_MESSAGE)
 
-    private fun notConfiguredResult(): AIResult = AIResult(
-        success = false,
-        message = NO_API_KEY_MESSAGE
+    private fun friendlyError(error: Exception): String {
+        return when {
+            error is GeminiApiException && error.statusCode in listOf(400, 401, 403) ->
+                "Tu API key de Gemini no es válida. Revísala en $SETTINGS_PATH."
+            error is GeminiApiException && error.statusCode == 429 ->
+                "Se ha alcanzado el límite de uso de la API gratuita de Gemini. Inténtalo de nuevo más tarde."
+            error is GeminiApiException && error.statusCode in 500..599 ->
+                "Gemini no responde temporalmente. Inténtalo de nuevo más tarde."
+            else -> "Error al contactar con Gemini. Inténtalo de nuevo más tarde."
+        }
+    }
+
+    private fun buildRequest(newContents: List<GeminiContent>): GeminiGenerateRequest = GeminiGenerateRequest(
+        apiKey = currentApiKey,
+        systemInstruction = buildSystemPrompt(systemInstructions),
+        contents = chatHistory.toList() + newContents
     )
 
-    private fun friendlyError(e: Exception): String {
-        val msg = e.message ?: ""
-        return when {
-            msg.contains("API key", ignoreCase = true) ||
-                    msg.contains("api_key", ignoreCase = true) ||
-                    msg.contains("permission", ignoreCase = true) ->
-                "Tu API key de Gemini no es válida. Revísala en $SETTINGS_PATH."
-            msg.contains("quota", ignoreCase = true) ||
-                    msg.contains("rate limit", ignoreCase = true) ||
-                    msg.contains("429", ignoreCase = true) ->
-                "Se ha alcanzado el límite de uso de la API gratuita de Gemini. Inténtalo de nuevo más tarde."
-            else -> "Error al contactar con Gemini: ${e.message}"
-        }
+    private fun sanitizeRole(role: String): String = if (role == ROLE_MODEL) ROLE_MODEL else ROLE_USER
+
+    private fun Bitmap.toInlineImagePart(): GeminiInlineDataPart {
+        val output = ByteArrayOutputStream()
+        val format = if (hasAlpha()) CompressFormat.PNG else CompressFormat.JPEG
+        val mimeType = if (hasAlpha()) MIME_TYPE_PNG else MIME_TYPE_JPEG
+        compress(format, IMAGE_COMPRESSION_QUALITY, output)
+        return GeminiInlineDataPart(
+            mimeType = mimeType,
+            data = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+        )
     }
 
     private fun buildSystemPrompt(userInstructions: String): String {
@@ -405,32 +359,14 @@ class AIService @Inject constructor(
         Consulta: "$query"
     """.trimIndent()
 
-    // ------------------------------------------------------------------
-    // Parseo de respuestas
-    // ------------------------------------------------------------------
-
-    private fun parseInvoiceResponse(
-        responseText: String,
-        imageUri: String,
-        fiscalCountry: String
-    ): AIResult {
+    private fun parseInvoiceResponse(responseText: String, imageUri: String, fiscalCountry: String): AIResult {
         return try {
             val json = extractJsonFromResponse(responseText)
             val tipoDoc = json.optString("tipo_documento", "").lowercase()
             val rawLower = responseText.lowercase()
-
-            // ---------- NÓMINA ----------
-            // documento salarial: empresa paga a empleado. Se guarda como
-            // Income (NO Invoice) — totalDevengado=bruto, monto/totalNeto
-            // =líquido recibido, fuente=nombre empresa.
-            // Red de seguridad: si el modelo no devolvió "nomina" pero el
-            // texto contiene keywords típicos de nómina, igual lo trata
-            // como nómina.
-            val esNomina = tipoDoc == "nomina" ||
-                NOMINA_KEYWORDS.any { rawLower.contains(it) }
+            val esNomina = tipoDoc == "nomina" || NOMINA_KEYWORDS.any { rawLower.contains(it) }
             if (esNomina) {
-                val empresa = json.optString("empresa", json.optString("proveedor", ""))
-                    .ifBlank { "Nómina" }
+                val empresa = json.optString("empresa", json.optString("proveedor", "")).ifBlank { "Nómina" }
                 val moneda = json.optString("moneda").ifBlank { "EUR" }
                 val devengado = json.optDouble("devengado", json.optDouble("total_devengado", 0.0))
                 val liquido = json.optDouble("liquido", json.optDouble("neto", json.optDouble("total_neto", 0.0)))
@@ -438,15 +374,12 @@ class AIService @Inject constructor(
                 val monto = when {
                     liquido > 0 -> liquido
                     devengado > 0 -> devengado
-                    else -> total   // fallback: si la IA sólo rellenó "total"
+                    else -> total
                 }
-                if (monto <= 0) {
-                    return AIResult(success = false, message = "No se pudo leer el importe de la nómina")
-                }
+                if (monto <= 0) return AIResult(success = false, message = "No se pudo leer el importe de la nómina")
                 val irpf = json.optDouble("retencion_irpf", 0.0)
                 val fecha = parseDate(json.optString("fecha", ""))
                 val concepto = "Nómina - $empresa"
-
                 val income = Income(
                     fecha = fecha,
                     concepto = concepto,
@@ -455,9 +388,7 @@ class AIService @Inject constructor(
                     totalNeto = if (liquido > 0) liquido else monto,
                     moneda = moneda,
                     fuente = empresa,
-                    categoria = TransactionCategories.canonicalIncomeCategory(
-                        json.optString("categoria").ifBlank { "Nómina" }
-                    ),
+                    categoria = TransactionCategories.canonicalIncomeCategory(json.optString("categoria").ifBlank { "Nómina" }),
                     ivaPercent = 0.0,
                     irpfPercent = irpf,
                     imagenUri = imageUri,
@@ -465,51 +396,27 @@ class AIService @Inject constructor(
                 )
                 return AIResult(
                     success = true,
-                    message = "Nómina procesada: $empresa — líquido ${if (liquido > 0) liquido else monto} $moneda${ if (irpf > 0) " (IRPF ${irpf}%)" else "" }",
+                    message = "Nómina procesada: $empresa — líquido ${if (liquido > 0) liquido else monto} $moneda${if (irpf > 0) " (IRPF ${irpf}%)" else ""}",
                     income = income
                 )
             }
-
-            // ---------- FACTURA / TICKET / RECIBO ----------
-            // El nombre del emisor puede llegar en cualquiera de estos
-            // campos según cómo la IA haya interpretado el documento.
-            // Cubrimos los nombres más comunes (ES/EN) para evitar
-            // falsos 'Desconocido' cuando la IA rellena, p. ej.,
-            // `merchant` (inglés), `comercio`, o `establecimiento`.
             val proveedor = listOf(
-                "proveedor", "empresa", "razon_social", "razon social",
-                "nombre", "name", "merchant", "comercio",
-                "establecimiento", "vendedor", "supplier",
-                "razon", "sociedad", "compañia", "compania"
-            )
-                .asSequence()
-                .map { json.optString(it, "").trim() }
-                .firstOrNull { it.isNotBlank() }
-                ?.let { it }
-                ?: "Desconocido"
-            val fechaStr = json.optString("fecha", "")
+                "proveedor", "empresa", "razon_social", "razon social", "nombre", "name", "merchant", "comercio",
+                "establecimiento", "vendedor", "supplier", "razon", "sociedad", "compañia", "compania"
+            ).asSequence().map { json.optString(it, "").trim() }.firstOrNull { it.isNotBlank() } ?: "Desconocido"
             val total = json.optDouble("total", 0.0)
             val moneda = json.optString("moneda").ifBlank { "EUR" }
             val ivaPercent = json.optDouble("tipo_iva", json.optDouble("iva_percent", 0.0))
             val irpfPercent = json.optDouble("retencion_irpf", 0.0)
             val nifEmisor = json.optString("nif_emisor").ifBlank { null }
-
-            // país detectado (ISO 3166-1 alpha-2) si la IA lo indica.
             val detectedPais = json.optString("pais", "").ifBlank { fiscalCountry }
-
-            val esIngresoFactura = tipoDoc.contains("emitida") ||
-                // "factura emitida" (ventas) es un ingreso, no un gasto.
-                json.optString("tipo", "").lowercase() == "ingreso"
-
-            val fecha = parseDate(fechaStr)
+            val esIngresoFactura = tipoDoc.contains("emitida") || json.optString("tipo", "").lowercase() == "ingreso"
             val invoice = Invoice(
-                fecha = fecha,
+                fecha = parseDate(json.optString("fecha", "")),
                 proveedor = proveedor,
                 tipo = if (esIngresoFactura) InvoiceType.INGRESO else InvoiceType.GASTO,
                 categoria = if (esIngresoFactura) {
-                    TransactionCategories.canonicalIncomeCategory(
-                        json.optString("categoria").ifBlank { "Ventas" }
-                    )
+                    TransactionCategories.canonicalIncomeCategory(json.optString("categoria").ifBlank { "Ventas" })
                 } else {
                     TransactionCategories.canonicalExpenseCategory(json.optString("categoria"))
                 },
@@ -523,12 +430,11 @@ class AIService @Inject constructor(
                 imagenUri = imageUri,
                 ocrRawText = responseText
             )
-
             val productsArray = json.optJSONArray("productos")
             val products = mutableListOf<Product>()
             if (productsArray != null) {
-                for (i in 0 until productsArray.length()) {
-                    val productJson = productsArray.getJSONObject(i)
+                for (index in 0 until productsArray.length()) {
+                    val productJson = productsArray.getJSONObject(index)
                     products.add(
                         Product(
                             invoiceId = 0,
@@ -541,58 +447,43 @@ class AIService @Inject constructor(
                     )
                 }
             }
-
-            val tipoLabel = if (esIngresoFactura) "Ingreso" else "Gasto"
-            AIResult(success = true, message = "$tipoLabel procesado correctamente", invoice = invoice, products = products)
-        } catch (e: Exception) {
-            AIResult(success = false, message = "Error al parsear documento: ${e.message}")
+            AIResult(
+                success = true,
+                message = if (esIngresoFactura) "Ingreso procesado correctamente" else "Gasto procesado correctamente",
+                invoice = invoice,
+                products = products
+            )
+        } catch (error: Exception) {
+            AIResult(success = false, message = "Error al parsear documento: ${error.message}")
         }
     }
 
-
     private fun extractJsonFromResponse(responseText: String): JSONObject {
         val jsonMatch = Regex("""\{[\s\S]*\}""").find(responseText)
-        val jsonString = jsonMatch?.value ?: responseText
-        return JSONObject(jsonString)
+        return JSONObject(jsonMatch?.value ?: responseText)
     }
 
     private fun parseCommandResponse(responseText: String): AIResult {
         val trimmed = responseText.trim()
-        // Si la respuesta no es un JSON, el modelo habló en modo conversacional (chat).
-        if (!trimmed.startsWith("{")) {
-            return AIResult(success = true, message = trimmed)
-        }
+        if (!trimmed.startsWith("{")) return AIResult(success = true, message = trimmed)
         return try {
             val json = extractJsonFromResponse(responseText)
-            val action = json.optString("action", "chat")
-
-            when (action) {
+            when (json.optString("action", "chat")) {
                 "add_expense" -> {
                     val descripcion = json.optString("descripcion", json.optString("concepto", ""))
                     val cantidad = json.optDouble("cantidad", 1.0)
                     val precioUnitario = json.optDouble("precio_unitario", 0.0)
                     val total = json.optDouble("total", json.optDouble("monto", cantidad * precioUnitario))
                     val moneda = json.optString("moneda").ifBlank { "EUR" }
-                    val fechaStr = json.optString("fecha", "")
-                    val fecha = parseDate(fechaStr)
-
                     val invoice = Invoice(
-                        fecha = fecha,
+                        fecha = parseDate(json.optString("fecha", "")),
                         proveedor = descripcion,
                         tipo = InvoiceType.GASTO,
                         categoria = TransactionCategories.canonicalExpenseCategory(json.optString("categoria")),
                         moneda = moneda,
                         total = total
                     )
-
-                    val product = Product(
-                        invoiceId = 0,
-                        descripcion = descripcion,
-                        cantidad = cantidad,
-                        precioUnitario = precioUnitario,
-                        subtotal = total
-                    )
-
+                    val product = Product(invoiceId = 0, descripcion = descripcion, cantidad = cantidad, precioUnitario = precioUnitario, subtotal = total)
                     AIResult(success = true, message = "Gasto agregado: $descripcion - $total $moneda", invoice = invoice, products = listOf(product))
                 }
                 "add_income" -> {
@@ -601,53 +492,37 @@ class AIService @Inject constructor(
                     val totalNeto = json.optDouble("total_neto", 0.0)
                     val monto = json.optDouble("monto", if (totalNeto > 0) totalNeto else totalDevengado)
                     val moneda = json.optString("moneda").ifBlank { "EUR" }
-                    val fechaStr = json.optString("fecha", "")
-                    val fuente = json.optString("fuente")
-                    val fecha = parseDate(fechaStr)
-
                     val income = Income(
-                        fecha = fecha,
+                        fecha = parseDate(json.optString("fecha", "")),
                         concepto = concepto,
                         monto = monto,
                         totalDevengado = if (totalDevengado > 0) totalDevengado else monto,
                         totalNeto = if (totalNeto > 0) totalNeto else monto,
                         moneda = moneda,
-                        fuente = fuente,
+                        fuente = json.optString("fuente"),
                         categoria = TransactionCategories.canonicalIncomeCategory(json.optString("categoria"))
                     )
-
                     val displayMonto = if (totalDevengado > 0 && totalNeto > 0) {
                         "Devengado: $totalDevengado $moneda / Neto: $totalNeto $moneda"
                     } else {
                         "$monto $moneda"
                     }
-
                     AIResult(success = true, message = "Ingreso agregado: $concepto - $displayMonto", income = income)
                 }
-                "query" -> {
-                    AIResult(success = true, message = "Consulta procesada", queryResult = json.toString())
-                }
-                "chat" -> {
-                    // El modelo respondió con JSON de chat; tratamos "response" como texto.
-                    val chatResponse = json.optString("response", "")
-                    AIResult(success = true, message = chatResponse)
-                }
-                else -> {
-                    // Acción desconocida: caemos en respuesta conversacional con el texto bruto.
-                    AIResult(success = true, message = trimmed)
-                }
+                "query" -> AIResult(success = true, message = "Consulta procesada", queryResult = json.toString())
+                "chat" -> AIResult(success = true, message = json.optString("response", ""))
+                else -> AIResult(success = true, message = trimmed)
             }
-        } catch (e: Exception) {
-            AIResult(success = false, message = "No se pudo interpretar la respuesta: ${e.message}")
+        } catch (error: Exception) {
+            AIResult(success = false, message = "No se pudo interpretar la respuesta: ${error.message}")
         }
     }
 
     private fun parseDate(dateStr: String): Long {
         if (dateStr.isBlank()) return System.currentTimeMillis()
         return try {
-            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-                .parse(dateStr)?.time ?: System.currentTimeMillis()
-        } catch (e: Exception) {
+            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).parse(dateStr)?.time ?: System.currentTimeMillis()
+        } catch (_: Exception) {
             System.currentTimeMillis()
         }
     }
@@ -655,37 +530,29 @@ class AIService @Inject constructor(
     private fun uriToBitmap(uri: Uri): Bitmap? {
         return try {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            context.contentResolver.openInputStream(uri)?.use { input: InputStream ->
-                BitmapFactory.decodeStream(input, null, bounds)
-            }
+            context.contentResolver.openInputStream(uri)?.use { input: InputStream -> BitmapFactory.decodeStream(input, null, bounds) }
             var sampleSize = 1
-            while (bounds.outWidth / sampleSize > MAX_IMAGE_DIMENSION ||
-                bounds.outHeight / sampleSize > MAX_IMAGE_DIMENSION
-            ) {
+            while (bounds.outWidth / sampleSize > MAX_IMAGE_DIMENSION || bounds.outHeight / sampleSize > MAX_IMAGE_DIMENSION) {
                 sampleSize *= 2
             }
             val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-            context.contentResolver.openInputStream(uri)?.use { input: InputStream ->
-                BitmapFactory.decodeStream(input, null, options)
-            }
-        } catch (e: Exception) {
+            context.contentResolver.openInputStream(uri)?.use { input: InputStream -> BitmapFactory.decodeStream(input, null, options) }
+        } catch (_: Exception) {
             null
         }
     }
 
     companion object {
         private const val TAG = "AIService"
-        private const val MODEL_NAME = "gemini-3.6-flash"
         private const val MAX_IMAGE_DIMENSION = 2048
+        private const val IMAGE_COMPRESSION_QUALITY = 90
+        private const val MIME_TYPE_JPEG = "image/jpeg"
+        private const val MIME_TYPE_PNG = "image/png"
+        private const val ROLE_USER = "user"
+        private const val ROLE_MODEL = "model"
         const val SETTINGS_PATH = "Configuración > IA"
         const val NO_API_KEY_MESSAGE =
             "Aún no has configurado tu API key de Gemini. Ve a $SETTINGS_PATH para añadir la tuya (es gratis en Google AI Studio)."
-
-        /**
-         * Prompt OCR universal: detecta automáticamente país, moneda, IVA e
-         * identificación fiscal del documento, sin asumir un país por defecto.
-         * Funciona con facturas y nóminas de cualquier país hispanohablante.
-         */
         private val UNIVERSAL_OCR_PROMPT = """
             Eres un experto en contabilidad internacional. Analiza el documento
             (factura, ticket, recibo o nómina) y devuelve SOLO un JSON válido,
@@ -775,30 +642,11 @@ class AIService @Inject constructor(
             - Base + cuota IVA deben cuadrar con el total.
             - Los precios unitarios vienen con IVA incluido en el documento.
         """.trimIndent()
-
-        /** Límites del plan gratuito. Premium los eleva vía [setPremiumLimits]. */
         const val FREE_MAX_HISTORY_TURNS = 3
         const val PREMIUM_MAX_HISTORY_TURNS = 10
-
-        /**
-         * Keywords ESPECÍFICAS de nómina (recibo salarial) que no aparecen
-         * típicamente en facturas de compra/venta. Se usan como red de
-         * seguridad en [parseInvoiceResponse] cuando el modelo no devuelve
-         * `tipo_documento: "nomina"`.
-         *
-         * NO incluir "retención", "irpf", "empresa:" — esas palabras
-         * aparecen en facturas normales (con retención IRPF de
-         * profesionales, encabezado "EMPRESA: …"). Con ellas, cualquier
-         * factura con IRPF sería falsamente clasificada como nómina →
-         * ingreso, rompiendo la contabilidad.
-         */
         private val NOMINA_KEYWORDS = listOf(
-            "nómina", "nomina", "salario", "sueldo",
-            "devengado", "líquido a percibir", "liquido a percibir",
-            "percepciones", "deducciones",
-            "base de cotización", "cotización",
-            "total devengado", "total a percibir",
-            "seguridad social"
+            "nómina", "nomina", "salario", "sueldo", "devengado", "líquido a percibir", "liquido a percibir",
+            "percepciones", "deducciones", "base de cotización", "cotización", "total devengado", "total a percibir", "seguridad social"
         )
     }
 }

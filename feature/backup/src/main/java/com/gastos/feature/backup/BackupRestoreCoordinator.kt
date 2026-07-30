@@ -37,7 +37,7 @@ class BackupRestoreCoordinator @Inject constructor() {
     ): Boolean {
         val job: Job = synchronized(monitor) {
             if (activeJob != null) return false
-            mutableState.value = BackupRestoreState.Running(sourceLabel, "Preparando backup...")
+            mutableState.value = BackupRestoreState.Running(sourceLabel, "Preparando restauración...")
             scope.launch(start = CoroutineStart.LAZY) { block() }.also { createdJob ->
                 activeJob = createdJob
                 createdJob.invokeOnCompletion { finish(createdJob) }

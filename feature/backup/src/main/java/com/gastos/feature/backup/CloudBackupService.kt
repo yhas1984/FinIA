@@ -11,6 +11,7 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import com.google.api.services.drive.model.File as DriveFile
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
@@ -49,10 +50,12 @@ class CloudBackupService @Inject constructor(
                     .setParents(Collections.singletonList(APP_DATA_FOLDER))
                     .setMimeType(BACKUP_MIME_TYPE)
                     .setAppProperties(preview.toProperties())
-                val uploaded = drive.files()
-                    .create(metadata, FileContent(BACKUP_MIME_TYPE, temporary))
-                    .setFields(FILE_FIELDS)
-                    .execute()
+                val uploaded = runInterruptible {
+                    drive.files()
+                        .create(metadata, FileContent(BACKUP_MIME_TYPE, temporary))
+                        .setFields(FILE_FIELDS)
+                        .execute()
+                }
                 pruneOldBackups(drive)
                 uploaded.toCloudBackupInfo()
             } finally {
@@ -78,6 +81,9 @@ class CloudBackupService @Inject constructor(
                 }
             }
             destination
+        } catch (error: CancellationException) {
+            destination.delete()
+            throw error
         } catch (error: Exception) {
             destination.delete()
             throw error
@@ -100,25 +106,27 @@ class CloudBackupService @Inject constructor(
             requirePremium()
             val drive = driveService()
             val backups = listBackups(drive)
-            backups.forEach { drive.files().delete(it.fileId).execute() }
+            backups.forEach { runInterruptible { drive.files().delete(it.fileId).execute() } }
             backups.size
         }
     }
 
-    private fun listBackups(drive: Drive): List<CloudBackupInfo> = drive.files().list()
-        .setSpaces(APP_DATA_FOLDER)
-        .setQ("trashed=false and appProperties has { key='$PROPERTY_KIND' and value='$PROPERTY_VALUE' }")
-        .setOrderBy("createdTime desc")
-        .setPageSize(100)
-        .setFields("files($FILE_FIELDS)")
-        .execute()
-        .files
-        .orEmpty()
-        .mapNotNull { runCatching { it.toCloudBackupInfo() }.getOrNull() }
+    private suspend fun listBackups(drive: Drive): List<CloudBackupInfo> = runInterruptible {
+        drive.files().list()
+            .setSpaces(APP_DATA_FOLDER)
+            .setQ("trashed=false and appProperties has { key='$PROPERTY_KIND' and value='$PROPERTY_VALUE' }")
+            .setOrderBy("createdTime desc")
+            .setPageSize(100)
+            .setFields("files($FILE_FIELDS)")
+            .execute()
+            .files
+            .orEmpty()
+            .mapNotNull { runCatching { it.toCloudBackupInfo() }.getOrNull() }
+    }
 
-    private fun pruneOldBackups(drive: Drive) {
+    private suspend fun pruneOldBackups(drive: Drive) {
         listBackups(drive).drop(MAX_CLOUD_BACKUPS).forEach { backup ->
-            runCatching { drive.files().delete(backup.fileId).execute() }
+            runCatching { runInterruptible { drive.files().delete(backup.fileId).execute() } }
                 .onFailure { SafeLog.w(TAG, "No se pudo retirar un backup antiguo", it) }
         }
     }

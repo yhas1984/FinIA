@@ -1,5 +1,9 @@
 package com.gastos.feature.settings
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.selection.selectable
@@ -41,6 +45,8 @@ fun SettingsScreen(
 
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var apiKeyInput by remember { mutableStateOf(uiState.settings.geminiApiKey) }
+    var showDeleteApiKeyConfirmation by remember { mutableStateOf(false) }
+    var apiKeyDialogError by remember { mutableStateOf<String?>(null) }
 
     // El campo de instrucciones se sincroniza con el estado persistido en cada
     // carga (evita que quede vacío si las settings llegan asíncronamente).
@@ -144,7 +150,7 @@ fun SettingsScreen(
 
                 if (uiState.settings.geminiApiKey.isNotEmpty()) {
                     TextButton(
-                        onClick = { viewModel.clearGeminiApiKey() },
+                        onClick = { showDeleteApiKeyConfirmation = true },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.DeleteOutline, contentDescription = null)
@@ -466,6 +472,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = {
                 showApiKeyDialog = false
+                apiKeyDialogError = null
                 viewModel.resetApiKeyValidation()
             },
             title = { Text("Gemini API Key") },
@@ -488,11 +495,11 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = {
-                            val intent = android.content.Intent(
-                                android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse("https://aistudio.google.com/apikey")
+                            apiKeyDialogError = openTrustedUrl(
+                                context = context,
+                                rawUrl = "https://aistudio.google.com/apikey",
+                                allowedHosts = setOf("aistudio.google.com")
                             )
-                            context.startActivity(intent)
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -501,6 +508,14 @@ fun SettingsScreen(
                         Text("Abrir Google AI Studio")
                     }
                     Spacer(modifier = Modifier.height(8.dp))
+                    apiKeyDialogError?.let { message ->
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                     Text(
                         text = "💡 Gemini 3.6 Flash tiene un plan gratuito suficiente para uso personal (aprox. 10 solicitudes/min y 1500/día). Consulta tus límites exactos en AI Studio.",
                         style = MaterialTheme.typography.bodySmall,
@@ -569,6 +584,7 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = {
                     showApiKeyDialog = false
+                    apiKeyDialogError = null
                     viewModel.resetApiKeyValidation()
                 }) {
                     Text("Cancelar")
@@ -580,9 +596,49 @@ fun SettingsScreen(
         LaunchedEffect(uiState.apiKeyValidation) {
             if (uiState.apiKeyValidation is ApiKeyValidation.Valid) {
                 showApiKeyDialog = false
+                apiKeyDialogError = null
                 viewModel.resetApiKeyValidation()
             }
         }
+    }
+
+    if (showDeleteApiKeyConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteApiKeyConfirmation = false },
+            title = { Text("Eliminar API key") },
+            text = { Text("Se borrará la API key de Gemini guardada en este dispositivo. Tendrás que introducirla de nuevo para seguir usando la IA.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteApiKeyConfirmation = false
+                    viewModel.clearGeminiApiKey()
+                }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteApiKeyConfirmation = false }) { Text("Cancelar") }
+            }
+        )
+    }
+}
+
+private fun openTrustedUrl(
+    context: Context,
+    rawUrl: String,
+    allowedHosts: Set<String>
+): String? {
+    val uri = Uri.parse(rawUrl)
+    val host = uri.host?.lowercase(java.util.Locale.ROOT)
+    if (uri.scheme != "https" || host !in allowedHosts) {
+        return "El enlace solicitado no es válido o ya no es seguro abrirlo."
+    }
+    val intent = Intent(Intent.ACTION_VIEW, uri)
+    if (intent.resolveActivity(context.packageManager) == null) {
+        return "No hay ninguna aplicación disponible para abrir este enlace."
+    }
+    return try {
+        context.startActivity(intent)
+        null
+    } catch (_: ActivityNotFoundException) {
+        "No se pudo abrir el enlace solicitado."
     }
 }
 

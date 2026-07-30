@@ -60,4 +60,7 @@ dependencies {
     implementation(project(":feature:ai"))
 
     testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.turbine)
 }
