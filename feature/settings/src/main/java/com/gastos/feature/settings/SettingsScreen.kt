@@ -267,6 +267,7 @@ fun SettingsScreen(
                     label = "País fiscal por defecto",
                     value = uiState.settings.defaultCountry,
                     options = com.gastos.domain.model.SUPPORTED_FISCAL_COUNTRIES,
+                    optionLabel = { code: String -> com.gastos.domain.model.fiscalCountryLabel(code) },
                     onValueChange = { viewModel.updateDefaultCountry(it) }
                 )
                 Text(
@@ -745,6 +746,7 @@ private fun SettingsDropdown(
     value: String,
     options: List<String>,
     valueMap: Map<String, String> = emptyMap(),
+    optionLabel: (String) -> String = { it },
     onValueChange: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -761,7 +763,7 @@ private fun SettingsDropdown(
         onExpandedChange = { expanded = it }
     ) {
         OutlinedTextField(
-            value = value,
+            value = optionLabel(value),
             onValueChange = {},
             readOnly = true,
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
@@ -779,7 +781,7 @@ private fun SettingsDropdown(
         ) {
             options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option) },
+                    text = { Text(optionLabel(option)) },
                     onClick = {
                         onValueChange(valueMap[option] ?: option)
                         expanded = false

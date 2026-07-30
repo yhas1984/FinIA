@@ -13,10 +13,32 @@ val SUPPORTED_CURRENCIES: List<String> = listOf(
     "BOB", "GTQ", "NIO", "PYG", "UYU", "VES"
 )
 
-/** País fiscal usado como respaldo cuando un documento no permite detectarlo. */
-val SUPPORTED_FISCAL_COUNTRIES: List<String> = listOf(
-    "ES", "MX", "AR", "CO", "CL", "PE", "EC", "US"
+private val FISCAL_COUNTRY_NAMES: Map<String, String> = linkedMapOf(
+    "ES" to "España",
+    "US" to "Estados Unidos",
+    "MX" to "México",
+    "AR" to "Argentina",
+    "CO" to "Colombia",
+    "CL" to "Chile",
+    "PE" to "Perú",
+    "EC" to "Ecuador",
+    "BO" to "Bolivia",
+    "GT" to "Guatemala",
+    "NI" to "Nicaragua",
+    "PY" to "Paraguay",
+    "UY" to "Uruguay",
+    "VE" to "Venezuela"
 )
+
+/** País fiscal usado como respaldo cuando un documento no permite detectarlo. */
+val SUPPORTED_FISCAL_COUNTRIES: List<String> = FISCAL_COUNTRY_NAMES.keys.toList()
+
+/** Devuelve el nombre del país junto con su código ISO para los selectores. */
+fun fiscalCountryLabel(code: String): String {
+    val normalizedCode: String = code.uppercase(Locale.ROOT)
+    val name: String = FISCAL_COUNTRY_NAMES[normalizedCode] ?: return normalizedCode
+    return "$name ($normalizedCode)"
+}
 
 /** Devuelve un símbolo legible para el código de moneda. */
 fun currencySymbol(code: String): String = when (code.uppercase()) {
