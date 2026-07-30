@@ -632,9 +632,6 @@ private fun openTrustedUrl(
         return "El enlace solicitado no es válido o ya no es seguro abrirlo."
     }
     val intent = Intent(Intent.ACTION_VIEW, uri)
-    if (intent.resolveActivity(context.packageManager) == null) {
-        return "No hay ninguna aplicación disponible para abrir este enlace."
-    }
     return try {
         context.startActivity(intent)
         null
