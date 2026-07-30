@@ -35,26 +35,37 @@ class LegacyBackupRestoreTest {
         val cacheDirectory = Files.createTempDirectory("finai-v1-restore").toFile()
         val context: Context = mockk {
             every { cacheDir } returns cacheDirectory
+            every { filesDir } returns cacheDirectory
+            every { packageName } returns "com.gastos.ingresos"
         }
         val dataRepository: BackupDataRepository = mockk {
             coEvery { replaceAll(any()) } just Runs
         }
         val settingsProvider: BackupSettingsProvider = mockk {
+            coEvery { snapshotSettings() } returns com.gastos.repository.RestorableSettings()
             coEvery { restoreSettings(any()) } just Runs
         }
         val imageStorage: InvoiceImageStorage = mockk {
-            coEvery { restoreManagedFiles(emptyMap()) } returns emptyMap()
-            every { pruneManagedFiles(emptySet()) } just Runs
+            coEvery { stageRestoreFiles(emptyMap()) } returns emptyMap()
+            every { activateRestoreStage() } just Runs
+            every { rollbackRestoreStage() } just Runs
+            every { finalizeRestoreStage() } just Runs
         }
         val keyStore: BackupKeyStore = mockk {
             every { remember(any(), any()) } just Runs
+        }
+        val restoreJournal: BackupRestoreJournal = mockk {
+            every { write(any(), any()) } just Runs
+            every { clear() } just Runs
+            every { read() } returns null
         }
         val service = BackupArchiveService(
             context,
             dataRepository,
             settingsProvider,
             imageStorage,
-            keyStore
+            keyStore,
+            restoreJournal
         )
         val password: CharArray = "frase-segura-v1".toCharArray()
         val archive: ByteArray = createLegacyArchive(password.copyOf())

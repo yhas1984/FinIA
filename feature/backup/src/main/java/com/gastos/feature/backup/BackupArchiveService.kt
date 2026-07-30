@@ -3,8 +3,10 @@ package com.gastos.feature.backup
 import android.content.Context
 import android.os.Build
 import com.gastos.local.database.AppDatabase
+import com.gastos.extension.SafeLog
 import com.gastos.repository.BackupDataRepository
 import com.gastos.repository.BackupSettingsProvider
+import com.gastos.repository.RestorableSettings
 import com.gastos.storage.InvoiceImageStorage
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -40,7 +42,8 @@ class BackupArchiveService @Inject constructor(
     private val dataRepository: BackupDataRepository,
     private val settingsProvider: BackupSettingsProvider,
     private val imageStorage: InvoiceImageStorage,
-    private val keyStore: BackupKeyStore
+    private val keyStore: BackupKeyStore,
+    private val restoreJournal: BackupRestoreJournal
 ) {
     private val json = Json {
         encodeDefaults = true
@@ -64,6 +67,30 @@ class BackupArchiveService @Inject constructor(
                     it.lastModified() < createdBefore
             }
             ?.forEach(File::delete)
+    }
+
+    suspend fun recoverInterruptedRestore() = withContext(Dispatchers.IO) {
+        val journal = restoreJournal.read() ?: return@withContext
+        val phase = runCatching { RestoreJournalPhase.valueOf(journal.phase) }.getOrNull() ?: run {
+            restoreJournal.clear()
+            return@withContext
+        }
+        when (phase) {
+            RestoreJournalPhase.STAGED -> {
+                imageStorage.discardRestoreStage()
+                restoreJournal.clear()
+            }
+            RestoreJournalPhase.IMAGES_SWAPPED,
+            RestoreJournalPhase.SETTINGS_RESTORED -> {
+                imageStorage.rollbackRestoreStage()
+                settingsProvider.restoreSettings(journal.previousSettings.toDomain())
+                restoreJournal.clear()
+            }
+            RestoreJournalPhase.DB_RESTORED -> {
+                imageStorage.finalizeRestoreStage()
+                restoreJournal.clear()
+            }
+        }
     }
 
     suspend fun createArchive(destination: File): BackupPreview = withContext(Dispatchers.IO) {
@@ -190,13 +217,17 @@ class BackupArchiveService @Inject constructor(
             val missingImages = restored.payload.imageFileNames - restored.images.keys
             require(missingImages.isEmpty()) { "El backup no contiene todas las imágenes declaradas." }
             check(beginCommit()) { "Restauración cancelada." }
+            val previousSettings = settingsProvider.snapshotSettings()
+            val restoredUris = imageStorage.stageRestoreFiles(restored.images)
+            restoreJournal.write(RestoreJournalPhase.STAGED, previousSettings)
             withContext(NonCancellable) {
-                val restoredUris = imageStorage.restoreManagedFiles(restored.images)
-                dataRepository.replaceAll(restored.payload.toDataset(restoredUris))
-                settingsProvider.restoreSettings(restored.payload.settings.toDomain())
-                imageStorage.pruneManagedFiles(restored.payload.imageFileNames)
-                keyStore.remember(header, dataKey)
-                BackupRestoreResult(header.toPreview(), restoredUris.size)
+                executeCommittedRestore(
+                    header = header,
+                    dataKey = dataKey,
+                    previousSettings = previousSettings,
+                    restored = restored,
+                    restoredUris = restoredUris
+                )
             }
         } finally {
             stagingDir.deleteRecursively()
@@ -213,6 +244,38 @@ class BackupArchiveService @Inject constructor(
                     it.lastModified() < createdBefore
             }
             ?.forEach(File::deleteRecursively)
+    }
+
+    private suspend fun executeCommittedRestore(
+        header: EncryptedBackupHeader,
+        dataKey: ByteArray,
+        previousSettings: RestorableSettings,
+        restored: RestoredArchive,
+        restoredUris: Map<String, String>
+    ): BackupRestoreResult {
+        try {
+            imageStorage.activateRestoreStage()
+            restoreJournal.write(RestoreJournalPhase.IMAGES_SWAPPED, previousSettings)
+            settingsProvider.restoreSettings(restored.payload.settings.toDomain())
+            restoreJournal.write(RestoreJournalPhase.SETTINGS_RESTORED, previousSettings)
+            dataRepository.replaceAll(restored.payload.toDataset(restoredUris))
+            restoreJournal.write(RestoreJournalPhase.DB_RESTORED, previousSettings)
+            runCatching { imageStorage.finalizeRestoreStage() }
+                .onFailure { SafeLog.w(TAG, "No se pudo limpiar el directorio antiguo tras restaurar", it) }
+            restoreJournal.clear()
+            runCatching { keyStore.remember(header, dataKey) }
+                .onFailure { SafeLog.w(TAG, "No se pudo recordar la clave del backup restaurado", it) }
+            return BackupRestoreResult(header.toPreview(), restoredUris.size)
+        } catch (error: Exception) {
+            val phase = restoreJournal.read()?.phase
+            if (phase == RestoreJournalPhase.DB_RESTORED.name) {
+                throw error
+            }
+            runCatching { imageStorage.rollbackRestoreStage() }
+            runCatching { settingsProvider.restoreSettings(previousSettings) }
+            restoreJournal.clear()
+            throw error
+        }
     }
 
     private suspend fun readEncryptedPayload(
@@ -405,6 +468,7 @@ class BackupArchiveService @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "BackupArchiveService"
         val MAGIC = "FINAIBK1".toByteArray(Charsets.US_ASCII)
         const val PAYLOAD_ENTRY = "backup.json"
         const val IMAGES_PREFIX = "images/"

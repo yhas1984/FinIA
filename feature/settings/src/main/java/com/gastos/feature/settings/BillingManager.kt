@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import com.android.billingclient.api.AcknowledgePurchaseParams
-import com.android.billingclient.api.AcknowledgePurchaseResponseListener
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
@@ -15,8 +14,8 @@ import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
-import com.gastos.repository.PremiumStatusProvider
 import com.gastos.extension.SafeLog
+import com.gastos.repository.PremiumStatusProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,105 +23,128 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Gestiona las compras integradas de Google Play para desbloquear FinAI Premium.
- *
- * SKU único: [PREMIUM_SKU] (pago único). El estado premium se persiste en
- * SharedPreferences y se sincroniza con las compras de Play Store al conectar.
- */
 @Singleton
 class BillingManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) : PurchasesUpdatedListener, BillingClientStateListener, PremiumStatusProvider {
-
     companion object {
         private const val TAG = "BillingManager"
         private const val PREFS_NAME = "finai_billing"
         private const val KEY_IS_PREMIUM = "is_premium"
         private const val KEY_PLAY_PREMIUM = "play_premium"
         private const val KEY_DEBUG_PREMIUM = "debug_premium"
+        private const val KEY_LAST_VERIFIED_AT = "last_verified_at"
+        private const val KEY_LAST_SYNC_AT = "last_sync_at"
+        private const val KEY_HAS_PENDING_PURCHASE = "has_pending_purchase"
+        private const val KEY_ACK_TOKEN = "ack_token"
+        private const val KEY_ACK_ATTEMPT = "ack_attempt"
+        private const val KEY_ACK_NEXT_AT = "ack_next_at"
+        private const val AUTO_REFRESH_DEBOUNCE_MS = 5_000L
+        private const val STALE_VERIFICATION_MS = 24L * 60L * 60L * 1000L
         const val PREMIUM_SKU = "finai_premium"
 
-        internal fun resolvePremium(
-            isDebugBuild: Boolean,
-            playEntitled: Boolean,
-            debugOverride: Boolean
-        ): Boolean = playEntitled || (isDebugBuild && debugOverride)
+        internal fun resolvePremium(isDebugBuild: Boolean, playEntitled: Boolean, debugOverride: Boolean): Boolean {
+            return playEntitled || (isDebugBuild && debugOverride)
+        }
+
+        internal fun nextAckDelayMillis(attempt: Int): Long = when (attempt.coerceAtLeast(0)) {
+            0 -> 60_000L
+            1 -> 5 * 60_000L
+            2 -> 15 * 60_000L
+            3 -> 60 * 60_000L
+            4 -> 6 * 60 * 60_000L
+            else -> 24 * 60 * 60_000L
+        }
+
+        internal fun buildVerificationNotice(playEntitled: Boolean, lastVerifiedAt: Long?, hasFailure: Boolean): String? {
+            if (!hasFailure || !playEntitled) return null
+            val verifiedAt = lastVerifiedAt ?: return "No se pudo verificar Premium con Google Play. Se conserva el acceso actual."
+            return if (System.currentTimeMillis() - verifiedAt > STALE_VERIFICATION_MS) {
+                "Premium sigue activo, pero Google Play no se pudo verificar desde hace tiempo. Abre la app con conexión para resincronizar."
+            } else {
+                "Premium sigue activo. Google Play no pudo verificarse ahora y FinAI conservará el acceso actual temporalmente."
+            }
+        }
     }
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-
-    /** `true` solo en builds depurables (debug), `false` en release. */
-    val isDebugBuild: Boolean =
-        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-
+    val isDebugBuild: Boolean = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     private val legacyPremium = prefs.getBoolean(KEY_IS_PREMIUM, false)
     private var playEntitled: Boolean = prefs.getBoolean(KEY_PLAY_PREMIUM, legacyPremium)
-    private var debugOverride: Boolean = prefs.getBoolean(
-        KEY_DEBUG_PREMIUM,
-        if (isDebugBuild) legacyPremium else false
-    )
-
+    private var debugOverride: Boolean = prefs.getBoolean(KEY_DEBUG_PREMIUM, if (isDebugBuild) legacyPremium else false)
+    private var isStartingConnection: Boolean = false
+    private var lastAutomaticRefreshAt: Long = 0L
     private val _isPremium = MutableStateFlow(resolvePremium(isDebugBuild, playEntitled, debugOverride))
     override val isPremium: StateFlow<Boolean> = _isPremium.asStateFlow()
-
     private val _productDetails = MutableStateFlow<ProductDetails?>(null)
     val productDetails: StateFlow<ProductDetails?> = _productDetails.asStateFlow()
-
     private val _isConnecting = MutableStateFlow(false)
     val isConnecting: StateFlow<Boolean> = _isConnecting.asStateFlow()
-
     private val _purchaseError = MutableStateFlow<String?>(null)
     val purchaseError: StateFlow<String?> = _purchaseError.asStateFlow()
-
+    private val _hasPendingPurchase = MutableStateFlow(prefs.getBoolean(KEY_HAS_PENDING_PURCHASE, false))
+    val hasPendingPurchase: StateFlow<Boolean> = _hasPendingPurchase.asStateFlow()
+    private val _billingNotice = MutableStateFlow<String?>(null)
+    val billingNotice: StateFlow<String?> = _billingNotice.asStateFlow()
     private var billingClient: BillingClient? = null
 
     init {
+        refreshBillingNotice(hasFailure = false)
         startConnection()
     }
 
-    /** Conecta el BillingClient con Play Billing. */
     fun startConnection() {
         if (billingClient == null) {
             billingClient = BillingClient.newBuilder(context)
                 .setListener(this)
-                // Billing 8.0+: enablePendingPurchases requiere PendingPurchasesParams.
-                // FinAI solo vende productos únicos (INAPP), así que habilitamos
-                // los one-time products (no hace falta "enablePrepaidPlans").
-                .enablePendingPurchases(
-                    PendingPurchasesParams.newBuilder()
-                        .enableOneTimeProducts()
-                        .build()
-                )
+                .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
+                .enableAutoServiceReconnection()
                 .build()
         }
-        if (billingClient?.isReady == true) return
+        if (billingClient?.isReady == true || isStartingConnection) return
+        isStartingConnection = true
         _isConnecting.value = true
         billingClient?.startConnection(this)
     }
 
-    // ---------------- BillingClientStateListener ----------------
-
     override fun onBillingSetupFinished(billingResult: BillingResult) {
+        isStartingConnection = false
         _isConnecting.value = false
         if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
             SafeLog.d(TAG, "BillingClient conectado")
-            queryProductDetails()
-            queryPurchases()
+            refreshNow(force = true)
         } else {
             SafeLog.e(TAG, "Error conectando billing: ${billingResult.responseCode}")
             _purchaseError.value = "No se pudo conectar con Google Play (código ${billingResult.responseCode})."
+            refreshBillingNotice(hasFailure = playEntitled)
         }
     }
 
     override fun onBillingServiceDisconnected() {
         SafeLog.w(TAG, "BillingClient desconectado")
+        isStartingConnection = false
         _isConnecting.value = false
+        refreshBillingNotice(hasFailure = playEntitled)
     }
 
-    // ---------------- Detalles del producto ----------------
+    fun refreshNow(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastAutomaticRefreshAt < AUTO_REFRESH_DEBOUNCE_MS) return
+        if (!force) lastAutomaticRefreshAt = now
+        val client = billingClient
+        if (client == null || !client.isReady) {
+            startConnection()
+            return
+        }
+        queryProductDetails()
+        queryPurchases()
+        retryPendingAcknowledgeIfDue(force = force)
+    }
 
-    /** Consulta los detalles (precio, título) del producto premium. */
+    fun onAppResumed() {
+        refreshNow(force = false)
+    }
+
     fun queryProductDetails() {
         val client = billingClient ?: return
         val params = QueryProductDetailsParams.newBuilder()
@@ -135,9 +157,6 @@ class BillingManager @Inject constructor(
                 )
             )
             .build()
-
-        // Billing 8.0+: el callback recibe QueryProductDetailsResult (wrapper
-        // con productDetailsList + unfetchedProductList), no la lista directa.
         client.queryProductDetailsAsync(params) { result, queryResult ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 _productDetails.value = queryResult.productDetailsList.firstOrNull { it.productId == PREMIUM_SKU }
@@ -150,12 +169,13 @@ class BillingManager @Inject constructor(
         }
     }
 
-    // ---------------- Compras ----------------
-
-    /** Inicia el flujo de compra de Premium desde una Activity. */
     fun launchBillingFlow(activity: Activity) {
         val client = billingClient
         val details = _productDetails.value
+        if (_hasPendingPurchase.value) {
+            _billingNotice.value = "Hay una compra pendiente en Google Play. Espera a que se confirme antes de intentar otra vez."
+            return
+        }
         if (client == null || !client.isReady) {
             _purchaseError.value = "Play Billing no está listo. Inténtalo de nuevo."
             startConnection()
@@ -166,105 +186,168 @@ class BillingManager @Inject constructor(
             queryProductDetails()
             return
         }
-
-        // Para pagos únicos (INAPP) no se requiere offerToken; basta con
-        // los detalles del producto.
         val productDetailsParams = BillingFlowParams.ProductDetailsParams.newBuilder()
             .setProductDetails(details)
             .build()
-
         val flowParams = BillingFlowParams.newBuilder()
             .setProductDetailsParamsList(listOf(productDetailsParams))
             .build()
-
         val result = client.launchBillingFlow(activity, flowParams)
         if (result.responseCode != BillingClient.BillingResponseCode.OK) {
             _purchaseError.value = "No se pudo iniciar la compra (código ${result.responseCode})."
         }
     }
 
-    /** Llamado por Play Billing cuando una compra cambia de estado. */
-    override fun onPurchasesUpdated(
-        billingResult: BillingResult,
-        purchases: MutableList<Purchase>?
-    ) {
+    override fun onPurchasesUpdated(billingResult: BillingResult, purchases: MutableList<Purchase>?) {
         when (billingResult.responseCode) {
             BillingClient.BillingResponseCode.OK -> {
-                purchases?.forEach { handlePurchase(it) }
+                if (purchases.isNullOrEmpty()) {
+                    queryPurchases()
+                } else {
+                    purchases.forEach(::handlePurchase)
+                }
             }
-            BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> {
-                // Ya comprado: re-sincroniza el estado.
-                queryPurchases()
-            }
-            BillingClient.BillingResponseCode.USER_CANCELED -> {
-                _purchaseError.value = "Compra cancelada."
-            }
-            else -> {
-                _purchaseError.value = "Error en la compra (código ${billingResult.responseCode})."
-            }
+            BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> queryPurchases()
+            BillingClient.BillingResponseCode.USER_CANCELED -> _purchaseError.value = "Compra cancelada."
+            else -> _purchaseError.value = "Error en la compra (código ${billingResult.responseCode})."
         }
     }
 
-    /** Confirma (acknowledge) una compra y marca Premium como activo. */
-    private fun handlePurchase(purchase: Purchase) {
-        if (purchase.products.contains(PREMIUM_SKU) &&
-            purchase.purchaseState == Purchase.PurchaseState.PURCHASED
-        ) {
-            // Marca premium inmediatamente.
-            setPlayEntitled(true)
-
-            // Confirma la compra para que no sea reembolsada automáticamente.
-            if (!purchase.isAcknowledged) {
-                val client = billingClient ?: return
-                val params = AcknowledgePurchaseParams.newBuilder()
-                    .setPurchaseToken(purchase.purchaseToken)
-                    .build()
-                client.acknowledgePurchase(params, AcknowledgePurchaseResponseListener { result ->
-                    if (result.responseCode != BillingClient.BillingResponseCode.OK) {
-                        SafeLog.w(TAG, "Error acknowledge: ${result.responseCode}")
-                        _purchaseError.value = "La compra está activa, pero falta confirmarla con Google Play. Se reintentará."
-                    }
-                })
-            }
-        }
-    }
-
-    /** Sincroniza el estado premium con las compras registradas en Play Store. */
     fun queryPurchases() {
         val client = billingClient ?: return
         if (!client.isReady) return
-
-        val params = QueryPurchasesParams.newBuilder()
-            .setProductType(BillingClient.ProductType.INAPP)
-            .build()
-
+        val params = QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build()
         client.queryPurchasesAsync(params) { result, purchasesList ->
             if (result.responseCode != BillingClient.BillingResponseCode.OK) {
                 SafeLog.w(TAG, "No se pudieron consultar compras: ${result.responseCode}")
-                _purchaseError.value = "No se pudo verificar Premium con Google Play. Se conserva el estado actual."
+                _purchaseError.value = null
+                updateLastSyncAt()
+                refreshBillingNotice(hasFailure = true)
                 return@queryPurchasesAsync
             }
             _purchaseError.value = null
-            val owns = purchasesList.any {
-                it.products.contains(PREMIUM_SKU) &&
-                    it.purchaseState == Purchase.PurchaseState.PURCHASED
-            }
-            if (owns) {
-                purchasesList.forEach(::handlePurchase)
-            } else {
-                setPlayEntitled(false)
+            updateLastSyncAt()
+            val matching = purchasesList.filter { it.products.contains(PREMIUM_SKU) }
+            val purchased = matching.firstOrNull { it.purchaseState == Purchase.PurchaseState.PURCHASED }
+            val pending = matching.firstOrNull { it.purchaseState == Purchase.PurchaseState.PENDING }
+            when {
+                purchased != null -> handlePurchase(purchased)
+                pending != null -> setPendingPurchase(true)
+                else -> revokePremium()
             }
         }
     }
 
-    private fun setPlayEntitled(value: Boolean) {
+    private fun handlePurchase(purchase: Purchase) {
+        when (purchase.purchaseState) {
+            Purchase.PurchaseState.PENDING -> {
+                setPendingPurchase(true)
+                setPlayEntitled(false, verified = false)
+            }
+            Purchase.PurchaseState.PURCHASED -> {
+                setPendingPurchase(false)
+                setPlayEntitled(true, verified = true)
+                if (purchase.isAcknowledged) {
+                    clearAckRetryState()
+                    refreshBillingNotice(hasFailure = false)
+                } else {
+                    scheduleAckRetry(purchase.purchaseToken, attempt = 0, nextAt = System.currentTimeMillis())
+                    retryPendingAcknowledgeIfDue(force = true)
+                }
+            }
+        }
+    }
+
+    private fun retryPendingAcknowledgeIfDue(force: Boolean) {
+        val client = billingClient ?: return
+        if (!client.isReady) return
+        val token = prefs.getString(KEY_ACK_TOKEN, null) ?: return
+        val attempt = prefs.getInt(KEY_ACK_ATTEMPT, 0)
+        val nextAt = prefs.getLong(KEY_ACK_NEXT_AT, 0L)
+        if (!force && System.currentTimeMillis() < nextAt) return
+        val params = AcknowledgePurchaseParams.newBuilder().setPurchaseToken(token).build()
+        client.acknowledgePurchase(params) { result ->
+            when (result.responseCode) {
+                BillingClient.BillingResponseCode.OK -> {
+                    clearAckRetryState()
+                    refreshBillingNotice(hasFailure = false)
+                }
+                BillingClient.BillingResponseCode.ITEM_NOT_OWNED -> {
+                    clearAckRetryState()
+                    queryPurchases()
+                }
+                BillingClient.BillingResponseCode.ERROR,
+                BillingClient.BillingResponseCode.SERVICE_DISCONNECTED,
+                BillingClient.BillingResponseCode.SERVICE_UNAVAILABLE,
+                BillingClient.BillingResponseCode.NETWORK_ERROR -> {
+                    val nextAttempt = attempt + 1
+                    scheduleAckRetry(token, nextAttempt, System.currentTimeMillis() + nextAckDelayMillis(attempt))
+                    _billingNotice.value = "La compra está activa, pero Google Play aún no la ha confirmado. FinAI lo reintentará automáticamente."
+                }
+                else -> {
+                    val nextAttempt = attempt + 1
+                    scheduleAckRetry(token, nextAttempt, System.currentTimeMillis() + nextAckDelayMillis(attempt))
+                    _billingNotice.value = "La compra está activa, pero Google Play aún no la ha confirmado. FinAI lo reintentará automáticamente."
+                }
+            }
+        }
+    }
+
+    private fun revokePremium() {
+        clearAckRetryState()
+        setPendingPurchase(false)
+        setPlayEntitled(false, verified = false)
+        refreshBillingNotice(hasFailure = false)
+    }
+
+    private fun setPlayEntitled(value: Boolean, verified: Boolean) {
         playEntitled = value
-        prefs.edit()
+        val editor = prefs.edit()
             .putBoolean(KEY_PLAY_PREMIUM, value)
             .putBoolean(KEY_IS_PREMIUM, value)
-            .apply()
+        if (verified && value) {
+            editor.putLong(KEY_LAST_VERIFIED_AT, System.currentTimeMillis())
+        }
+        editor.apply()
         refreshPremiumState()
     }
+
+    private fun setPendingPurchase(value: Boolean) {
+        prefs.edit().putBoolean(KEY_HAS_PENDING_PURCHASE, value).apply()
+        _hasPendingPurchase.value = value
+        refreshBillingNotice(hasFailure = false)
+    }
+
+    private fun scheduleAckRetry(token: String, attempt: Int, nextAt: Long) {
+        prefs.edit()
+            .putString(KEY_ACK_TOKEN, token)
+            .putInt(KEY_ACK_ATTEMPT, attempt)
+            .putLong(KEY_ACK_NEXT_AT, nextAt)
+            .apply()
+        _billingNotice.value = "La compra está activa, pero Google Play aún no la ha confirmado. FinAI lo reintentará automáticamente."
+    }
+
+    private fun clearAckRetryState() {
+        prefs.edit()
+            .remove(KEY_ACK_TOKEN)
+            .remove(KEY_ACK_ATTEMPT)
+            .remove(KEY_ACK_NEXT_AT)
+            .apply()
+    }
+
+    private fun refreshBillingNotice(hasFailure: Boolean) {
+        _billingNotice.value = when {
+            _hasPendingPurchase.value -> "Compra pendiente en Google Play. FinAI activará Premium cuando Google la confirme."
+            prefs.contains(KEY_ACK_TOKEN) -> "La compra está activa, pero Google Play aún no la ha confirmado. FinAI lo reintentará automáticamente."
+            else -> buildVerificationNotice(playEntitled = playEntitled, lastVerifiedAt = lastVerifiedAt(), hasFailure = hasFailure)
+        }
+    }
+
+    private fun updateLastSyncAt() {
+        prefs.edit().putLong(KEY_LAST_SYNC_AT, System.currentTimeMillis()).apply()
+    }
+
+    private fun lastVerifiedAt(): Long? = prefs.getLong(KEY_LAST_VERIFIED_AT, 0L).takeIf { it > 0L }
 
     private fun setDebugOverride(value: Boolean) {
         debugOverride = value
@@ -276,23 +359,18 @@ class BillingManager @Inject constructor(
         _isPremium.value = resolvePremium(isDebugBuild, playEntitled, debugOverride)
     }
 
-    /**
-     * SOLO builds debug: fuerza el estado Premium para probar las funciones
-     * de pago sin una compra real. En release es un no-op.
-     */
     fun debugSetPremium(value: Boolean) {
         if (!isDebugBuild) return
         setDebugOverride(value)
     }
 
-    /** Limpia el último error de compra mostrado en UI. */
     fun clearError() {
         _purchaseError.value = null
     }
 
-    /** Fin de sesión del billing client (llamar si fuera necesario). */
     fun endConnection() {
         billingClient?.endConnection()
         billingClient = null
+        isStartingConnection = false
     }
 }

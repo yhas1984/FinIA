@@ -12,6 +12,9 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -41,6 +44,17 @@ class MainActivity : ComponentActivity() {
         setContent {
             val settingsViewModel: SettingsViewModel = viewModel()
             val uiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
+            val lifecycleOwner = LocalLifecycleOwner.current
+
+            DisposableEffect(lifecycleOwner, settingsViewModel) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        settingsViewModel.onAppResumed()
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
 
             GastosEIngresosTheme(darkMode = uiState.settings.darkMode) {
                 FinAIApp(defaultCurrency = uiState.settings.defaultCurrency)

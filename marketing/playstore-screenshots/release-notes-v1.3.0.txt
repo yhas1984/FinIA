@@ -1,0 +1,7 @@
+# FinAI · Release notes · v1.3.0 (versionCode 8)
+
+- Restauración cifrada más segura y robusta.
+- Mejoras en Premium y verificación con Google Play.
+- Backup automático en Drive con manejo de errores más claro.
+- Nuevo botón para restaurar copias Premium desde Drive.
+- Mejoras de estabilidad, privacidad y experiencia de usuario.

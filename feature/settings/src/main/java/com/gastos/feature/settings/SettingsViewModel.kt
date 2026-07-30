@@ -33,6 +33,8 @@ data class SettingsUiState(
     val productDetails: ProductDetails? = null,
     val isBillingConnecting: Boolean = false,
     val purchaseError: String? = null,
+    val hasPendingPurchase: Boolean = false,
+    val billingNotice: String? = null,
     val isDebug: Boolean = false,
     val ratesAsOf: Long? = null,
     val ratesCount: Int = 0,
@@ -149,6 +151,16 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(purchaseError = err) }
             }
         }
+        viewModelScope.launch {
+            billingManager.hasPendingPurchase.collect { hasPending ->
+                _uiState.update { it.copy(hasPendingPurchase = hasPending) }
+            }
+        }
+        viewModelScope.launch {
+            billingManager.billingNotice.collect { notice ->
+                _uiState.update { it.copy(billingNotice = notice) }
+            }
+        }
     }
 
     // ---------------- API key ----------------
@@ -223,9 +235,11 @@ class SettingsViewModel @Inject constructor(
     /** Reintenta la conexión con Play Billing y refresca compras. */
     fun refreshBilling() {
         billingManager.clearError()
-        billingManager.startConnection()
-        billingManager.queryProductDetails()
-        billingManager.queryPurchases()
+        billingManager.refreshNow(force = true)
+    }
+
+    fun onAppResumed() {
+        billingManager.onAppResumed()
     }
 
     fun clearPurchaseError() {

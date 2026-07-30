@@ -1,5 +1,7 @@
 package com.gastos.feature.invoices
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.*
@@ -20,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.TransactionCategories
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -36,6 +39,7 @@ fun InvoicesScreen(
     var showFilterMenu by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -198,7 +202,14 @@ fun InvoicesScreen(
                             onRetryDrive = { viewModel.retryDriveUpload(invoice) },
                             onOpenDrive = {
                                 invoice.driveWebViewLink?.let { link ->
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
+                                    openTrustedUrl(
+                                        context = context,
+                                        rawUrl = link,
+                                        allowedHosts = setOf("drive.google.com", "docs.google.com"),
+                                        onError = { message ->
+                                            coroutineScope.launch { snackbarHostState.showSnackbar(message) }
+                                        }
+                                    )
                                 }
                             },
                             isPremium = uiState.isPremium,
@@ -284,10 +295,13 @@ private fun InvoiceCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text(TransactionCategories.displayCategory(invoice.categoria)) }
-                    )
+                    Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant) {
+                        Text(
+                            text = TransactionCategories.displayCategory(invoice.categoria),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
@@ -408,5 +422,29 @@ private fun InvoiceCard(
                 }
             }
         )
+    }
+}
+
+private fun openTrustedUrl(
+    context: Context,
+    rawUrl: String,
+    allowedHosts: Set<String>,
+    onError: (String) -> Unit
+) {
+    val uri = Uri.parse(rawUrl)
+    val host = uri.host?.lowercase(Locale.ROOT)
+    if (uri.scheme != "https" || host !in allowedHosts) {
+        onError("El enlace guardado no es válido o ya no es seguro abrirlo.")
+        return
+    }
+    val intent = Intent(Intent.ACTION_VIEW, uri)
+    if (intent.resolveActivity(context.packageManager) == null) {
+        onError("No hay ninguna aplicación disponible para abrir este enlace.")
+        return
+    }
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        onError("No se pudo abrir el enlace solicitado.")
     }
 }

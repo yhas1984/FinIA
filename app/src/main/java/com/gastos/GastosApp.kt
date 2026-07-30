@@ -32,6 +32,7 @@ class GastosApp : Application(), Configuration.Provider {
         val startupTime = System.currentTimeMillis()
         applicationScope.launch {
             runCatching { fiscalConfigRepository.insertDefaultConfigs() }
+            runCatching { backupArchiveService.recoverInterruptedRestore() }
             runCatching { backupArchiveService.cleanupTemporaryFiles(startupTime) }
         }
         cloudBackupScheduler.reconcile()

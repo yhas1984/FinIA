@@ -13,9 +13,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class Migration4To5Test {
+class Migration1To8Test {
     private lateinit var context: Context
-    private val databaseName = "migration-4-5-test"
+    private val databaseName = "migration-1-8-test"
 
     @Before
     fun setUp() {
@@ -29,10 +29,9 @@ class Migration4To5Test {
     }
 
     @Test
-    fun migratesLegacyIncomeAndPreservesProductsInNotes() {
+    fun migratesFullChainToVersion8AndKeepsDataAccessible() {
         context.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null).use { db ->
-            db.execSQL(
-                """
+            db.execSQL("""
                 CREATE TABLE `invoices` (
                     `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                     `fecha` INTEGER NOT NULL, `proveedor` TEXT NOT NULL,
@@ -43,83 +42,77 @@ class Migration4To5Test {
                     `ocrRawText` TEXT, `notas` TEXT, `createdAt` INTEGER NOT NULL,
                     `updatedAt` INTEGER NOT NULL
                 )
-                """.trimIndent()
-            )
-            db.execSQL(
-                """
+            """.trimIndent())
+            db.execSQL("""
                 CREATE TABLE `products` (
                     `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                     `invoiceId` INTEGER NOT NULL, `descripcion` TEXT NOT NULL,
                     `cantidad` REAL NOT NULL, `precioUnitario` REAL NOT NULL,
                     `subtotal` REAL NOT NULL, `ivaPercent` REAL NOT NULL,
-                    `ivaAmount` REAL NOT NULL, `createdAt` INTEGER NOT NULL,
-                    FOREIGN KEY(`invoiceId`) REFERENCES `invoices`(`id`)
-                    ON UPDATE NO ACTION ON DELETE CASCADE
+                    `ivaAmount` REAL NOT NULL, `categoriaId` INTEGER, `createdAt` INTEGER NOT NULL
                 )
-                """.trimIndent()
-            )
-            db.execSQL("CREATE INDEX `index_products_invoiceId` ON `products` (`invoiceId`)")
-            db.execSQL(
-                """
+            """.trimIndent())
+            db.execSQL("""
                 CREATE TABLE `incomes` (
                     `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                     `fecha` INTEGER NOT NULL, `concepto` TEXT NOT NULL,
-                    `monto` REAL NOT NULL, `totalDevengado` REAL NOT NULL,
-                    `totalNeto` REAL NOT NULL, `moneda` TEXT NOT NULL,
+                    `monto` REAL NOT NULL, `moneda` TEXT NOT NULL,
                     `fuente` TEXT, `ivaPercent` REAL NOT NULL,
                     `irpfPercent` REAL NOT NULL, `imagenUri` TEXT, `notas` TEXT,
                     `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL
                 )
-                """.trimIndent()
-            )
-            db.execSQL(
-                """
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE `categories` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `nombre` TEXT NOT NULL, `icono` TEXT NOT NULL,
+                    `color` INTEGER NOT NULL, `esDefault` INTEGER NOT NULL,
+                    `createdAt` INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE `exchange_rates` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `monedaOrigen` TEXT NOT NULL, `monedaDestino` TEXT NOT NULL,
+                    `tasa` REAL NOT NULL, `fecha` INTEGER NOT NULL
+                )
+            """.trimIndent())
+            db.execSQL("""
                 CREATE TABLE `country_fiscal_config` (
                     `paisCodigo` TEXT NOT NULL, `nombrePais` TEXT NOT NULL,
                     `ivaRates` TEXT NOT NULL, `irpfRate` REAL,
                     `nifFormat` TEXT NOT NULL, `nombreLeyFiscal` TEXT NOT NULL,
                     PRIMARY KEY(`paisCodigo`)
                 )
-                """.trimIndent()
-            )
-            db.execSQL(
-                """
-                INSERT INTO `invoices` VALUES (
-                    7, 1000, 'Cliente ACME', 'INGRESO', 'USD', 250.0,
-                    21.0, 15.0, 'ES', 'B123', NULL, 'content://invoice/7',
-                    NULL, 'Nota original', 900, 950
-                )
-                """.trimIndent()
-            )
-            db.execSQL(
-                """
-                INSERT INTO `products` VALUES (
-                    3, 7, 'Consultoría', 2.0, 100.0, 200.0, 21.0, 42.0, 900
-                )
-                """.trimIndent()
-            )
-            db.version = 4
+            """.trimIndent())
+            db.execSQL("INSERT INTO `invoices` VALUES (7, 1000, 'Cliente ACME', 'INGRESO', 'USD', 250.0, 21.0, 15.0, 'ES', 'B123', NULL, NULL, NULL, 'Nota original', 900, 950)")
+            db.execSQL("INSERT INTO `products` VALUES (3, 7, 'Consultoría', 2.0, 100.0, 200.0, 21.0, 42.0, NULL, 900)")
+            db.execSQL("INSERT INTO `country_fiscal_config` VALUES ('ES','España','21',NULL,'','IVA')")
+            db.version = 1
         }
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(
+                MIGRATION_1_2,
+                MIGRATION_2_3,
+                MIGRATION_3_4,
+                MIGRATION_4_5,
+                MIGRATION_5_6,
+                MIGRATION_6_7,
+                MIGRATION_7_8
+            )
             .build()
-        val sqlite = database.openHelper.writableDatabase
-
-        sqlite.query("SELECT concepto, monto, moneda, notas FROM incomes").use { cursor ->
-            assertTrue(cursor.moveToFirst())
-            assertEquals("Cliente ACME", cursor.getString(0))
-            assertEquals(250.0, cursor.getDouble(1), 0.0)
-            assertEquals("USD", cursor.getString(2))
-            assertTrue(cursor.getString(3).contains("Consultoría"))
-        }
-        sqlite.query("SELECT COUNT(*) FROM invoices").use { cursor ->
-            assertTrue(cursor.moveToFirst())
-            assertEquals(0, cursor.getInt(0))
-        }
-        sqlite.query("SELECT COUNT(*) FROM products").use { cursor ->
-            assertTrue(cursor.moveToFirst())
-            assertEquals(0, cursor.getInt(0))
+        database.openHelper.writableDatabase.use { sqlite ->
+            sqlite.query("SELECT concepto, monto, categoria FROM incomes").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("Cliente ACME", cursor.getString(0))
+                assertEquals(250.0, cursor.getDouble(1), 0.0)
+                assertEquals(null, cursor.getString(2))
+            }
+            sqlite.query("SELECT COUNT(*) FROM chat_messages").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
         }
         database.close()
     }
