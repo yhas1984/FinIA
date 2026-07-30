@@ -49,6 +49,8 @@ dependencies {
     ksp(libs.hilt.work.compiler)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.tink.android)
+    implementation(libs.bouncycastle.provider)
 
     // Room types used by BackupService through AppDatabase
     implementation(libs.room.runtime)

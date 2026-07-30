@@ -8,7 +8,12 @@ import com.gastos.repository.BackupSettingsProvider
 import com.gastos.storage.InvoiceImageStorage
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.BufferedInputStream
@@ -21,8 +26,6 @@ import java.io.OutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
-import javax.crypto.CipherInputStream
-import javax.crypto.CipherOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -44,6 +47,7 @@ class BackupArchiveService @Inject constructor(
         ignoreUnknownKeys = true
         explicitNulls = true
     }
+    private val archiveMutex: Mutex = Mutex()
 
     fun isPasswordConfigured(): Boolean = keyStore.isConfigured()
 
@@ -51,14 +55,31 @@ class BackupArchiveService @Inject constructor(
         keyStore.configure(password)
     }
 
+    suspend fun cleanupTemporaryFiles(createdBefore: Long) = withContext(Dispatchers.IO) {
+        cleanupRestoreDirectories(createdBefore)
+        context.cacheDir.listFiles()
+            ?.filter {
+                it.isFile &&
+                    it.name.startsWith(CLOUD_RESTORE_FILE_PREFIX) &&
+                    it.lastModified() < createdBefore
+            }
+            ?.forEach(File::delete)
+    }
+
     suspend fun createArchive(destination: File): BackupPreview = withContext(Dispatchers.IO) {
-        destination.parentFile?.mkdirs()
-        destination.outputStream().use { output -> createArchive(output) }
+        archiveMutex.withLock {
+            destination.parentFile?.mkdirs()
+            destination.outputStream().use { output -> createArchiveLocked(output) }
+        }
     }
 
     suspend fun createArchive(output: OutputStream): BackupPreview = withContext(Dispatchers.IO) {
+        archiveMutex.withLock { createArchiveLocked(output) }
+    }
+
+    private suspend fun createArchiveLocked(output: OutputStream): BackupPreview {
         val material = keyStore.requireMaterial()
-        try {
+        return try {
             val dataset = dataRepository.snapshot()
             val settings = settingsProvider.snapshotSettings()
             val createdAt = System.currentTimeMillis()
@@ -84,7 +105,6 @@ class BackupArchiveService @Inject constructor(
                 "El backup supera el tamaño máximo permitido."
             }
 
-            val payloadIv = BackupCrypto.randomIv()
             val appVersion = appVersion()
             val header = EncryptedBackupHeader(
                 formatVersion = BACKUP_FORMAT_VERSION,
@@ -99,13 +119,16 @@ class BackupArchiveService @Inject constructor(
                 kdfIterations = material.iterations,
                 salt = BackupCrypto.encode(material.salt),
                 keyIv = BackupCrypto.encode(material.keyIv),
-                wrappedKey = BackupCrypto.encode(material.wrappedKey),
-                payloadIv = BackupCrypto.encode(payloadIv)
+                wrappedKey = BackupCrypto.encode(material.wrappedKey)
             )
             val headerBytes = json.encodeToString(header).toByteArray(Charsets.UTF_8)
             writeHeader(output, headerBytes)
-            val cipher = BackupCrypto.encryptionCipher(material.dataKey, payloadIv, headerBytes)
-            CipherOutputStream(output, cipher).use { encrypted ->
+            BackupPayloadCipher.createEncryptingStream(
+                output = output,
+                header = header,
+                headerBytes = headerBytes,
+                dataKey = material.dataKey
+            ).use { encrypted ->
                 ZipOutputStream(BufferedOutputStream(encrypted)).use { zip ->
                     zip.putNextEntry(ZipEntry(PAYLOAD_ENTRY))
                     zip.write(payloadBytes)
@@ -127,62 +150,108 @@ class BackupArchiveService @Inject constructor(
         .also(::validateHeader)
         .toPreview()
 
-    suspend fun restore(input: InputStream, password: CharArray): BackupRestoreResult =
+    suspend fun restore(
+        input: InputStream,
+        password: CharArray,
+        beginCommit: () -> Boolean = { true }
+    ): BackupRestoreResult =
         withContext(Dispatchers.IO) {
-            val buffered = if (input is BufferedInputStream) input else BufferedInputStream(input)
-            val parsedHeader = readHeader(buffered)
-            val header = parsedHeader.header
-            validateHeader(header)
-            val dataKey = try {
-                BackupCrypto.unwrapDataKey(header, password)
-            } catch (error: Exception) {
-                password.fill('\u0000')
-                throw error
+            archiveMutex.withLock {
+                restoreLocked(input, password, beginCommit)
             }
-            val stagingDir = File(context.cacheDir, "backup_restore_${System.nanoTime()}")
-            stagingDir.mkdirs()
-            try {
-                val restored = readEncryptedPayload(
-                    input = buffered,
-                    header = header,
-                    headerBytes = parsedHeader.bytes,
-                    dataKey = dataKey,
-                    stagingDir = stagingDir
-                )
-                val missingImages = restored.payload.imageFileNames - restored.images.keys
-                require(missingImages.isEmpty()) { "El backup no contiene todas las imágenes declaradas." }
+        }
 
+    private suspend fun restoreLocked(
+        input: InputStream,
+        password: CharArray,
+        beginCommit: () -> Boolean
+    ): BackupRestoreResult {
+        val buffered = if (input is BufferedInputStream) input else BufferedInputStream(input)
+        val parsedHeader = readHeader(buffered)
+        val header = parsedHeader.header
+        validateHeader(header)
+        val dataKey = try {
+            BackupCrypto.unwrapDataKey(header, password)
+        } catch (error: Exception) {
+            password.fill('\u0000')
+            throw error
+        }
+        cleanupRestoreDirectories()
+        val stagingDir = File(context.cacheDir, "backup_restore_${System.nanoTime()}")
+        check(stagingDir.mkdirs()) { "No se pudo preparar la restauración." }
+        return try {
+            val restored = readEncryptedPayload(
+                input = buffered,
+                header = header,
+                headerBytes = parsedHeader.bytes,
+                dataKey = dataKey,
+                stagingDir = stagingDir
+            )
+            val missingImages = restored.payload.imageFileNames - restored.images.keys
+            require(missingImages.isEmpty()) { "El backup no contiene todas las imágenes declaradas." }
+            check(beginCommit()) { "Restauración cancelada." }
+            withContext(NonCancellable) {
                 val restoredUris = imageStorage.restoreManagedFiles(restored.images)
                 dataRepository.replaceAll(restored.payload.toDataset(restoredUris))
                 settingsProvider.restoreSettings(restored.payload.settings.toDomain())
                 imageStorage.pruneManagedFiles(restored.payload.imageFileNames)
                 keyStore.remember(header, dataKey)
                 BackupRestoreResult(header.toPreview(), restoredUris.size)
-            } finally {
-                stagingDir.deleteRecursively()
-                dataKey.fill(0)
-                password.fill('\u0000')
             }
+        } finally {
+            stagingDir.deleteRecursively()
+            dataKey.fill(0)
+            password.fill('\u0000')
         }
+    }
 
-    private fun readEncryptedPayload(
+    private fun cleanupRestoreDirectories(createdBefore: Long = Long.MAX_VALUE) {
+        context.cacheDir.listFiles()
+            ?.filter {
+                it.isDirectory &&
+                    it.name.startsWith(RESTORE_DIRECTORY_PREFIX) &&
+                    it.lastModified() < createdBefore
+            }
+            ?.forEach(File::deleteRecursively)
+    }
+
+    private suspend fun readEncryptedPayload(
         input: InputStream,
         header: EncryptedBackupHeader,
         headerBytes: ByteArray,
         dataKey: ByteArray,
         stagingDir: File
     ): RestoredArchive {
-        val cipher = BackupCrypto.decryptionCipher(
-            dataKey,
-            BackupCrypto.decode(header.payloadIv),
-            headerBytes
-        )
         var payload: BackupPayloadDto? = null
         val images = mutableMapOf<String, File>()
         var totalBytes = 0L
         var entryCount = 0
-        ZipInputStream(CipherInputStream(input, cipher)).use { zip ->
+        val legacyPayload = if (header.formatVersion == LEGACY_BACKUP_FORMAT_VERSION) {
+            File(stagingDir, LEGACY_PAYLOAD_FILE).also { destination ->
+                val restoreContext = currentCoroutineContext()
+                destination.outputStream().use { output ->
+                    BackupPayloadCipher.decryptLegacyTo(
+                        input = input,
+                        output = output,
+                        header = header,
+                        headerBytes = headerBytes,
+                        dataKey = dataKey,
+                        checkCancellation = restoreContext::ensureActive
+                    )
+                }
+            }
+        } else {
+            null
+        }
+        val decrypted = legacyPayload?.inputStream() ?: BackupPayloadCipher.createDecryptingStream(
+            input = input,
+            header = header,
+            headerBytes = headerBytes,
+            dataKey = dataKey
+        )
+        ZipInputStream(BufferedInputStream(decrypted)).use { zip ->
             while (true) {
+                currentCoroutineContext().ensureActive()
                 val entry = zip.nextEntry ?: break
                 entryCount++
                 require(entryCount <= MAX_ENTRIES) { "El backup contiene demasiados archivos." }
@@ -190,7 +259,7 @@ class BackupArchiveService @Inject constructor(
                 when {
                     entry.name == PAYLOAD_ENTRY -> {
                         require(payload == null) { "El backup contiene datos duplicados." }
-                        val bytes = zip.readLimited(MAX_JSON_BYTES)
+                        val bytes = zip.readLimitedCancellable(MAX_JSON_BYTES)
                         totalBytes += bytes.size
                         payload = json.decodeFromString(bytes.toString(Charsets.UTF_8))
                     }
@@ -202,7 +271,7 @@ class BackupArchiveService @Inject constructor(
                         val destination = File(stagingDir, fileName)
                         require(fileName !in images) { "El backup contiene imágenes duplicadas." }
                         val copied = destination.outputStream().use { output ->
-                            zip.copyLimitedTo(output, MAX_SINGLE_IMAGE_BYTES)
+                            zip.copyLimitedToCancellable(output, MAX_SINGLE_IMAGE_BYTES)
                         }
                         totalBytes += copied
                         images[fileName] = destination
@@ -214,7 +283,7 @@ class BackupArchiveService @Inject constructor(
             }
         }
         val decoded = requireNotNull(payload) { "El backup no contiene datos restaurables." }
-        require(decoded.formatVersion == BACKUP_FORMAT_VERSION) { "Versión de backup incompatible." }
+        require(decoded.formatVersion == header.formatVersion) { "Versión de backup incompatible." }
         require(images.size == header.imageCount) { "El número de imágenes del backup no coincide." }
         return RestoredArchive(decoded, images)
     }
@@ -245,8 +314,11 @@ class BackupArchiveService @Inject constructor(
     }
 
     private fun validateHeader(header: EncryptedBackupHeader) {
-        require(header.formatVersion == BACKUP_FORMAT_VERSION) {
+        require(header.formatVersion in LEGACY_BACKUP_FORMAT_VERSION..BACKUP_FORMAT_VERSION) {
             "Este backup requiere una versión más reciente de FinAI."
+        }
+        if (header.formatVersion == LEGACY_BACKUP_FORMAT_VERSION) {
+            require(!header.payloadIv.isNullOrBlank()) { "Cabecera de backup no válida." }
         }
         require(header.databaseVersion <= AppDatabase.DATABASE_VERSION) {
             "Este backup requiere una versión más reciente de FinAI."
@@ -299,6 +371,12 @@ class BackupArchiveService @Inject constructor(
         return output.toByteArray()
     }
 
+    private suspend fun InputStream.readLimitedCancellable(maxBytes: Long): ByteArray {
+        val output = java.io.ByteArrayOutputStream()
+        copyLimitedToCancellable(output, maxBytes)
+        return output.toByteArray()
+    }
+
     private fun InputStream.copyLimitedTo(output: OutputStream, maxBytes: Long): Long {
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         var total = 0L
@@ -312,10 +390,27 @@ class BackupArchiveService @Inject constructor(
         return total
     }
 
+    private suspend fun InputStream.copyLimitedToCancellable(output: OutputStream, maxBytes: Long): Long {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            currentCoroutineContext().ensureActive()
+            val count = read(buffer)
+            if (count < 0) break
+            total += count
+            require(total <= maxBytes) { "Una entrada del backup supera el tamaño permitido." }
+            output.write(buffer, 0, count)
+        }
+        return total
+    }
+
     private companion object {
         val MAGIC = "FINAIBK1".toByteArray(Charsets.US_ASCII)
         const val PAYLOAD_ENTRY = "backup.json"
         const val IMAGES_PREFIX = "images/"
+        const val RESTORE_DIRECTORY_PREFIX = "backup_restore_"
+        const val CLOUD_RESTORE_FILE_PREFIX = "cloud_restore_"
+        const val LEGACY_PAYLOAD_FILE = ".legacy_payload.zip"
         const val MAX_HEADER_BYTES = 64 * 1024
         const val MAX_JSON_BYTES = 25L * 1024 * 1024
         const val MAX_SINGLE_IMAGE_BYTES = 50L * 1024 * 1024

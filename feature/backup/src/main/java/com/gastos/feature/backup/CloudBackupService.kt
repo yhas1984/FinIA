@@ -12,6 +12,7 @@ import com.google.api.services.drive.DriveScopes
 import com.google.api.services.drive.model.File as DriveFile
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -68,16 +69,30 @@ class CloudBackupService @Inject constructor(
     suspend fun downloadBackup(fileId: String): File = withContext(Dispatchers.IO) {
         requirePremium()
         require(fileId.isNotBlank())
+        cleanupStaleRestoreFiles()
         val destination = File(context.cacheDir, "cloud_restore_${System.nanoTime()}.$BACKUP_FILE_EXTENSION")
         try {
             destination.outputStream().use { output ->
-                driveService().files().get(fileId).executeMediaAndDownloadTo(output)
+                runInterruptible {
+                    driveService().files().get(fileId).executeMediaAndDownloadTo(output)
+                }
             }
             destination
         } catch (error: Exception) {
             destination.delete()
             throw error
         }
+    }
+
+    private fun cleanupStaleRestoreFiles() {
+        val staleBefore: Long = System.currentTimeMillis() - STALE_RESTORE_FILE_AGE_MS
+        context.cacheDir.listFiles()
+            ?.filter { file ->
+                file.isFile &&
+                    file.name.startsWith(CLOUD_RESTORE_FILE_PREFIX) &&
+                    file.lastModified() < staleBefore
+            }
+            ?.forEach(File::delete)
     }
 
     suspend fun deleteAllBackups(): Int = withContext(Dispatchers.IO) {
@@ -168,6 +183,8 @@ class CloudBackupService @Inject constructor(
         const val PROPERTY_VALUE = "encrypted-v1"
         const val MAX_CLOUD_BACKUPS = 5
         const val MIN_BACKUP_INTERVAL_MS = 2 * 60 * 1000L
+        const val STALE_RESTORE_FILE_AGE_MS = 60 * 60 * 1000L
+        const val CLOUD_RESTORE_FILE_PREFIX = "cloud_restore_"
         const val FILE_FIELDS = "id,name,createdTime,size,appProperties"
         const val TAG = "CloudBackupService"
     }

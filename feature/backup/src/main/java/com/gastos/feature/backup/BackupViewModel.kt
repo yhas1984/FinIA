@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -63,8 +64,12 @@ data class BackupUiState(
     val cloudBackups: List<CloudBackupInfo> = emptyList(),
     val isCloudLoading: Boolean = false,
     val pendingRestore: PendingBackupRestore? = null,
+    val restoreState: BackupRestoreState = BackupRestoreState.Idle,
     val error: String? = null
-)
+) {
+    val isRestoring: Boolean
+        get() = restoreState is BackupRestoreState.Running
+}
 
 sealed interface PendingBackupRestore {
     val preview: BackupPreview
@@ -88,6 +93,7 @@ class BackupViewModel @Inject constructor(
     private val cloudBackupService: CloudBackupService,
     private val cloudBackupScheduler: CloudBackupScheduler,
     private val cloudBackupPreferences: CloudBackupPreferences,
+    private val restoreCoordinator: BackupRestoreCoordinator,
     private val sheetsExportService: SheetsExportService,
     private val sheetsSyncManager: SheetsSyncManager,
     private val invoiceDriveService: InvoiceDriveService,
@@ -101,6 +107,7 @@ class BackupViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(BackupUiState())
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
+    private var observedCloudSuccessAt: Long? = cloudBackupPreferences.status().lastSuccessAt
 
     /** Convierte un importe a la moneda por defecto del usuario (para totales). */
     private fun converted(amount: Double, currency: String): Double =
@@ -114,6 +121,27 @@ class BackupViewModel @Inject constructor(
             premiumStatus.isPremium.collect { premium ->
                 _uiState.update { it.copy(isPremium = premium) }
                 if (premium && sheetsExportService.isSignedIn()) loadCloudBackups()
+            }
+        }
+        viewModelScope.launch {
+            restoreCoordinator.state.collect { restoreState ->
+                _uiState.update { it.copy(restoreState = restoreState) }
+            }
+        }
+        viewModelScope.launch {
+            cloudBackupPreferences.statusFlow.collect { status ->
+                val hasNewBackup = status.lastSuccessAt != null &&
+                    status.lastSuccessAt != observedCloudSuccessAt
+                observedCloudSuccessAt = status.lastSuccessAt
+                _uiState.update { it.copy(cloudBackupStatus = status) }
+                if (
+                    hasNewBackup &&
+                    !_uiState.value.isCloudLoading &&
+                    premiumStatus.isPremium.value &&
+                    sheetsExportService.isSignedIn()
+                ) {
+                    loadCloudBackups()
+                }
             }
         }
     }
@@ -316,29 +344,38 @@ class BackupViewModel @Inject constructor(
     }
 
     fun dismissRestore() {
+        if (restoreCoordinator.isRunning()) return
         _uiState.update { it.copy(pendingRestore = null) }
     }
 
     fun restorePendingBackup(context: Context, password: String) {
         val pending = _uiState.value.pendingRestore ?: return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            val chars = password.toCharArray()
+        val chars = password.toCharArray()
+        val sourceLabel = when (pending) {
+            is PendingBackupRestore.Manual -> "archivo .finai"
+            is PendingBackupRestore.Cloud -> pending.backup.name
+        }
+        val started = restoreCoordinator.start(viewModelScope, sourceLabel) {
+            _uiState.update { it.copy(error = null) }
             var downloaded: File? = null
             try {
+                restoreCoordinator.updateStage("Abriendo backup...")
                 val input = when (pending) {
                     is PendingBackupRestore.Manual -> context.contentResolver.openInputStream(pending.uri)
                         ?: error("No se pudo abrir el backup seleccionado.")
                     is PendingBackupRestore.Cloud -> {
+                        restoreCoordinator.updateStage("Descargando backup de Drive...")
                         downloaded = cloudBackupService.downloadBackup(pending.backup.fileId)
                         requireNotNull(downloaded).inputStream()
                     }
                 }
-                val result = input.use { backupArchiveService.restore(it, chars) }
+                restoreCoordinator.updateStage("Verificando y restaurando datos...")
+                val result = input.use {
+                    backupArchiveService.restore(it, chars, restoreCoordinator::beginCommit)
+                }
                 refreshBackupState()
                 _uiState.update {
                     it.copy(
-                        isLoading = false,
                         pendingRestore = null,
                         backupResult = BackupResult(
                             true,
@@ -348,15 +385,26 @@ class BackupViewModel @Inject constructor(
                         )
                     )
                 }
+            } catch (error: CancellationException) {
+                _uiState.update { it.copy(error = "Restauración cancelada.") }
+                throw error
             } catch (error: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = error.message ?: "No se pudo restaurar el backup.")
+                    it.copy(error = error.message ?: "No se pudo restaurar el backup.")
                 }
             } finally {
                 chars.fill('\u0000')
                 downloaded?.delete()
             }
         }
+        if (!started) {
+            chars.fill('\u0000')
+            _uiState.update { it.copy(error = "Ya hay una restauración en curso.") }
+        }
+    }
+
+    fun cancelRestore() {
+        restoreCoordinator.cancel()
     }
 
     fun setAutomaticCloudBackup(enabled: Boolean) {
