@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#07111f">
-  <title>FinAI</title>
+  <meta name="theme-color" content="#10131A">
+  <title>FinAI · Finanzas personales con IA para Android</title>
   <meta name="description" content="FinAI es una aplicación Android de finanzas personales con IA para registrar gastos, ingresos y facturas; exporta a Google Sheets y usa Google Drive bajo control del usuario.">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="author" content="Yhas1984">
@@ -16,10 +16,12 @@
   <link rel="canonical" href="https://finai.leadpilot.es/">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://finai.leadpilot.es/">
-  <meta property="og:title" content="FinAI">
+  <meta property="og:title" content="FinAI · Finanzas personales con IA para Android">
   <meta property="og:site_name" content="FinAI">
-  <meta property="og:description" content="FinAI ayuda a registrar, organizar y exportar gastos, ingresos y facturas a Google Sheets y Google Drive, con privacidad y control del usuario.">
+  <meta property="og:description" content="FinAI ayuda a registrar, organizar y exportar gastos, ingresos y facturas con un asistente IA, Google Sheets y Google Drive bajo tu control.">
+  <meta property="og:image" content="https://finai.leadpilot.es/web-hero.png">
   <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://finai.leadpilot.es/web-hero.png">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -29,49 +31,57 @@
     "headline": "FinAI",
     "applicationCategory": "FinanceApplication",
     "applicationSubCategory": "Personal Finance Manager",
-  "operatingSystem": "Android",
-  "softwareVersion": "1.2.0",
-  "image": "https://finai.leadpilot.es/finai-logo.png",
-  "description": "FinAI es una aplicación Android de finanzas personales con IA para registrar gastos, ingresos y facturas; exporta a Google Sheets y utiliza Google Drive bajo control del usuario.",
-  "url": "https://finai.leadpilot.es/",
-  "downloadUrl": "https://play.google.com/store/apps/details?id=com.gastos.ingresos",
-  "softwareRequirements": "Android 8.0 (API 26) o superior",
-  "author": {
-    "@type": "Person",
-    "name": "Yhas1984",
-    "email": "ymi2021@gmail.com"
-  },
-  "publisher": {
-    "@type": "Person",
-    "name": "Yhas1984",
-    "email": "ymi2021@gmail.com"
-  },
-  "offers": {
-    "@type": "Offer",
-    "price": "0",
-    "priceCurrency": "EUR"
-  },
-  "inLanguage": "es",
-  "keywords": "FinAI, finanzas personales, Android, Google Sheets, Google Drive, Gemini, facturas, gastos, ingresos, privacidad"
-}
+    "operatingSystem": "Android",
+    "softwareVersion": "1.2.0",
+    "image": "https://finai.leadpilot.es/finai-logo.png",
+    "description": "Aplicación Android de finanzas personales con IA para registrar gastos, ingresos y facturas; exporta a Google Sheets y utiliza Google Drive bajo control del usuario.",
+    "url": "https://finai.leadpilot.es/",
+    "downloadUrl": "https://play.google.com/store/apps/details?id=com.gastos.ingresos",
+    "softwareRequirements": "Android 8.0 (API 26) o superior",
+    "author": {
+      "@type": "Person",
+      "name": "Yhas1984",
+      "email": "ymi2021@gmail.com"
+    },
+    "publisher": {
+      "@type": "Person",
+      "name": "Yhas1984",
+      "email": "ymi2021@gmail.com"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "EUR"
+    },
+    "inLanguage": "es",
+    "keywords": "FinAI, finanzas personales, Android, Google Sheets, Google Drive, Gemini, facturas, gastos, ingresos, privacidad"
+  }
   </script>
   <style>
     :root {
-      --bg: #07111f;
-      --bg-2: #0d1b2d;
-      --surface: rgba(8, 16, 29, 0.72);
-      --surface-2: rgba(15, 25, 42, 0.82);
-      --text: #eff4ff;
-      --muted: #a8b7d0;
-      --line: rgba(183, 202, 255, 0.14);
-      --accent: #7c5cff;
-      --accent-2: #33d6c6;
-      --accent-3: #ffd36b;
-      --shadow: 0 28px 80px rgba(0, 0, 0, 0.36);
-      --radius-xl: 28px;
-      --radius-lg: 20px;
-      --radius-md: 16px;
-      --max: 1160px;
+      --bg-obsidian: #10131A;
+      --bg-elevated: #181B23;
+      --bg-surface: #1F232D;
+      --bg-surface-2: #252A35;
+      --line: rgba(189, 147, 249, 0.18);
+      --line-strong: rgba(189, 147, 249, 0.32);
+      --text: #E1E2EB;
+      --text-strong: #F5F6FA;
+      --muted: #9BA0B0;
+      --accent: #BD93F9;
+      --accent-soft: rgba(189, 147, 249, 0.16);
+      --accent-strong: #A371F7;
+      --accent-2: #50FA7B;
+      --accent-2-soft: rgba(80, 250, 123, 0.14);
+      --highlight: #FFD86B;
+      --danger: #FF6B6B;
+      --shadow-1: 0 18px 40px rgba(0, 0, 0, 0.32);
+      --shadow-2: 0 32px 80px rgba(0, 0, 0, 0.5);
+      --radius-xl: 32px;
+      --radius-lg: 24px;
+      --radius-md: 18px;
+      --radius-sm: 12px;
+      --max: 1180px;
     }
 
     * { box-sizing: border-box; }
@@ -81,35 +91,29 @@
       min-height: 100vh;
       color: var(--text);
       background:
-        radial-gradient(circle at 15% 20%, rgba(124, 92, 255, 0.24), transparent 26%),
-        radial-gradient(circle at 80% 12%, rgba(51, 214, 198, 0.18), transparent 24%),
-        radial-gradient(circle at 70% 78%, rgba(255, 211, 107, 0.12), transparent 26%),
-        linear-gradient(135deg, #050a14 0%, var(--bg) 46%, var(--bg-2) 100%);
-      font-family: "Avenir Next", "Segoe UI Variable", "Trebuchet MS", "Gill Sans", system-ui, sans-serif;
-      line-height: 1.5;
+        radial-gradient(ellipse at 12% 8%, rgba(189, 147, 249, 0.18), transparent 38%),
+        radial-gradient(ellipse at 90% 16%, rgba(80, 250, 123, 0.12), transparent 36%),
+        radial-gradient(ellipse at 80% 90%, rgba(255, 216, 107, 0.08), transparent 32%),
+        linear-gradient(180deg, #0C0E14 0%, var(--bg-obsidian) 60%, #0A0C12 100%);
+      background-attachment: fixed;
+      font-family: "Inter", "Avenir Next", "Segoe UI Variable", system-ui, sans-serif;
+      font-feature-settings: "ss01", "cv11";
+      line-height: 1.55;
       overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
     }
 
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      opacity: 0.08;
-      background-image: linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px);
-      background-size: 28px 28px;
-      mask-image: linear-gradient(to bottom, rgba(0,0,0,.65), transparent 92%);
-    }
-
-    a { color: inherit; }
+    a { color: inherit; text-decoration: none; }
     code {
-      color: #bff8ef;
-      background: rgba(51, 214, 198, 0.08);
-      border: 1px solid rgba(51, 214, 198, 0.16);
+      color: #C5B6F9;
+      background: rgba(189, 147, 249, 0.08);
+      border: 1px solid rgba(189, 147, 249, 0.18);
       border-radius: 6px;
       padding: 2px 6px;
       overflow-wrap: anywhere;
+      font-size: 0.92em;
     }
+
     .skip-link {
       position: absolute;
       left: 16px;
@@ -117,8 +121,9 @@
       transform: translateY(-180%);
       padding: 10px 14px;
       border-radius: 999px;
-      background: #fff;
-      color: #000;
+      background: var(--accent);
+      color: #0A0C12;
+      font-weight: 600;
       z-index: 1000;
     }
     .skip-link:focus { transform: translateY(0); }
@@ -126,42 +131,51 @@
     .shell {
       width: min(calc(100% - 32px), var(--max));
       margin: 0 auto;
-      padding: 28px 0 40px;
+      padding: 28px 0 60px;
       position: relative;
-      z-index: 1;
     }
 
     header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 16px;
-      padding: 10px 0 24px;
+      gap: 18px;
+      padding: 6px 0 28px;
+      flex-wrap: wrap;
     }
 
     .brand {
       display: inline-flex;
       align-items: center;
-      gap: 12px;
-      text-decoration: none;
+      gap: 14px;
       min-width: 0;
     }
     .mark {
-      width: 46px;
-      height: 46px;
+      width: 54px;
+      height: 54px;
       display: grid;
       place-items: center;
-      border-radius: 16px;
-      background: linear-gradient(145deg, rgba(124,92,255,.95), rgba(51,214,198,.85));
-      box-shadow: 0 14px 36px rgba(124,92,255,.32);
-      flex: none;
+      border-radius: 18px;
+      background: linear-gradient(145deg, var(--accent), var(--accent-2));
+      box-shadow: 0 18px 40px rgba(189, 147, 249, 0.32);
       overflow: hidden;
+      flex: none;
+      position: relative;
     }
-    .mark img { width: 100%; height: 100%; display: block; }
+    .mark::after {
+      content: "";
+      position: absolute;
+      inset: 1px;
+      border-radius: 17px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.15), rgba(0,0,0,0.05));
+      pointer-events: none;
+    }
+    .mark img { width: 100%; height: 100%; display: block; position: relative; z-index: 1; }
     .brand strong {
       display: block;
-      font-size: 1.05rem;
-      letter-spacing: 0.02em;
+      font-size: 1.18rem;
+      letter-spacing: -0.01em;
+      color: var(--text-strong);
     }
     .brand span {
       display: block;
@@ -169,55 +183,72 @@
       font-size: 0.92rem;
     }
 
-    .top-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
     .pill, .button {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 10px;
-      text-decoration: none;
       border-radius: 999px;
       padding: 12px 18px;
       border: 1px solid var(--line);
-      background: rgba(255,255,255,0.03);
-      backdrop-filter: blur(10px);
+      background: rgba(31, 35, 45, 0.55);
+      color: var(--text);
+      font-weight: 500;
       transition: transform .22s ease, border-color .22s ease, background .22s ease, box-shadow .22s ease;
-      will-change: transform;
+      backdrop-filter: blur(8px);
     }
     .button.primary {
-      background: linear-gradient(135deg, rgba(124,92,255,.96), rgba(51,214,198,.92));
-      color: #08111f;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #0A0C12;
       border-color: transparent;
       font-weight: 700;
-      box-shadow: 0 18px 42px rgba(51,214,198,.16);
+      box-shadow: 0 16px 36px rgba(80, 250, 123, 0.18);
     }
-    .pill:hover, .button:hover { transform: translateY(-1px); border-color: rgba(183,202,255,.3); }
-    .button.primary:hover { box-shadow: 0 22px 46px rgba(124,92,255,.2); }
+    .pill:hover, .button:hover {
+      transform: translateY(-1px);
+      border-color: var(--line-strong);
+      background: rgba(37, 42, 53, 0.7);
+    }
+    .button.primary:hover {
+      box-shadow: 0 22px 44px rgba(189, 147, 249, 0.28);
+    }
 
+    /* HERO */
     .hero {
       display: grid;
-      grid-template-columns: 1.2fr .8fr;
-      gap: 22px;
+      grid-template-columns: 1.05fr .95fr;
+      gap: 26px;
       align-items: stretch;
-      margin-top: 14px;
     }
-
     .panel {
+      position: relative;
       border: 1px solid var(--line);
-      background: linear-gradient(180deg, rgba(12,20,35,.86), rgba(8,16,29,.68));
+      background:
+        linear-gradient(180deg, rgba(31, 35, 45, 0.78), rgba(24, 27, 35, 0.7));
       border-radius: var(--radius-xl);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-1);
+      backdrop-filter: blur(18px);
+      overflow: hidden;
     }
-
-    .hero-main { padding: clamp(24px, 5vw, 44px); position: relative; overflow: hidden; }
+    .hero-main {
+      padding: clamp(28px, 5vw, 48px);
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
     .hero-main::after {
       content: "";
       position: absolute;
-      inset: auto -90px -70px auto;
-      width: 240px;
-      height: 240px;
-      background: radial-gradient(circle, rgba(124,92,255,.22), transparent 68%);
+      inset: auto -120px -90px auto;
+      width: 280px;
+      height: 280px;
+      background: radial-gradient(circle, rgba(189, 147, 249, 0.28), transparent 68%);
       filter: blur(2px);
       pointer-events: none;
     }
@@ -226,234 +257,411 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      padding: 10px 14px;
+      padding: 8px 14px;
       border-radius: 999px;
-      border: 1px solid rgba(183,202,255,.16);
-      background: rgba(255,255,255,.035);
-      color: var(--muted);
-      font-size: 0.92rem;
+      border: 1px solid var(--line);
+      background: rgba(189, 147, 249, 0.08);
+      color: var(--text-strong);
+      font-size: 0.86rem;
+      width: fit-content;
     }
-    .eyebrow b { color: var(--text); }
+    .eyebrow .dot-live {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-2);
+      box-shadow: 0 0 12px var(--accent-2);
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.25); opacity: 0.6; }
+    }
 
     h1 {
-      margin: 18px 0 14px;
-      font-size: clamp(3rem, 8vw, 5.8rem);
-      line-height: .9;
-      letter-spacing: -0.05em;
+      margin: 4px 0 6px;
+      font-size: clamp(2.6rem, 7vw, 5rem);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      color: var(--text-strong);
+      font-weight: 800;
     }
     .gradient-text {
-      background: linear-gradient(90deg, #ffffff, #b8c4ff 30%, #77f1df 70%, #ffe08c);
+      background: linear-gradient(110deg, var(--text-strong) 0%, var(--accent) 40%, var(--accent-2) 80%);
       -webkit-background-clip: text;
       background-clip: text;
       color: transparent;
     }
+    .hero-tagline {
+      font-size: clamp(1.1rem, 2vw, 1.32rem);
+      color: var(--text);
+      margin: 0;
+      max-width: 56ch;
+      line-height: 1.45;
+    }
     .hero-copy {
-      max-width: 62ch;
-      font-size: clamp(1.05rem, 2vw, 1.18rem);
-      color: #dde7fa;
-      margin: 0 0 22px;
+      font-size: 1rem;
+      color: var(--muted);
+      margin: 0;
+      max-width: 58ch;
     }
 
-    .brand-verification {
-      display: grid;
-      gap: 10px;
-      margin: 20px 0 26px;
-      padding: 18px;
-      border-radius: var(--radius-lg);
-      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-      border: 1px solid rgba(183,202,255,.14);
-    }
-    .brand-verification strong { color: #fff; }
-    .brand-grid {
+    .brand-strip {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
+      gap: 10px;
+      margin-top: 6px;
     }
     .metric {
       padding: 14px 14px 12px;
-      border-radius: 16px;
-      background: rgba(7, 17, 31, .58);
-      border: 1px solid rgba(183,202,255,.10);
+      border-radius: var(--radius-md);
+      background: rgba(16, 19, 26, 0.55);
+      border: 1px solid var(--line);
     }
-    .metric span { display: block; color: var(--muted); font-size: .84rem; }
-    .metric strong { display: block; margin-top: 4px; font-size: .98rem; }
+    .metric span { display: block; color: var(--muted); font-size: .82rem; }
+    .metric strong { display: block; margin-top: 4px; font-size: .98rem; color: var(--text-strong); }
 
-    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
 
-    .hero-side { padding: 22px; display: grid; gap: 14px; align-content: start; }
-    .side-card {
-      padding: 18px;
-      border-radius: 18px;
-      background: rgba(255,255,255,.035);
-      border: 1px solid rgba(183,202,255,.12);
-    }
-    .side-card h2, .section h2 {
-      margin: 0 0 10px;
-      font-size: 1.02rem;
-      letter-spacing: 0.01em;
-    }
-    .side-card p, .section p, li { color: var(--muted); }
-    .list {
+    /* HERO SIDE (showcase) */
+    .hero-side {
+      padding: 22px;
       display: grid;
-      gap: 12px;
-      margin: 14px 0 0;
-      padding: 0;
-      list-style: none;
+      gap: 16px;
+      align-content: stretch;
     }
-    .list li {
-      display: flex;
-      gap: 10px;
-      align-items: flex-start;
+    .shot {
+      position: relative;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: var(--bg-obsidian);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.36);
+      aspect-ratio: 9 / 16;
+      max-height: 460px;
+      justify-self: center;
+      width: 100%;
     }
-    .dot {
-      width: 10px;
-      height: 10px;
-      margin-top: 7px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--accent-2));
-      box-shadow: 0 0 0 5px rgba(124,92,255,.12);
-      flex: none;
+    .shot img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top center;
+    }
+    .shot::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 55%, rgba(16, 19, 26, 0.65));
+      pointer-events: none;
+    }
+    .shot-badge {
+      position: absolute;
+      left: 14px;
+      top: 14px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(16, 19, 26, 0.75);
+      border: 1px solid var(--line);
+      font-size: 0.78rem;
+      color: var(--accent-2);
+      backdrop-filter: blur(8px);
+      z-index: 2;
     }
 
-    main { display: grid; gap: 22px; margin-top: 22px; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
-    .section { padding: 22px; }
+    /* STATS */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 26px;
+    }
+    .stat {
+      padding: 18px;
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, rgba(31, 35, 45, 0.7), rgba(24, 27, 35, 0.6));
+      border: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .stat .num {
+      font-size: 1.85rem;
+      font-weight: 800;
+      color: var(--text-strong);
+      letter-spacing: -0.02em;
+    }
+    .stat .label { color: var(--muted); font-size: 0.88rem; }
+    .stat.violet .num { color: var(--accent); }
+    .stat.green .num { color: var(--accent-2); }
+
+    /* MAIN */
+    main { display: grid; gap: 26px; margin-top: 28px; }
+    .section { padding: clamp(22px, 3vw, 32px); }
+    .section-head {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .section-head h2 {
+      margin: 0;
+      font-size: clamp(1.4rem, 2.6vw, 1.85rem);
+      letter-spacing: -0.02em;
+      color: var(--text-strong);
+      font-weight: 700;
+    }
+    .section-head p { margin: 0; color: var(--muted); max-width: 64ch; }
+
+    /* FEATURE GRID */
     .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
     .feature {
-      padding: 18px;
-      border-radius: 18px;
-      border: 1px solid rgba(183,202,255,.12);
-      background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02));
+      padding: 20px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(31, 35, 45, 0.65), rgba(24, 27, 35, 0.55));
+      transition: border-color .2s ease, transform .2s ease;
     }
+    .feature:hover { border-color: var(--line-strong); transform: translateY(-2px); }
     .feature .icon {
-      width: 40px; height: 40px; display: grid; place-items: center;
-      border-radius: 14px; margin-bottom: 12px;
-      background: rgba(124,92,255,.16);
-      border: 1px solid rgba(124,92,255,.24);
+      width: 46px; height: 46px;
+      display: grid; place-items: center;
+      border-radius: 14px;
+      margin-bottom: 12px;
+      font-size: 1.35rem;
+      background: var(--accent-soft);
+      border: 1px solid rgba(189, 147, 249, 0.26);
+      color: var(--accent);
     }
-    .feature h3 { margin: 0 0 6px; font-size: 1rem; }
-    .feature p { margin: 0; font-size: .95rem; }
+    .feature h3 { margin: 0 0 6px; font-size: 1.05rem; color: var(--text-strong); }
+    .feature p { margin: 0; font-size: 0.96rem; color: var(--muted); }
+    .feature .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--accent-2-soft);
+      border: 1px solid rgba(80, 250, 123, 0.22);
+      color: var(--accent-2);
+      font-size: 0.74rem;
+      font-weight: 600;
+    }
 
+    /* SHOWCASE GRID */
+    .showcase {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .showcase .tile {
+      position: relative;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: var(--bg-obsidian);
+      aspect-ratio: 9 / 16;
+      transition: transform .25s ease, border-color .25s ease;
+    }
+    .showcase .tile:hover { transform: translateY(-4px); border-color: var(--line-strong); }
+    .showcase .tile img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      object-position: top center;
+    }
+    .showcase .tile .label {
+      position: absolute;
+      inset: auto 0 0 0;
+      padding: 16px 14px 12px;
+      background: linear-gradient(180deg, transparent, rgba(16, 19, 26, 0.92) 70%);
+      color: var(--text-strong);
+      font-size: 0.92rem;
+      font-weight: 600;
+    }
+
+    /* FLOW */
     .workflow {
       display: grid;
-      gap: 12px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
       counter-reset: step;
     }
     .step {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 14px;
-      padding: 16px;
-      border-radius: 18px;
-      background: rgba(255,255,255,.035);
-      border: 1px solid rgba(183,202,255,.12);
+      padding: 22px;
+      border-radius: var(--radius-lg);
+      background: rgba(31, 35, 45, 0.55);
+      border: 1px solid var(--line);
+      position: relative;
     }
     .step::before {
       counter-increment: step;
       content: counter(step);
-      width: 34px; height: 34px; border-radius: 12px;
+      width: 36px; height: 36px; border-radius: 12px;
       display: grid; place-items: center;
       font-weight: 800;
-      color: #08111f;
-      background: linear-gradient(135deg, #ffd36b, #77f1df);
+      color: #0A0C12;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      margin-bottom: 14px;
+      box-shadow: 0 8px 22px rgba(189, 147, 249, 0.3);
     }
-    .step h3 { margin: 0 0 4px; font-size: .98rem; }
-    .step p { margin: 0; font-size: .94rem; }
+    .step h3 { margin: 0 0 6px; font-size: 1.02rem; color: var(--text-strong); }
+    .step p { margin: 0; font-size: 0.94rem; color: var(--muted); }
 
-    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+    /* GOOGLE DATA SECTION */
+    .google-grid {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 22px;
+      align-items: stretch;
+    }
+    .legal-box {
+      padding: 22px;
+      border-radius: var(--radius-lg);
+      background: rgba(16, 19, 26, 0.55);
+      border: 1px solid var(--line);
+    }
+    .list { display: grid; gap: 12px; margin: 14px 0 0; padding: 0; list-style: none; }
+    .list li {
+      display: flex; gap: 12px; align-items: flex-start;
+      color: var(--muted);
+      font-size: 0.96rem;
+    }
+    .dot {
+      width: 10px; height: 10px;
+      margin-top: 7px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 0 5px rgba(189, 147, 249, 0.12);
+      flex: none;
+    }
+
+    /* VIDEO */
     .video-grid {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(260px, .62fr);
-      gap: clamp(24px, 5vw, 56px);
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 0.55fr);
+      gap: clamp(22px, 4vw, 48px);
       align-items: center;
     }
-    .video-copy { display: grid; gap: 18px; align-content: center; }
-    .video-copy h2, .video-copy p { margin: 0; }
+    .video-copy { display: grid; gap: 16px; align-content: center; }
+    .video-copy h2 { margin: 0; font-size: clamp(1.4rem, 2.5vw, 1.85rem); letter-spacing: -0.02em; color: var(--text-strong); }
+    .video-copy p { margin: 0; color: var(--muted); }
     .video-shell {
-      width: min(100%, 360px);
+      width: min(100%, 320px);
       justify-self: center;
       padding: 10px;
-      border-radius: 34px;
-      border: 1px solid rgba(183, 202, 255, .2);
-      background: linear-gradient(145deg, rgba(255,255,255,.09), rgba(255,255,255,.025));
-      box-shadow: 0 24px 70px rgba(0,0,0,.38);
+      border-radius: 32px;
+      border: 1px solid var(--line-strong);
+      background: linear-gradient(145deg, rgba(189, 147, 249, 0.12), rgba(80, 250, 123, 0.08));
+      box-shadow: var(--shadow-2);
     }
     .video-shell iframe {
       display: block;
       width: 100%;
       aspect-ratio: 9 / 16;
       border: 0;
-      border-radius: 25px;
-      background: #030712;
+      border-radius: 24px;
+      background: #0A0C12;
     }
-    .legal-box {
-      padding: 18px;
-      border-radius: 18px;
-      background: rgba(255,255,255,.035);
-      border: 1px solid rgba(183,202,255,.12);
-    }
-    .legal-links {
+
+    /* CTA */
+    .cta {
+      padding: clamp(28px, 4vw, 44px);
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--line-strong);
+      background:
+        radial-gradient(ellipse at 12% 8%, rgba(189, 147, 249, 0.18), transparent 50%),
+        radial-gradient(ellipse at 90% 90%, rgba(80, 250, 123, 0.14), transparent 50%),
+        linear-gradient(135deg, rgba(31, 35, 45, 0.85), rgba(16, 19, 26, 0.85));
       display: grid;
-      gap: 10px;
-      margin-top: 14px;
+      grid-template-columns: 1.4fr auto;
+      gap: 20px;
+      align-items: center;
+      box-shadow: var(--shadow-1);
     }
+    .cta h2 {
+      margin: 0 0 8px;
+      font-size: clamp(1.5rem, 2.5vw, 2rem);
+      letter-spacing: -0.02em;
+      color: var(--text-strong);
+    }
+    .cta p { margin: 0; color: var(--muted); max-width: 52ch; }
+    .cta .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    /* LEGAL LINKS */
+    .legal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+    }
+    .legal-links { display: grid; gap: 10px; margin-top: 14px; }
     .link {
       display: inline-flex;
       justify-content: space-between;
       align-items: center;
       gap: 16px;
       padding: 14px 16px;
-      text-decoration: none;
-      border-radius: 16px;
-      background: rgba(7,17,31,.6);
-      border: 1px solid rgba(183,202,255,.12);
+      border-radius: var(--radius-md);
+      background: rgba(16, 19, 26, 0.6);
+      border: 1px solid var(--line);
+      transition: border-color .2s ease, transform .2s ease;
     }
+    .link:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+    .link span:last-child { color: var(--accent); font-size: 1.05rem; }
 
+    /* FOOTER */
     footer {
-      padding: 18px 4px 8px;
+      padding: 24px 4px 8px;
       color: var(--muted);
-      font-size: .92rem;
+      font-size: 0.92rem;
+    }
+    footer .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
     }
     address {
       font-style: normal;
-      margin-top: 10px;
       color: var(--muted);
     }
 
+    .fine { font-size: .92rem; color: var(--muted); margin: 0; }
     .sr-only {
       position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
       overflow: hidden;
       clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
+      white-space: nowrap; border: 0;
     }
 
-    .fine { font-size: .9rem; color: var(--muted); }
-
-    @media (max-width: 920px) {
-      header, .hero, .grid-2, .split, .video-grid { grid-template-columns: 1fr; }
-      header { display: grid; }
-      .top-actions { justify-content: flex-start; }
-      .brand-grid, .cards { grid-template-columns: 1fr; }
+    @media (max-width: 980px) {
+      .hero, .google-grid, .video-grid, .cta, .legal-grid { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .showcase { grid-template-columns: repeat(2, 1fr); }
+      .workflow { grid-template-columns: 1fr; }
+      .cards { grid-template-columns: 1fr; }
     }
-
     @media (max-width: 640px) {
       .shell { width: min(calc(100% - 20px), var(--max)); padding-top: 14px; }
-      h1 { font-size: clamp(2.6rem, 16vw, 4rem); }
-      .hero-main, .hero-side, .section { padding: 18px; }
+      h1 { font-size: clamp(2.4rem, 14vw, 3.4rem); }
+      .section { padding: 18px; }
+      .brand-strip { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: 1fr 1fr; }
       .pill, .button { width: 100%; }
       .hero-actions { flex-direction: column; }
-      .metric { padding: 12px; }
-      .link { align-items: flex-start; }
     }
-
     @media (prefers-reduced-motion: reduce) {
       html { scroll-behavior: auto; }
-      *, *::before, *::after { animation: none !important; transition: none !important; }
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+      }
     }
   </style>
 </head>
@@ -469,139 +677,218 @@
           <span>Finanzas personales con IA para Android</span>
         </div>
       </a>
-
-      <div class="top-actions" aria-label="Acciones principales">
-        <a class="pill" href="privacy.html">Política de privacidad</a>
-        <a class="pill" href="mailto:ymi2021@gmail.com">Contacto: ymi2021@gmail.com</a>
-        <a class="button primary" href="https://play.google.com/store/apps/details?id=com.gastos.ingresos" rel="noopener noreferrer">Ver en Google Play</a>
-      </div>
+      <nav class="top-actions" aria-label="Acciones principales">
+        <a class="pill" href="#funciones">Funciones</a>
+        <a class="pill" href="#capturas">Capturas</a>
+        <a class="pill" href="privacy.html">Privacidad</a>
+        <a class="button primary" href="https://play.google.com/store/apps/details?id=com.gastos.ingresos" rel="noopener noreferrer">Descargar en Google Play</a>
+      </nav>
     </header>
 
     <section class="hero" id="inicio" aria-labelledby="hero-title">
       <article class="panel hero-main">
-        <span class="eyebrow"><b>FinAI</b> · Aplicación Android de finanzas personales con IA</span>
-        <h1 id="hero-title"><span class="gradient-text">FinAI</span></h1>
+        <span class="eyebrow"><span class="dot-live" aria-hidden="true"></span>FinAI · v1.2.0 ya disponible</span>
+        <h1 id="hero-title">Tu dinero, <span class="gradient-text">bajo control</span> y con IA.</h1>
+        <p class="hero-tagline">
+          FinAI registra gastos e ingresos con un asistente IA, escanea facturas desde la cámara
+          y sincroniza con Google Sheets y Drive bajo tu cuenta.
+        </p>
         <p class="hero-copy">
-          <strong>FinAI</strong> ayuda a registrar, organizar y exportar gastos, ingresos y facturas con un asistente de IA.
-          Está pensada para usuarios que quieren control real sobre sus datos: tú decides qué sincronizar, dónde guardarlo y cuándo revocar acceso.
+          Diseñada para usuarios que quieren control real sobre sus datos: tú decides qué sincronizar,
+          dónde guardarlo y cuándo revocar el acceso.
         </p>
 
-        <div class="brand-verification" aria-label="Información clara de marca y propósito">
-          <div class="brand-grid">
-            <div class="metric">
-              <span>Nombre exacto</span>
-              <strong>FinAI</strong>
-            </div>
-            <div class="metric">
-              <span>Propósito</span>
-              <strong>Finanzas personales con IA</strong>
-            </div>
-            <div class="metric">
-              <span>Desarrollador</span>
-              <strong>Yhas1984 · ymi2021@gmail.com</strong>
-            </div>
+        <div class="brand-strip" aria-label="Información clara de marca">
+          <div class="metric">
+            <span>Nombre exacto</span>
+            <strong>FinAI</strong>
+          </div>
+          <div class="metric">
+            <span>Propósito</span>
+            <strong>Finanzas personales</strong>
+          </div>
+          <div class="metric">
+            <span>Desarrollador</span>
+            <strong>Yhas1984</strong>
           </div>
         </div>
 
         <div class="hero-actions">
-          <a class="button primary" href="https://play.google.com/store/apps/details?id=com.gastos.ingresos" rel="noopener noreferrer">Descargar FinAI</a>
-          <a class="pill" href="#datos-google">Uso de datos de Google</a>
-          <a class="pill" href="privacy.html">Política de privacidad</a>
-          <a class="pill" href="#funciones">Funciones</a>
+          <a class="button primary" href="https://play.google.com/store/apps/details?id=com.gastos.ingresos" rel="noopener noreferrer">Descargar gratis</a>
+          <a class="pill" href="#capturas">Ver capturas</a>
+          <a class="pill" href="#datos-google">Cómo usamos los datos</a>
         </div>
       </article>
 
-      <aside class="panel hero-side" aria-label="Resumen de capacidades">
-        <div class="side-card">
-          <h2>Qué hace FinAI</h2>
-          <p>Unifica captura, análisis y exportación en una sola app Android.</p>
-          <ul class="list">
-            <li><span class="dot" aria-hidden="true"></span><span>Registrar movimientos con lenguaje natural y asistencia IA.</span></li>
-            <li><span class="dot" aria-hidden="true"></span><span>Escanear facturas, tickets y nóminas desde la cámara.</span></li>
-            <li><span class="dot" aria-hidden="true"></span><span>Exportar a Google Sheets y trabajar con Google Drive bajo tu cuenta.</span></li>
-          </ul>
-        </div>
-        <div class="side-card">
-          <h2>Identidad y soporte</h2>
-          <p><strong>Desarrollador:</strong> Yhas1984</p>
-          <p><strong>Correo:</strong> <a href="mailto:ymi2021@gmail.com">ymi2021@gmail.com</a></p>
-          <p><strong>Canal público:</strong> <a href="https://play.google.com/store/apps/details?id=com.gastos.ingresos" rel="noopener noreferrer">Google Play</a></p>
+      <aside class="panel hero-side" aria-label="Captura destacada de la app">
+        <div class="shot">
+          <span class="shot-badge">● Live</span>
+          <img src="screenshot-balance.png" alt="Captura de la pantalla Dashboard de FinAI con balance mensual">
         </div>
       </aside>
     </section>
 
+    <section class="stats" aria-label="Resumen de capacidades">
+      <div class="stat violet">
+        <span class="num">3 → 10</span>
+        <span class="label">Turnos de memoria IA (Gratis / Premium)</span>
+      </div>
+      <div class="stat green">
+        <span class="num">5</span>
+        <span class="label">Copias de seguridad cifradas en Drive</span>
+      </div>
+      <div class="stat violet">
+        <span class="num">AES-256</span>
+        <span class="label">Cifrado extremo a extremo del backup</span>
+      </div>
+      <div class="stat green">
+        <span class="num">7+</span>
+        <span class="label">Países soportados para facturas (ES, MX, AR, CO, CL, PE, US)</span>
+      </div>
+    </section>
+
     <main id="contenido">
       <section class="panel section" id="funciones" aria-labelledby="features-title">
-        <h2 id="features-title">Capacidades principales</h2>
+        <div class="section-head">
+          <h2 id="features-title">Todo lo que necesitas en una sola app</h2>
+          <p>Captura, organiza y exporta tus finanzas con IA, todo bajo tu control.</p>
+        </div>
         <div class="cards">
           <article class="feature">
             <div class="icon" aria-hidden="true">🤖</div>
-            <h3>IA para introducir movimientos</h3>
-            <p>Registra gastos e ingresos con lenguaje natural para acelerar la entrada de datos sin fricción.</p>
+            <h3>Asistente IA (Gemini)</h3>
+            <p>Registra gastos e ingresos con lenguaje natural, recibe respuestas en streaming y conserva el contexto de la conversación.</p>
+            <span class="badge">Streaming Premium</span>
           </article>
           <article class="feature">
             <div class="icon" aria-hidden="true">📷</div>
-            <h3>Escaneo de facturas</h3>
-            <p>Extrae información útil de documentos para convertir imágenes en registros financieros estructurados.</p>
+            <h3>Escaneo inteligente</h3>
+            <p>Fotografía una factura o nómina y la IA extrae proveedor, fecha, total, IVA, IRPF y NIF en segundos.</p>
+            <span class="badge">OCR multi-país</span>
+          </article>
+          <article class="feature">
+            <div class="icon" aria-hidden="true">🎙️</div>
+            <h3>Comandos por voz</h3>
+            <p>Registra gastos e ingresos hablando en español, sin tocar el teclado.</p>
           </article>
           <article class="feature">
             <div class="icon" aria-hidden="true">📊</div>
-            <h3>Google Sheets</h3>
-            <p>Exportación explícita a tu spreadsheet para revisión, auditoría y seguimiento personal o fiscal.</p>
+            <h3>Dashboard financiero</h3>
+            <p>Balance del mes, actividad de los últimos 7 días, conversión de moneda y desglose por categoría.</p>
+          </article>
+          <article class="feature">
+            <div class="icon" aria-hidden="true">🧾</div>
+            <h3>Google Sheets sincronizado</h3>
+            <p>Exporta y sincroniza un spreadsheet con Facturas Recibidas, Ingresos, Productos y Resumen multimoneda.</p>
+            <span class="badge">Scope limitado</span>
           </article>
           <article class="feature">
             <div class="icon" aria-hidden="true">☁️</div>
-            <h3>Google Drive</h3>
-            <p>Fotos mediante <code>drive.file</code> y backups Premium cifrados mediante el espacio privado <code>drive.appdata</code>.</p>
+            <h3>Backup cifrado en Drive</h3>
+            <p>Archivo <code>.finai</code> portátil y hasta cinco copias diarias cifradas en tu espacio privado de Drive (Premium).</p>
+            <span class="badge">AES-256-GCM</span>
           </article>
         </div>
       </section>
 
-      <section class="panel section" id="datos-google" aria-labelledby="google-data-title">
-        <h2 id="google-data-title">Por qué FinAI solicita acceso a datos de Google</h2>
-        <p class="hero-copy">
-          FinAI solicita acceso a tu cuenta de Google únicamente cuando eliges conectar Google Sheets, subir una foto o activar el backup Premium en Google Drive.
-          Estos permisos hacen posible las funciones que activas; FinAI no vende tus datos, no los usa para publicidad y no dispone de servidores propios donde copiarlos.
-        </p>
-        <div class="cards">
-          <article class="feature">
-            <div class="icon" aria-hidden="true">👤</div>
-            <h3>Dirección de correo</h3>
-            <p>Se utiliza para identificar y mostrar en FinAI qué cuenta de Google has conectado. No se usa para publicidad ni se comparte con terceros.</p>
+      <section class="panel section" id="capturas" aria-labelledby="shots-title">
+        <div class="section-head">
+          <h2 id="shots-title">La app, en detalle</h2>
+          <p>Una interfaz limpia, oscura por defecto, fiel a la paleta real de FinAI.</p>
+        </div>
+        <div class="showcase">
+          <article class="tile">
+            <img src="screenshot-balance.png" alt="Captura del dashboard con balance del mes y gráfico de 7 días">
+            <span class="label">Dashboard</span>
           </article>
-          <article class="feature">
-            <div class="icon" aria-hidden="true">📊</div>
-            <h3>Google Sheets</h3>
-            <p>El permiso limitado <code>drive.file</code> permite crear, leer y actualizar con la API de Sheets exclusivamente el spreadsheet generado por FinAI.</p>
+          <article class="tile">
+            <img src="screenshot-scan.png" alt="Captura del flujo de escaneo de una factura desde la cámara">
+            <span class="label">Escaneo IA</span>
           </article>
-          <article class="feature">
-            <div class="icon" aria-hidden="true">☁️</div>
-            <h3>Google Drive</h3>
-            <p><code>drive.file</code> permite subir fotos creadas por FinAI. <code>drive.appdata</code> mantiene hasta cinco backups cifrados en un espacio privado que la app usa para crear, restaurar o eliminar tus copias, sin explorar libremente tu Drive.</p>
+          <article class="tile">
+            <img src="screenshot-sheets.png" alt="Captura de la exportación a Google Sheets y backup Premium">
+            <span class="label">Sheets y Drive</span>
           </article>
-          <article class="feature">
-            <div class="icon" aria-hidden="true">🔒</div>
-            <h3>Tu control</h3>
-            <p>La conexión es opcional. Puedes cerrar la sesión en FinAI o revocar el acceso en tu cuenta de Google en cualquier momento.</p>
+          <article class="tile">
+            <img src="screenshot-assistant.png" alt="Captura del asistente conversacional con streaming">
+            <span class="label">Asistente IA</span>
           </article>
         </div>
-        <div class="legal-box">
-          <p>
-            Consulta los detalles completos en la
-            <a href="https://finai.leadpilot.es/privacy.html">Política de privacidad de FinAI</a>,
-            la misma URL configurada en la pantalla de consentimiento OAuth.
-            También puedes <a href="https://myaccount.google.com/permissions" rel="noopener noreferrer">revisar o revocar los permisos de Google</a> cuando quieras.
-          </p>
+      </section>
+
+      <section class="panel section" aria-labelledby="flow-title">
+        <div class="section-head">
+          <h2 id="flow-title">Cómo funciona</h2>
+          <p>Tres pasos para tener tus finanzas bajo control y respaldadas.</p>
+        </div>
+        <div class="workflow">
+          <div class="step">
+            <h3>Captura</h3>
+            <p>Registra con texto, voz o escaneando una factura. La IA clasifica y propone la categoría.</p>
+          </div>
+          <div class="step">
+            <h3>Organiza</h3>
+            <p>Consulta el dashboard, filtra por categoría y revisa la conversión de moneda a tu moneda local.</p>
+          </div>
+          <div class="step">
+            <h3>Exporta y respalda</h3>
+            <p>Sincroniza con Google Sheets o guarda copias cifradas en Drive con tu propia contraseña.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel section" id="datos-google" aria-labelledby="google-data-title">
+        <div class="section-head">
+          <h2 id="google-data-title">Por qué FinAI solicita acceso a datos de Google</h2>
+          <p>Acceso opcional, limitado y revocable en cualquier momento.</p>
+        </div>
+        <div class="google-grid">
+          <div>
+            <div class="cards">
+              <article class="feature">
+                <div class="icon" aria-hidden="true">👤</div>
+                <h3>Dirección de correo</h3>
+                <p>Solo se usa para identificar la cuenta Google conectada. Nunca se comparte con terceros.</p>
+              </article>
+              <article class="feature">
+                <div class="icon" aria-hidden="true">📊</div>
+                <h3>Google Sheets</h3>
+                <p>El scope limitado <code>drive.file</code> autoriza a la API de Sheets únicamente sobre el spreadsheet creado por FinAI.</p>
+              </article>
+              <article class="feature">
+                <div class="icon" aria-hidden="true">☁️</div>
+                <h3>Google Drive</h3>
+                <p>Fotos mediante <code>drive.file</code>. Backups Premium cifrados en el espacio privado <code>drive.appdata</code>, sin explorar tu Drive.</p>
+              </article>
+              <article class="feature">
+                <div class="icon" aria-hidden="true">🔒</div>
+                <h3>Tu control</h3>
+                <p>La conexión es opcional y puedes revocarla desde tu cuenta Google cuando quieras.</p>
+              </article>
+            </div>
+          </div>
+          <div class="legal-box">
+            <h3 style="margin:0 0 8px; color: var(--text-strong); font-size: 1.05rem;">Privacidad verificable</h3>
+            <p class="fine">FinAI no vende tus datos, no los usa para publicidad y no dispone de servidores propios donde copiarlos.</p>
+            <ul class="list">
+              <li><span class="dot" aria-hidden="true"></span><span>Acceso limitado a los archivos que FinAI crea en Drive.</span></li>
+              <li><span class="dot" aria-hidden="true"></span><span>Los backups Premium nunca se descifran sin tu contraseña.</span></li>
+              <li><span class="dot" aria-hidden="true"></span><span>La API key de Gemini se guarda cifrada en el dispositivo.</span></li>
+              <li><span class="dot" aria-hidden="true"></span><span>Política de privacidad detallada y términos públicos.</span></li>
+            </ul>
+            <p class="fine" style="margin-top:14px;">También puedes <a href="https://myaccount.google.com/permissions" rel="noopener noreferrer" style="color: var(--accent);">revisar o revocar los permisos de Google</a> cuando quieras.</p>
+          </div>
         </div>
       </section>
 
       <section class="panel section" id="video-sheets" aria-labelledby="video-sheets-title">
         <div class="video-grid">
           <div class="video-copy">
-            <span class="eyebrow"><b>Demostración pública</b> · Google Sheets</span>
+            <span class="eyebrow"><span class="dot-live" aria-hidden="true"></span>Demostración pública · Google Sheets</span>
             <h2 id="video-sheets-title">Así funciona FinAI con Google Sheets</h2>
             <p class="hero-copy">
-              Este video muestra el flujo real de exportación y sincronización: el usuario conecta su cuenta, crea o vincula su spreadsheet y decide cuándo enviar sus gastos, ingresos, productos y resumen.
+              El flujo real de exportación y sincronización: el usuario conecta su cuenta, crea o vincula su spreadsheet
+              y decide cuándo enviar sus gastos, ingresos, productos y resumen.
             </p>
             <ul class="list">
               <li><span class="dot" aria-hidden="true"></span><span>La conexión con Google es opcional y requiere autorización OAuth.</span></li>
@@ -613,7 +900,6 @@
               <a class="pill" href="#datos-google">Cómo usamos los datos</a>
             </div>
           </div>
-
           <div class="video-shell">
             <iframe
               src="https://www.youtube-nocookie.com/embed/CP_M2QxYI3s?rel=0"
@@ -627,52 +913,26 @@
         </div>
       </section>
 
-      <div class="grid-2">
-        <section class="panel section" aria-labelledby="flow-title">
-          <h2 id="flow-title">Cómo funciona</h2>
-          <div class="workflow">
-            <div class="step">
-              <div>
-                <h3>1. Conecta tu cuenta</h3>
-                <p>Autoriza solo lo necesario para Sheets/Drive y conserva el control de permisos.</p>
-              </div>
-            </div>
-            <div class="step">
-              <div>
-                <h3>2. Captura y organiza</h3>
-                <p>Introduce operaciones por texto, voz o cámara y clasifícalas al instante.</p>
-              </div>
-            </div>
-            <div class="step">
-              <div>
-                <h3>3. Exporta y revisa</h3>
-                <p>Lleva tus datos a Google Sheets para revisar, corregir o compartir con tus propios criterios.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel section" id="privacidad" aria-labelledby="privacy-title">
-          <h2 id="privacy-title">Privacidad y control del usuario</h2>
-          <div class="legal-box">
-            <p>
-              FinAI prioriza el control del usuario: las integraciones con Google Sheets y Google Drive se usan para funciones concretas,
-              con autorización del usuario y posibilidad de revocación desde su cuenta.
-            </p>
-            <ul class="list">
-              <li><span class="dot" aria-hidden="true"></span><span>Acceso limitado a crear y sincronizar tus hojas, y a los archivos que FinAI crea en Drive.</span></li>
-              <li><span class="dot" aria-hidden="true"></span><span>El usuario conserva la propiedad de sus datos y hojas de cálculo.</span></li>
-              <li><span class="dot" aria-hidden="true"></span><span>Existe contacto directo para dudas, privacidad y solicitudes de soporte.</span></li>
-            </ul>
-          </div>
-        </section>
-      </div>
+      <section class="cta" aria-labelledby="cta-title">
+        <div>
+          <h2 id="cta-title">Empieza a usar FinAI hoy</h2>
+          <p>Descarga gratuita en Google Play. Sin servidores propios, sin publicidad, con backup cifrado opcional.</p>
+        </div>
+        <div class="actions">
+          <a class="button primary" href="https://play.google.com/store/apps/details?id=com.gastos.ingresos" rel="noopener noreferrer">Descargar FinAI</a>
+          <a class="pill" href="mailto:ymi2021@gmail.com">Hablar con el desarrollador</a>
+        </div>
+      </section>
 
       <section class="panel section" aria-labelledby="legal-title">
-        <h2 id="legal-title">Descarga, legales y contacto</h2>
-        <div class="split">
+        <div class="section-head">
+          <h2 id="legal-title">Documentos oficiales</h2>
+          <p>Descarga, verificación y cumplimiento legal en un solo lugar.</p>
+        </div>
+        <div class="legal-grid">
           <div class="legal-box">
-            <p class="fine">Descarga oficial y verificación pública del producto.</p>
+            <h3 style="margin:0 0 8px; color: var(--text-strong); font-size: 1.05rem;">Descarga</h3>
+            <p class="fine">Canal oficial de distribución.</p>
             <div class="legal-links">
               <a class="link" href="https://play.google.com/store/apps/details?id=com.gastos.ingresos" rel="noopener noreferrer">
                 <span>FinAI en Google Play</span><span aria-hidden="true">↗</span>
@@ -683,7 +943,8 @@
             </div>
           </div>
           <div class="legal-box">
-            <p class="fine">Documentos legales y de cumplimiento disponibles en el sitio.</p>
+            <h3 style="margin:0 0 8px; color: var(--text-strong); font-size: 1.05rem;">Cumplimiento</h3>
+            <p class="fine">Documentos públicos del proyecto.</p>
             <div class="legal-links">
               <a class="link" href="privacy.html"><span>Política de privacidad</span><span aria-hidden="true">→</span></a>
               <a class="link" href="terms.html"><span>Términos y condiciones</span><span aria-hidden="true">→</span></a>
@@ -695,11 +956,13 @@
     </main>
 
     <footer>
-      <p>&copy; 2026 <strong>FinAI</strong> · Desarrollado por <strong>Yhas1984</strong>.</p>
-      <address>
-        FinAI · Yhas1984 · <a href="mailto:ymi2021@gmail.com">ymi2021@gmail.com</a> ·
-        <a href="https://finai.leadpilot.es/">https://finai.leadpilot.es/</a>
-      </address>
+      <div class="row">
+        <p>&copy; 2026 <strong>FinAI</strong> · Desarrollado por <strong>Yhas1984</strong></p>
+        <address>
+          <a href="mailto:ymi2021@gmail.com">ymi2021@gmail.com</a> ·
+          <a href="https://finai.leadpilot.es/">finai.leadpilot.es</a>
+        </address>
+      </div>
     </footer>
   </div>
 </body>

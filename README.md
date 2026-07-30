@@ -36,8 +36,8 @@
 | **IA** | Google Generative AI SDK `0.9.0` (Gemini) |
 | **Voz** | SpeechRecognizer de Android (es-ES) |
 | **Cámara** | `ActivityResultContracts.TakePicture` (app de cámara del sistema) + FileProvider |
-| **Sheets** | Google Sheets API v4 + Google Sign-In (Play Services Auth `21.6.0`) |
-| **Backup** | WorkManager `2.11.2`, Drive `appDataFolder`, AES-256-GCM + PBKDF2 |
+| **Sheets** | Google Sheets API v4 + Google Sign-In (Play Services Auth `21.6.0`), scope limitado `drive.file` |
+| **Backup** | WorkManager `2.11.2`, Drive `appDataFolder` (`drive.appdata`), AES-256-GCM + PBKDF2 |
 | **Monetización** | Google Play Billing `9.1.0` |
 | **Asincronía** | Kotlin Coroutines `1.10.2` |
 
@@ -94,7 +94,8 @@ FinAI usa **Gemini** a través de la **API gratuita de Google AI Studio**.
 
 Desde **Backup** puedes vincular tu cuenta de Google:
 
-1. **Exportar a Sheets** — crea (o reescribe) un spreadsheet con 4 hojas: *Facturas Recibidas*, *Ingresos*, *Productos* y *Resumen*. Nóminas y otros ingresos comparten una hoja con campos salariales opcionales.
+- **Permiso solicitado** — el único scope OAuth de Google solicitado por FinAI es `https://www.googleapis.com/auth/drive.file`, que autoriza a la API de Sheets para crear y mantener exclusivamente el spreadsheet generado por la app. No usamos el scope sensible `spreadsheets`.
+- **Exportar a Sheets** — crea (o reescribe) un spreadsheet con 4 hojas: *Facturas Recibidas*, *Ingresos*, *Productos* y *Resumen*. Nóminas y otros ingresos comparten una hoja con campos salariales opcionales.
 2. **Multimoneda** — cada fila conserva el importe original y su moneda; se añade además el **importe convertido a tu moneda local** usando la tasa vigente. La hoja *Resumen* agrega esos importes convertidos para mostrar el balance real.
 3. **Sincronización en segundo plano** — a partir de ahí, cada alta, **edición o borrado** en la app se refleja en el Sheet:
    - Cada hoja lleva una columna de **ID** estable (ID del registro / InvoiceID en productos).
@@ -114,7 +115,7 @@ FinAI usa un formato portable `.finai` para que una copia sobreviva a la desinst
 3. **Datos excluidos** — no copia la API key de Gemini, credenciales OAuth, estado Premium ni caché de tipos de cambio.
 4. **Cifrado** — el contenido se cifra con AES-256-GCM; la clave de datos se protege mediante PBKDF2 y la contraseña elegida por el usuario.
 5. **Restauración** — selecciona el archivo, revisa el resumen y confirma. La operación valida y descifra toda la copia antes de reemplazar los datos actuales en una única transacción de Room.
-6. **Premium Drive** — crea una copia automática aproximadamente cada 24 horas cuando hay red y batería suficiente, y conserva las cinco versiones más recientes en el espacio privado `appDataFolder` de Google Drive.
+6. **Premium Drive** — crea una copia automática aproximadamente cada 24 horas cuando hay red y batería suficiente, y conserva las cinco versiones más recientes en el espacio privado `appDataFolder` de Google Drive (scope `drive.appdata`).
 7. **Nueva instalación** — activa Premium, conecta la misma cuenta Google, elige una copia e introduce la contraseña de recuperación.
 
 > ⚠️ FinAI no guarda la contraseña en Drive y no puede recuperarla. Sin ella no es posible descifrar el backup después de desinstalar la app.
@@ -144,7 +145,7 @@ FinAI usa un formato portable `.finai` para que una copia sobreviva a la desinst
 ### Permisos
 - `CAMERA` — fotografiar facturas desde el chat
 - `RECORD_AUDIO` — comandos por voz
-- `INTERNET` — llamadas a la API de Gemini y Google Sheets
+- `INTERNET` — llamadas a la API de Gemini y a la API de Sheets/Drive
 
 ---
 
@@ -211,7 +212,8 @@ FinAI/
 - Los datos financieros se almacenan **localmente** en tu dispositivo (Room/SQLite).
 - Los **mensajes al asistente** se envían a la API de Gemini para su procesamiento.
 - Las imágenes elegidas para escanear también se envían a Gemini; con Premium y Google conectado, la foto guardada se sube a Drive.
-- La exportación/sincronización con Google Sheets es **opcional** y requiere tu cuenta y tu acción explícita.
+- La exportación/sincronización con Google Sheets usa el scope limitado `drive.file`: solo puede acceder al spreadsheet creado por FinAI y nunca a otras hojas de tu Drive.
+- Los permisos de Google pueden revocarse en cualquier momento desde [myaccount.google.com/permissions](https://myaccount.google.com/permissions). FinAI sigue funcionando con almacenamiento local.
 - La API key de Gemini se guarda **cifrada** en el dispositivo (EncryptedSharedPreferences) y no se comparte.
 - El backup manual `.finai` está cifrado; Premium puede guardar hasta cinco copias cifradas en el espacio privado de Drive y eliminarlas desde la app.
 - Los logs con datos financieros solo se emiten en builds de debug (`SafeLog`).
