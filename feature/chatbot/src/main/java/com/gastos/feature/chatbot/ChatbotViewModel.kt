@@ -856,6 +856,17 @@ class ChatbotViewModel @Inject constructor(
             return exchangeRateProvider.convert(product.subtotal, currency, target) ?: 0.0
         }
         if (resolvedQueryType == "productos_por_comercio") {
+            if (periodProducts.isEmpty() && resolvedProvider != null) {
+                val fallback = lookupOutsideRange(
+                    invoices = invoices.filter { it.tipo == InvoiceType.GASTO },
+                    resolvedProvider = resolvedProvider,
+                    normalizedCategory = normalizedCategory,
+                    requestedPeriod = periodLabel,
+                    convertedAmount = ::convertedInvoiceAmount,
+                    fmt = fmt
+                ).replace("compras", "ticket")
+                return result(fallback)
+            }
             return result(
                 buildProductsByProviderReport(
                     products = periodProducts,
@@ -879,7 +890,14 @@ class ChatbotViewModel @Inject constructor(
         return when (resolvedQueryType) {
             "gastos" -> {
                 if (resolvedProvider != null && countGastos == 0) {
-                    return result("🛒 No encontré compras en $resolvedProvider $periodLabel.")
+                    return result(lookupOutsideRange(
+                        invoices = invoices,
+                        resolvedProvider = resolvedProvider,
+                        normalizedCategory = normalizedCategory,
+                        requestedPeriod = periodLabel,
+                        convertedAmount = ::convertedInvoiceAmount,
+                        fmt = fmt
+                    ))
                 }
                 val title = if (resolvedProvider != null) {
                     "🛒 Gastos en $resolvedProvider $periodLabel:\n"
@@ -1086,6 +1104,43 @@ class ChatbotViewModel @Inject constructor(
                 }
             }
         return sb.toString().trimEnd()
+    }
+
+    private fun lookupOutsideRange(
+        invoices: List<com.gastos.domain.model.Invoice>,
+        resolvedProvider: String,
+        normalizedCategory: String?,
+        requestedPeriod: String,
+        convertedAmount: (com.gastos.domain.model.Invoice) -> Double,
+        fmt: java.text.NumberFormat
+    ): String {
+        val matching = invoices.filter { invoice ->
+            (resolvedProvider.isBlank() || FinancialQueryResolver.matchesProvider(invoice.proveedor, resolvedProvider)) &&
+                (normalizedCategory == null || TransactionCategories.matchesCategory(invoice.categoria, normalizedCategory))
+        }
+        if (matching.isEmpty()) {
+            return "🛒 No encontré compras en $resolvedProvider en ningún periodo registrado."
+        }
+        val byYear = matching.groupBy { yearOf(it.fecha) }
+            .mapValues { (_, items) -> items.filter { it.tipo == InvoiceType.GASTO }.sumOf(convertedAmount) }
+            .filter { it.value > 0.0 }
+            .toList()
+            .sortedByDescending { it.first }
+        val totalAllTime = byYear.sumOf { it.second }
+        val sb = StringBuilder("🛒 No encontré compras en $resolvedProvider $requestedPeriod, pero hay ")
+        sb.append(fmt.format(totalAllTime))
+        sb.append(" repartidos en otros periodos:\n")
+        byYear.forEach { (year, amount) ->
+            sb.append("  • $year: ${fmt.format(amount)}\n")
+        }
+        sb.append("\nPrueba con un periodo más amplio, por ejemplo: \"este año\".")
+        return sb.toString().trimEnd()
+    }
+
+    private fun yearOf(timestamp: Long): Int {
+        val cal = java.util.Calendar.getInstance()
+        cal.timeInMillis = timestamp
+        return cal.get(java.util.Calendar.YEAR)
     }
 
     fun startVoiceInput() {
