@@ -1,0 +1,9 @@
+# FinAI · Release notes · v1.5.1 (versionCode 11)
+
+- Nueva pregunta: "¿qué he comprado en <comercio>?" devuelve un listado por producto con cantidad y gasto, agrupado por comercio cuando no especificas uno.
+- Cuando un proveedor no tiene compras en el periodo solicitado, el asistente ahora muestra los totales por mes-calendario y sugiere probar "este año" en lugar de cortar en seco.
+- Corrección del comportamiento del modificador "solo/únicamente" para que se aplique al comercio cuando se menciona uno, en lugar de forzar coincidencia exacta en el producto.
+- Bug que mezclaba "AGUA CONSUM 8L" con sus variantes "AGUA CONSUM 8L LIMON" o "AGUA CONSUM 8L NARANJA" corregido: cuando el nombre del producto coincide exactamente, ya no se amplía a la familia.
+- La aclaración de variantes tras una pregunta ambigua conserva el comercio y la categoría que el usuario eligió.
+
+(End of file - total 7 lines)

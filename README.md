@@ -226,4 +226,4 @@ Proyecto privado. Todos los derechos reservados.
 
 ---
 
-**FinAI** · v1.5.0 · Hecho con ❤️ en Kotlin + Jetpack Compose
+**FinAI** · v1.5.1 · Hecho con ❤️ en Kotlin + Jetpack Compose
