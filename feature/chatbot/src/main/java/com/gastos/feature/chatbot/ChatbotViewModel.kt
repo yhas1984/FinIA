@@ -1121,26 +1121,29 @@ class ChatbotViewModel @Inject constructor(
         if (matching.isEmpty()) {
             return "🛒 No encontré compras en $resolvedProvider en ningún periodo registrado."
         }
-        val byYear = matching.groupBy { yearOf(it.fecha) }
-            .mapValues { (_, items) -> items.filter { it.tipo == InvoiceType.GASTO }.sumOf(convertedAmount) }
+        val expenses = matching.filter { it.tipo == InvoiceType.GASTO }
+        val byMonth = expenses.groupBy { monthOf(it.fecha) }
+            .mapValues { (_, items) -> items.sumOf(convertedAmount) }
             .filter { it.value > 0.0 }
             .toList()
             .sortedByDescending { it.first }
-        val totalAllTime = byYear.sumOf { it.second }
+        val totalAllTime = byMonth.sumOf { it.second }
         val sb = StringBuilder("🛒 No encontré compras en $resolvedProvider $requestedPeriod, pero hay ")
         sb.append(fmt.format(totalAllTime))
         sb.append(" repartidos en otros periodos:\n")
-        byYear.forEach { (year, amount) ->
-            sb.append("  • $year: ${fmt.format(amount)}\n")
+        byMonth.forEach { (month, amount) ->
+            sb.append("  • $month: ${fmt.format(amount)}\n")
         }
         sb.append("\nPrueba con un periodo más amplio, por ejemplo: \"este año\".")
         return sb.toString().trimEnd()
     }
 
-    private fun yearOf(timestamp: Long): Int {
+    private fun monthOf(timestamp: Long): String {
         val cal = java.util.Calendar.getInstance()
         cal.timeInMillis = timestamp
-        return cal.get(java.util.Calendar.YEAR)
+        val month = MONTHS[cal.get(java.util.Calendar.MONTH)]
+        val year = cal.get(java.util.Calendar.YEAR)
+        return "$month $year"
     }
 
     fun startVoiceInput() {
@@ -1219,5 +1222,12 @@ class ChatbotViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
         voiceRecognitionService.destroy()
+    }
+
+    private companion object {
+        private val MONTHS = listOf(
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+        )
     }
 }
