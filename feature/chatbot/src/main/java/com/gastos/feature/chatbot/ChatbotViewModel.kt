@@ -125,8 +125,16 @@ internal object FinancialQueryResolver {
             }
         }
         val inferredMetric = inferMetric(originalQuestion)
+        val normalizedQuestion = normalizeProductName(originalQuestion.orEmpty())
+        val mentionsProduct = "producto" in normalizedQuestion || "productos" in normalizedQuestion
+        val mentionsPurchaseVerb = PRODUCT_LIST_VERB_TERMS.any { normalizedQuestion.contains(it) }
+        val askedForProductList = mentionsProduct && mentionsPurchaseVerb
+        val providerProductList = resolvedProvider != null && resolvedItem == null &&
+            (mentionsProduct || mentionsPurchaseVerb)
         val resolvedType = when {
             resolvedItem != null -> "productos"
+            askedForProductList -> "productos_por_comercio"
+            providerProductList -> "productos_por_comercio"
             inferredMetric != null -> inferredMetric
             resolvedProvider != null && normalizedType in PRODUCT_QUERY_TYPES -> "gastos"
             normalizedType in SUPPORTED_QUERY_TYPES -> normalizedType
@@ -313,10 +321,20 @@ internal object FinancialQueryResolver {
     }
 
     private val SUPPORTED_QUERY_TYPES = setOf(
-        "gastos", "ingresos", "balance", "productos", "producto"
+        "gastos", "ingresos", "balance", "productos", "producto", "productos_por_comercio"
     )
     private val PRODUCT_QUERY_TYPES = setOf("productos", "producto")
+    private val PRODUCT_LIST_QUERY_TYPES = setOf("productos_por_comercio", "productos_en_comercio")
     private val EXACT_PRODUCT_TERMS = setOf("solo", "solamente", "unicamente", "exactamente", "producto exacto")
+    private val PRODUCT_LIST_VERB_TERMS = setOf(
+        "he comprado",
+        "has comprado",
+        "hemos comprado",
+        "tienes comprado",
+        "compre",
+        "comprado",
+        "compramos"
+    )
     private val NET_TERMS = setOf(
         "balance", "ganado", "ganancia", "beneficio", "neto", "lo que me queda",
         "ingresos menos gastos"
@@ -837,6 +855,18 @@ class ChatbotViewModel @Inject constructor(
             val currency = invoiceById[product.invoiceId]?.moneda ?: return 0.0
             return exchangeRateProvider.convert(product.subtotal, currency, target) ?: 0.0
         }
+        if (resolvedQueryType == "productos_por_comercio") {
+            return result(
+                buildProductsByProviderReport(
+                    products = periodProducts,
+                    invoicesById = invoiceById,
+                    periodoLabel = periodLabel,
+                    providerLabel = resolvedProvider,
+                    fmt = fmt,
+                    convertedProductAmount = ::convertedProductAmount
+                )
+            )
+        }
         val totalGastos = filteredInvoices
             .filter { it.tipo == InvoiceType.GASTO }
             .sumOf(::convertedInvoiceAmount)
@@ -1012,6 +1042,50 @@ class ChatbotViewModel @Inject constructor(
             "Responde con el número, el nombre exacto o “todas”."
         }
         return "No encontré “$item” como producto exacto durante $periodo.\n\nEncontré:\n$options\n\n$instruction"
+    }
+
+    private fun buildProductsByProviderReport(
+        products: List<com.gastos.domain.model.Product>,
+        invoicesById: Map<Long, com.gastos.domain.model.Invoice>,
+        periodoLabel: String,
+        providerLabel: String?,
+        fmt: java.text.NumberFormat,
+        convertedProductAmount: (com.gastos.domain.model.Product) -> Double
+    ): String {
+        if (products.isEmpty()) {
+            val scope = if (providerLabel != null) " en $providerLabel" else ""
+            return "📦 No hay productos registrados $periodoLabel$scope."
+        }
+        val grouped = if (providerLabel != null) {
+            mapOf(providerLabel to products)
+        } else {
+            products.groupBy { invoicesById[it.invoiceId]?.proveedor ?: "Sin comercio" }
+        }
+        val scopePrefix = if (providerLabel != null) " en $providerLabel" else ""
+        val sb = StringBuilder("🧾 Productos comprados $periodoLabel$scopePrefix:\n")
+        grouped.entries
+            .sortedByDescending { (_, items) -> items.sumOf(convertedProductAmount) }
+            .forEach { (provider, items) ->
+                val providerTotal = items.sumOf(convertedProductAmount)
+                val providerUnits = items.sumOf { it.cantidad }
+                val providerUnitsText = if (providerUnits % 1.0 == 0.0) providerUnits.toInt() else providerUnits
+                sb.append("\n$provider: ${fmt.format(providerTotal)} · $providerUnitsText uds\n")
+                val byProduct = items
+                    .groupBy { FinancialQueryResolver.normalizeProductName(it.descripcion) }
+                    .map { (_, groupItems) ->
+                        Triple(
+                            groupItems.first().descripcion.trim(),
+                            groupItems.sumOf { it.cantidad },
+                            groupItems.sumOf(convertedProductAmount)
+                        )
+                    }
+                    .sortedByDescending { it.third }
+                byProduct.forEach { (name, units, amount) ->
+                    val unitsText = if (units % 1.0 == 0.0) units.toInt() else units
+                    sb.append("  • $name: $unitsText uds · ${fmt.format(amount)}\n")
+                }
+            }
+        return sb.toString().trimEnd()
     }
 
     fun startVoiceInput() {

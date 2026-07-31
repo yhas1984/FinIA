@@ -246,6 +246,66 @@ class FinancialQueryResolverTest {
     }
 
     @Test
+    fun `list-by-commerce question routes to product listing with provider`() {
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "gastos",
+            item = null,
+            matchMode = null,
+            originalQuestion = "Qué he comprado en Consum",
+            productNames = emptyList(),
+            provider = "Consum",
+            providerNames = listOf("Consum", "Mercadona")
+        )
+
+        assertEquals("productos_por_comercio", resolved.queryType)
+        assertEquals("Consum", resolved.provider)
+    }
+
+    @Test
+    fun `list-by-commerce question without provider stays global`() {
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "gastos",
+            item = null,
+            matchMode = null,
+            originalQuestion = "Qué productos he comprado",
+            productNames = emptyList()
+        )
+
+        assertEquals("productos_por_comercio", resolved.queryType)
+    }
+
+    @Test
+    fun `provider purchase verb routes to product list without product keyword`() {
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "gastos",
+            item = null,
+            matchMode = null,
+            originalQuestion = "Qué he comprado en Consum",
+            productNames = emptyList(),
+            provider = "Consum",
+            providerNames = listOf("Consum", "Mercadona")
+        )
+
+        assertEquals("productos_por_comercio", resolved.queryType)
+        assertEquals("Consum", resolved.provider)
+    }
+
+    @Test
+    fun `list-by-commerce wins over gastos when no product is asked`() {
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "gastos",
+            item = null,
+            matchMode = null,
+            originalQuestion = "Qué he comprado en Consum",
+            productNames = emptyList(),
+            provider = "Consum",
+            providerNames = listOf("Consum", "Mercadona")
+        )
+
+        assertEquals("productos_por_comercio", resolved.queryType)
+    }
+
+    @Test
     fun `group matching includes water variants and excludes aguacate`() {
         val products = listOf(
             Product(invoiceId = 1L, descripcion = "AGUA CONSUM 8L", cantidad = 1.0, precioUnitario = 8.0),

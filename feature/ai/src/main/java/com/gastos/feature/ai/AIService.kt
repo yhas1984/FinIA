@@ -302,7 +302,7 @@ class AIService @Inject constructor(
             Reglas de acción:
             1. CONSULTA FINANCIERA: si pregunta cuánto gastó, sus ingresos, balance, totales,
                comercios, proveedores, productos comprados, etc.:
-               {"action":"query","query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+               {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año","categoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
 
                Diferencia siempre estos filtros:
                - COMERCIO/PROVEEDOR: Mercadona, Lidl, Amazon, Repsol, etc. Usa
@@ -311,6 +311,12 @@ class AIService @Inject constructor(
                  categoria="nombre" y proveedor=null.
                - PRODUCTO: café, agua, pan, gasolina, etc. Usa query_type="productos"
                  e item="nombre". Una tienda o empresa NUNCA es un producto.
+               - LISTADO DE PRODUCTOS POR COMERCIO: si el usuario pregunta qué productos
+                 compró, qué se ha comprado o qué contiene un ticket, usa
+                 query_type="productos_por_comercio" y rellena el proveedor si lo menciona.
+                 Ejemplos:
+                 * "¿qué he comprado en Consum?" => proveedor="Consum", query_type="productos_por_comercio", item=null.
+                 * "¿qué productos he comprado?" => proveedor=null, query_type="productos_por_comercio", item=null.
                - "ganado", "ganancia", "beneficio", "neto" o "lo que me queda"
                  significan balance (ingresos menos gastos).
                - "ingresado", "cobrado", "recibido", "salario" o "nómina"
@@ -347,7 +353,7 @@ class AIService @Inject constructor(
 
     private fun queryExtractionPrompt(query: String): String = """
         Extrae los parámetros de esta consulta financiera y devuelve SOLO el JSON:
-        {"query_type":"gastos|ingresos|balance|productos","periodo":"hoy|semana|mes|año","categoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
+        {"query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año","categoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
 
         Reglas:
         - comercio, tienda, supermercado, empresa o proveedor => proveedor, nunca item
@@ -355,6 +361,8 @@ class AIService @Inject constructor(
         - producto genérico (agua, café, leche, pan) => match_mode="group"
         - "solo", "únicamente", "exactamente" + descripción específica => match_mode="exact"
         - comercio y producto pueden combinarse: proveedor="Consum", item="agua", match_mode="group"
+        - "qué he comprado", "qué compré" o preguntas de listado de productos
+          sin item => query_type="productos_por_comercio" y proveedor si se nombra
         - si la consulta es sobre un producto, usa query_type="productos", nunca "balance"
         - "ganado", "ganancia", "beneficio", "neto" o "lo que me queda" => balance
         - "ingresado", "cobrado", "recibido", "salario" o "nómina" => ingresos
