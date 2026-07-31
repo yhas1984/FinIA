@@ -217,6 +217,35 @@ class FinancialQueryResolverTest {
     }
 
     @Test
+    fun `solo modifier applies to provider not product`() {
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "productos",
+            item = "agua",
+            matchMode = "auto",
+            originalQuestion = "Cuánto gasté solo en Consum en agua",
+            productNames = listOf("AGUA CONSUM 8L", "Agua Bezoya 1,5L"),
+            provider = "Consum",
+            providerNames = listOf("Consum", "Mercadona")
+        )
+
+        assertEquals("group", resolved.matchMode)
+        assertEquals("Consum", resolved.provider)
+    }
+
+    @Test
+    fun `solo without provider keeps exact intent on the product`() {
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "productos",
+            item = "agua",
+            matchMode = "auto",
+            originalQuestion = "Cuánto gasté solo en agua",
+            productNames = listOf("AGUA CONSUM 8L", "Agua Bezoya 1,5L")
+        )
+
+        assertEquals("exact", resolved.matchMode)
+    }
+
+    @Test
     fun `group matching includes water variants and excludes aguacate`() {
         val products = listOf(
             Product(invoiceId = 1L, descripcion = "AGUA CONSUM 8L", cantidad = 1.0, precioUnitario = 8.0),

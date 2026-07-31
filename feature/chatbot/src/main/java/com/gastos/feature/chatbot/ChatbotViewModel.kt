@@ -137,7 +137,8 @@ internal object FinancialQueryResolver {
             item = resolvedItem,
             requestedMode = matchMode,
             originalQuestion = originalQuestion,
-            productNames = productNames
+            productNames = productNames,
+            hasResolvedProvider = resolvedProvider != null
         )
         return ResolvedFinancialQuery(
             queryType = resolvedType,
@@ -209,10 +210,11 @@ internal object FinancialQueryResolver {
         item: String?,
         requestedMode: String?,
         originalQuestion: String?,
-        productNames: List<String>
+        productNames: List<String>,
+        hasResolvedProvider: Boolean
     ): String? {
         if (item.isNullOrBlank()) return null
-        if (questionRequestsExactProduct(originalQuestion)) return "exact"
+        if (questionRequestsExactProduct(originalQuestion, hasResolvedProvider)) return "exact"
         if (requestedMode.equals("group", ignoreCase = true)) return "group"
         val normalizedItem = normalizeProductName(item)
         val relatedNames = productNames
@@ -290,11 +292,13 @@ internal object FinancialQueryResolver {
         return normalizedQuestion.contains("categoria")
     }
 
-    private fun questionRequestsExactProduct(question: String?): Boolean {
+    private fun questionRequestsExactProduct(question: String?, hasResolvedProvider: Boolean): Boolean {
         val normalizedQuestion = normalizeProductName(question.orEmpty())
-        return EXACT_PRODUCT_TERMS.any { term ->
+        val hasExplicitModifier = EXACT_PRODUCT_TERMS.any { term ->
             normalizedQuestion == term || normalizedQuestion.contains("$term ")
         }
+        if (!hasExplicitModifier) return false
+        return !hasResolvedProvider
     }
 
     private fun inferMetric(question: String?): String? {
