@@ -320,9 +320,11 @@ class AIService @Inject constructor(
                  el proveedor mencionado en la conversación anterior.
 
                Reglas extra para productos:
-               - Una pregunta por un producto concreto SIEMPRE usa query_type="productos" y match_mode="exact". Ejemplo: "cuánto gasté en banana" => item="banana".
-               - Si el usuario pide SOLO un producto exacto (ej. "solo café", "únicamente café"), usa query_type="productos", item="café", match_mode="exact".
-               - Si pide una familia o variantes (ej. "todos los cafés", "cafés incluidos con leche"), usa query_type="productos", item="café", match_mode="group".
+               - Un nombre genérico (agua, café, leche, pan) representa una familia y usa match_mode="group".
+               - Si el usuario pide SOLO un producto exacto o escribe la descripción completa de la línea
+                 (ej. "solo Agua Consum 8L"), usa match_mode="exact".
+               - Comercio y producto se pueden combinar: "agua en Consum" => item="agua", proveedor="Consum", match_mode="group".
+               - FinAI valida localmente el alcance final; match_mode es solo una sugerencia.
                - Si pregunta por un producto concreto, NO uses query_type="balance".
 
             2. REGISTRAR GASTO: si dice que gastó, compró o pagó algo:
@@ -350,8 +352,9 @@ class AIService @Inject constructor(
         Reglas:
         - comercio, tienda, supermercado, empresa o proveedor => proveedor, nunca item
         - categoría financiera (Alimentación, Transporte, etc.) => categoria
-        - "solo", "únicamente", "exactamente" + producto => match_mode="exact"
-        - "todos", "variantes", "incluidos", "incluyendo" + producto => match_mode="group"
+        - producto genérico (agua, café, leche, pan) => match_mode="group"
+        - "solo", "únicamente", "exactamente" + descripción específica => match_mode="exact"
+        - comercio y producto pueden combinarse: proveedor="Consum", item="agua", match_mode="group"
         - si la consulta es sobre un producto, usa query_type="productos", nunca "balance"
         - "ganado", "ganancia", "beneficio", "neto" o "lo que me queda" => balance
         - "ingresado", "cobrado", "recibido", "salario" o "nómina" => ingresos

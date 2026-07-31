@@ -134,12 +134,12 @@ class GeminiRestClient @Inject constructor() {
         val firstCandidate = candidates.optJSONObject(0) ?: return ""
         val content = firstCandidate.optJSONObject("content") ?: return ""
         val parts = content.optJSONArray("parts") ?: return ""
-        return buildString {
-            for (index in 0 until parts.length()) {
-                val part = parts.optJSONObject(index) ?: continue
-                append(part.optString("text"))
-            }
+        val text = StringBuilder()
+        for (index in 0 until parts.length()) {
+            val part = parts.optJSONObject(index) ?: continue
+            text.append(part.optString("text"))
         }
+        return text.toString()
     }
 
     private fun parseErrorMessage(rawBody: String?): String {
