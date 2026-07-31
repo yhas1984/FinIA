@@ -40,7 +40,7 @@ import com.gastos.domain.model.SUPPORTED_CURRENCIES
 
 private const val TAG = "ChatbotVM"
 
-private data class ProductMatchResult(
+internal data class ProductMatchResult(
     val matches: List<com.gastos.domain.model.Product>,
     val variants: List<String>,
     val requiresClarification: Boolean,
@@ -50,6 +50,8 @@ private data class ProductMatchResult(
 private data class PendingProductClarification(
     val periodo: String,
     val requestedItem: String,
+    val provider: String?,
+    val category: String?,
     val variants: List<String>
 )
 
@@ -131,11 +133,12 @@ internal object FinancialQueryResolver {
             resolvedProvider != null -> "gastos"
             else -> null
         }
-        val resolvedMode = when {
-            resolvedItem == null -> null
-            matchMode.equals("group", ignoreCase = true) -> "group"
-            else -> "exact"
-        }
+        val resolvedMode = resolveProductMatchMode(
+            item = resolvedItem,
+            requestedMode = matchMode,
+            originalQuestion = originalQuestion,
+            productNames = productNames
+        )
         return ResolvedFinancialQuery(
             queryType = resolvedType,
             item = resolvedItem,
@@ -156,9 +159,68 @@ internal object FinancialQueryResolver {
         return containsTokenSequence(candidate, requestedItem)
     }
 
+    fun matchProducts(
+        products: List<com.gastos.domain.model.Product>,
+        item: String,
+        matchMode: String?
+    ): ProductMatchResult {
+        val normalizedItem = normalizeProductName(item)
+        if (normalizedItem.isBlank()) {
+            return ProductMatchResult(emptyList(), emptyList(), requiresClarification = false, usedGroupMode = false)
+        }
+        val exactMatches = products.filter { normalizeProductName(it.descripcion) == normalizedItem }
+        val relatedMatches = products.filter { isRelatedProductName(it.descripcion, normalizedItem) }
+        val relatedVariants = relatedMatches
+            .map { it.descripcion.trim() }
+            .distinct()
+            .sortedBy(::normalizeProductName)
+        return when (matchMode?.lowercase(Locale.ROOT)) {
+            "group" -> ProductMatchResult(relatedMatches, relatedVariants, false, true)
+            "exact" -> when {
+                exactMatches.isNotEmpty() -> ProductMatchResult(
+                    exactMatches,
+                    exactMatches.map { it.descripcion.trim() }.distinct(),
+                    false,
+                    false
+                )
+                relatedVariants.isNotEmpty() -> ProductMatchResult(emptyList(), relatedVariants, true, false)
+                else -> ProductMatchResult(emptyList(), emptyList(), false, false)
+            }
+            else -> when {
+                exactMatches.isNotEmpty() -> ProductMatchResult(
+                    exactMatches,
+                    exactMatches.map { it.descripcion.trim() }.distinct(),
+                    false,
+                    false
+                )
+                relatedVariants.size == 1 -> ProductMatchResult(relatedMatches, relatedVariants, false, true)
+                relatedVariants.size > 1 -> ProductMatchResult(emptyList(), relatedVariants, true, false)
+                else -> ProductMatchResult(emptyList(), emptyList(), false, false)
+            }
+        }
+    }
+
     fun matchesProvider(candidate: String, requestedProvider: String): Boolean {
         return containsTokenSequence(candidate, requestedProvider) ||
             containsTokenSequence(requestedProvider, candidate)
+    }
+
+    private fun resolveProductMatchMode(
+        item: String?,
+        requestedMode: String?,
+        originalQuestion: String?,
+        productNames: List<String>
+    ): String? {
+        if (item.isNullOrBlank()) return null
+        if (questionRequestsExactProduct(originalQuestion)) return "exact"
+        if (requestedMode.equals("group", ignoreCase = true)) return "group"
+        val normalizedItem = normalizeProductName(item)
+        val relatedNames = productNames
+            .map(::normalizeProductName)
+            .filter { it.isNotBlank() && containsTokenSequence(it, normalizedItem) }
+            .distinct()
+        val hasExactName = normalizedItem in relatedNames
+        return if (hasExactName) "exact" else "group"
     }
 
     fun requestsNetBalance(question: String?): Boolean {
@@ -228,6 +290,13 @@ internal object FinancialQueryResolver {
         return normalizedQuestion.contains("categoria")
     }
 
+    private fun questionRequestsExactProduct(question: String?): Boolean {
+        val normalizedQuestion = normalizeProductName(question.orEmpty())
+        return EXACT_PRODUCT_TERMS.any { term ->
+            normalizedQuestion == term || normalizedQuestion.contains("$term ")
+        }
+    }
+
     private fun inferMetric(question: String?): String? {
         val normalizedQuestion = normalizeProductName(question.orEmpty())
         if (normalizedQuestion.isBlank()) return null
@@ -243,6 +312,7 @@ internal object FinancialQueryResolver {
         "gastos", "ingresos", "balance", "productos", "producto"
     )
     private val PRODUCT_QUERY_TYPES = setOf("productos", "producto")
+    private val EXACT_PRODUCT_TERMS = setOf("solo", "solamente", "unicamente", "exactamente", "producto exacto")
     private val NET_TERMS = setOf(
         "balance", "ganado", "ganancia", "beneficio", "neto", "lo que me queda",
         "ingresos menos gastos"
@@ -410,8 +480,8 @@ class ChatbotViewModel @Inject constructor(
             val response = executeQuery(
                 queryType = "productos",
                 periodo = pending.periodo,
-                categoria = null,
-                provider = null,
+                categoria = pending.category,
+                provider = pending.provider,
                 item = clarification.item,
                 matchMode = clarification.matchMode,
                 originalQuestion = userAnswer
@@ -833,11 +903,17 @@ class ChatbotViewModel @Inject constructor(
             "productos", "producto" -> {
                 val resolvedItem = resolvedQuery.item
                 if (!resolvedItem.isNullOrBlank()) {
-                    val matchResult = matchProducts(periodProducts, resolvedItem, resolvedQuery.matchMode)
+                    val matchResult = FinancialQueryResolver.matchProducts(
+                        periodProducts,
+                        resolvedItem,
+                        resolvedQuery.matchMode
+                    )
                     if (matchResult.requiresClarification) {
                         pendingProductClarification = PendingProductClarification(
                             periodo = periodo,
                             requestedItem = resolvedItem,
+                            provider = resolvedProvider,
+                            category = normalizedCategory,
                             variants = matchResult.variants
                         )
                         return result(buildProductClarification(periodo, resolvedItem, matchResult.variants))
@@ -847,9 +923,6 @@ class ChatbotViewModel @Inject constructor(
                     }
                     val total = matchResult.matches.sumOf(::convertedProductAmount)
                     val totalUnits = matchResult.matches.sumOf { it.cantidad }
-                    val variantsText = matchResult.variants.joinToString(", ") {
-                        it.replaceFirstChar { ch -> ch.uppercase() }
-                    }
                     val intro = if (matchResult.usedGroupMode) {
                         "📦 Gasto en variantes de '$resolvedItem' durante $scopeLabel:"
                     } else {
@@ -859,7 +932,35 @@ class ChatbotViewModel @Inject constructor(
                         appendLine(intro)
                         appendLine("• Total: ${fmt.format(total)}")
                         appendLine("• Cantidad: ${if (totalUnits % 1.0 == 0.0) totalUnits.toInt() else totalUnits} uds")
-                        append("• Coincidencias: $variantsText")
+                        append("• Coincidencias: ${matchResult.matches.size} líneas · ${matchResult.variants.size} variantes")
+                        if (matchResult.usedGroupMode) {
+                            val byProduct = matchResult.matches
+                                .groupBy { FinancialQueryResolver.normalizeProductName(it.descripcion) }
+                                .map { (_, products) ->
+                                    Triple(
+                                        products.first().descripcion.trim(),
+                                        products.sumOf { it.cantidad },
+                                        products.sumOf(::convertedProductAmount)
+                                    )
+                                }
+                                .sortedByDescending { it.third }
+                            val byProvider = matchResult.matches
+                                .groupBy { product -> invoiceById[product.invoiceId]?.proveedor ?: "Sin comercio" }
+                                .mapValues { (_, products) -> products.sumOf(::convertedProductAmount) }
+                                .toList()
+                                .sortedByDescending { it.second }
+                            appendLine("\n\nDesglose por producto:")
+                            byProduct.take(5).forEach { (name, units, amount) ->
+                                val unitsText = if (units % 1.0 == 0.0) units.toInt() else units
+                                appendLine("  • $name: $unitsText uds · ${fmt.format(amount)}")
+                            }
+                            if (byProduct.size > 5) appendLine("  • +${byProduct.size - 5} variantes más")
+                            appendLine("\nPor comercio:")
+                            byProvider.take(5).forEach { (name, amount) ->
+                                appendLine("  • $name: ${fmt.format(amount)}")
+                            }
+                            if (byProvider.size > 5) append("  • +${byProvider.size - 5} comercios más")
+                        }
                     })
                 }
                 if (periodProducts.isEmpty()) {
@@ -893,74 +994,6 @@ class ChatbotViewModel @Inject constructor(
                     "No entendí del todo la consulta. Pídeme gastos por comercio, categoría o producto, " +
                         "tus ingresos o tu balance indicando el periodo."
                 )
-            }
-        }
-    }
-
-    private fun matchProducts(
-        products: List<com.gastos.domain.model.Product>,
-        item: String,
-        matchMode: String?
-    ): ProductMatchResult {
-        val normalizedItem = FinancialQueryResolver.normalizeProductName(item)
-        if (normalizedItem.isBlank()) {
-            return ProductMatchResult(emptyList(), emptyList(), requiresClarification = false, usedGroupMode = false)
-        }
-
-        val exactMatches = products.filter {
-            FinancialQueryResolver.normalizeProductName(it.descripcion) == normalizedItem
-        }
-        val relatedMatches = products.filter {
-            FinancialQueryResolver.isRelatedProductName(it.descripcion, normalizedItem)
-        }
-        val relatedVariants = relatedMatches
-            .map { it.descripcion.trim() }
-            .distinct()
-            .sortedBy(FinancialQueryResolver::normalizeProductName)
-        val normalizedMode = matchMode?.lowercase(Locale.ROOT)
-
-        return when (normalizedMode) {
-            "group" -> ProductMatchResult(
-                matches = relatedMatches,
-                variants = relatedVariants,
-                requiresClarification = false,
-                usedGroupMode = true
-            )
-            "exact" -> when {
-                exactMatches.isNotEmpty() -> ProductMatchResult(
-                    matches = exactMatches,
-                    variants = exactMatches.map { it.descripcion.trim() }.distinct(),
-                    requiresClarification = false,
-                    usedGroupMode = false
-                )
-                relatedVariants.isNotEmpty() -> ProductMatchResult(
-                    matches = emptyList(),
-                    variants = relatedVariants,
-                    requiresClarification = true,
-                    usedGroupMode = false
-                )
-                else -> ProductMatchResult(emptyList(), emptyList(), false, false)
-            }
-            else -> when {
-                exactMatches.isNotEmpty() -> ProductMatchResult(
-                    matches = exactMatches,
-                    variants = exactMatches.map { it.descripcion.trim() }.distinct(),
-                    requiresClarification = false,
-                    usedGroupMode = false
-                )
-                relatedVariants.size == 1 -> ProductMatchResult(
-                    matches = relatedMatches,
-                    variants = relatedVariants,
-                    requiresClarification = false,
-                    usedGroupMode = true
-                )
-                relatedVariants.size > 1 -> ProductMatchResult(
-                    matches = emptyList(),
-                    variants = relatedVariants,
-                    requiresClarification = true,
-                    usedGroupMode = false
-                )
-                else -> ProductMatchResult(emptyList(), emptyList(), false, false)
             }
         }
     }
