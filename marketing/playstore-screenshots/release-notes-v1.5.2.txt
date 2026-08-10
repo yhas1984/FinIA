@@ -1,0 +1,5 @@
+🔹 Las fotos guardadas en Google Drive ahora se abren correctamente.
+🔹 La IA respeta la moneda configurada y las divisas indicadas expresamente.
+🔹 Las monedas no compatibles ya no se guardan como si fueran otra divisa.
+🔹 Añadimos un botón flotante en el Dashboard para acceder rápidamente a la IA.
+🔹 Google Sheets reutiliza un único archivo por cuenta para evitar duplicados.
