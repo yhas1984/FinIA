@@ -12,9 +12,11 @@ import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
+import com.gastos.domain.model.SUPPORTED_CURRENCIES
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.extension.SafeLog
 import com.gastos.repository.CountryFiscalConfigRepository
+import com.gastos.repository.CurrencyPreference
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +45,8 @@ data class AIResult(
 class AIService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val fiscalConfigRepository: CountryFiscalConfigRepository,
-    private val geminiRestClient: GeminiRestClient
+    private val geminiRestClient: GeminiRestClient,
+    private val currencyPreference: CurrencyPreference
 ) {
     @Volatile
     private var currentApiKey: String = ""
@@ -149,7 +152,7 @@ class AIService @Inject constructor(
                     buildRequest(listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(command)))))
                 )
                 recordTurn(command, responseText)
-                parseCommandResponse(responseText)
+                parseCommandResponse(responseText, command)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -192,21 +195,26 @@ class AIService @Inject constructor(
         trimHistory()
     }
 
-    fun parseStreamingResult(responseText: String): AIResult = parseCommandResponse(responseText)
+    fun parseStreamingResult(responseText: String, originalCommand: String): AIResult =
+        parseCommandResponse(responseText, originalCommand)
 
     suspend fun processInvoiceFromImage(imageUri: Uri): AIResult {
         if (!isConfigured()) return notConfiguredResult()
         return try {
             val bitmap = uriToBitmap(imageUri) ?: return AIResult(success = false, message = "Error al cargar la imagen")
             val fiscalConfig = currentFiscalConfig()
+            val defaultCurrency = getDefaultCurrency()
             val prompt = if (fiscalConfig == null) {
-                UNIVERSAL_OCR_PROMPT
+                "$UNIVERSAL_OCR_PROMPT\n\nMONEDA DE RESPALDO: $defaultCurrency. " +
+                    "Úsala solo si el documento no permite detectar ninguna moneda."
             } else {
                 "$UNIVERSAL_OCR_PROMPT\n\n" +
                     "PAÍS DE RESPALDO: si el documento no permite detectar el país, usa " +
                     "${fiscalConfig.paisCodigo} (${fiscalConfig.nombrePais}). " +
                     "Sus tipos habituales de ${fiscalConfig.nombreLeyFiscal} son " +
-                    "${fiscalConfig.ivaRates.joinToString()}%. No sustituyas valores legibles del documento."
+                    "${fiscalConfig.ivaRates.joinToString()}%. " +
+                    "MONEDA DE RESPALDO: $defaultCurrency. Úsala solo si el documento no permite " +
+                    "detectar ninguna moneda. No sustituyas valores legibles del documento."
             }
             val raw = geminiRestClient.generateContent(
                 GeminiGenerateRequest(
@@ -222,7 +230,7 @@ class AIService @Inject constructor(
                 )
             )
             SafeLog.d(TAG, "OCR raw response: $raw")
-            parseInvoiceResponse(raw, imageUri.toString(), currentFiscalCountry)
+            parseInvoiceResponse(raw, imageUri.toString(), currentFiscalCountry, defaultCurrency)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -286,6 +294,7 @@ class AIService @Inject constructor(
     private fun buildSystemPrompt(userInstructions: String): String {
         val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
             .format(java.util.Date())
+        val defaultCurrency = getDefaultCurrency()
         val extra = userInstructions.trim()
         val extraBlock = if (extra.isNotEmpty()) {
             "\n\nInstrucciones adicionales del usuario (sigue también estas reglas):\n$extra"
@@ -334,12 +343,14 @@ class AIService @Inject constructor(
                - Si pregunta por un producto concreto, NO uses query_type="balance".
 
             2. REGISTRAR GASTO: si dice que gastó, compró o pagó algo:
-               {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0.0,"total":0.0,"moneda":"EUR","fecha":"$today","categoria":"texto"}
+               {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0.0,"total":0.0,"moneda":"$defaultCurrency","fecha":"$today","categoria":"texto"}
+               - Si el usuario no menciona otra moneda, usa $defaultCurrency.
                - Usa una categoría predeterminada de gasto si encaja claramente.
                - Si el usuario menciona una categoría personalizada explícita, consérvala.
 
             3. REGISTRAR INGRESO: si menciona nómina, salario, cobro o ingreso recibido:
-               {"action":"add_income","concepto":"texto","total_devengado":0.0,"total_neto":0.0,"monto":0.0,"moneda":"EUR","fecha":"$today","fuente":"texto","categoria":"texto"}
+               {"action":"add_income","concepto":"texto","total_devengado":0.0,"total_neto":0.0,"monto":0.0,"moneda":"$defaultCurrency","fecha":"$today","fuente":"texto","categoria":"texto"}
+               - Si el usuario no menciona otra moneda, usa $defaultCurrency.
                - Usa una categoría predeterminada de ingreso si encaja claramente.
                - Si es una nómina, la categoría por defecto es "Nómina".
 
@@ -370,7 +381,12 @@ class AIService @Inject constructor(
         Consulta: "$query"
     """.trimIndent()
 
-    private fun parseInvoiceResponse(responseText: String, imageUri: String, fiscalCountry: String): AIResult {
+    private fun parseInvoiceResponse(
+        responseText: String,
+        imageUri: String,
+        fiscalCountry: String,
+        defaultCurrency: String
+    ): AIResult {
         return try {
             val json = extractJsonFromResponse(responseText)
             val tipoDoc = json.optString("tipo_documento", "").lowercase()
@@ -378,7 +394,7 @@ class AIService @Inject constructor(
             val esNomina = tipoDoc == "nomina" || NOMINA_KEYWORDS.any { rawLower.contains(it) }
             if (esNomina) {
                 val empresa = json.optString("empresa", json.optString("proveedor", "")).ifBlank { "Nómina" }
-                val moneda = json.optString("moneda").ifBlank { "EUR" }
+                val moneda = resolveCurrency(json.optString("moneda"), defaultCurrency)
                 val devengado = json.optDouble("devengado", json.optDouble("total_devengado", 0.0))
                 val liquido = json.optDouble("liquido", json.optDouble("neto", json.optDouble("total_neto", 0.0)))
                 val total = json.optDouble("total", 0.0)
@@ -416,7 +432,7 @@ class AIService @Inject constructor(
                 "establecimiento", "vendedor", "supplier", "razon", "sociedad", "compañia", "compania"
             ).asSequence().map { json.optString(it, "").trim() }.firstOrNull { it.isNotBlank() } ?: "Desconocido"
             val total = json.optDouble("total", 0.0)
-            val moneda = json.optString("moneda").ifBlank { "EUR" }
+            val moneda = resolveCurrency(json.optString("moneda"), defaultCurrency)
             val ivaPercent = json.optDouble("tipo_iva", json.optDouble("iva_percent", 0.0))
             val irpfPercent = json.optDouble("retencion_irpf", 0.0)
             val nifEmisor = json.optString("nif_emisor").ifBlank { null }
@@ -474,7 +490,7 @@ class AIService @Inject constructor(
         return JSONObject(jsonMatch?.value ?: responseText)
     }
 
-    private fun parseCommandResponse(responseText: String): AIResult {
+    private fun parseCommandResponse(responseText: String, originalCommand: String): AIResult {
         val trimmed = responseText.trim()
         if (!trimmed.startsWith("{")) return AIResult(success = true, message = trimmed)
         return try {
@@ -485,7 +501,11 @@ class AIService @Inject constructor(
                     val cantidad = json.optDouble("cantidad", 1.0)
                     val precioUnitario = json.optDouble("precio_unitario", 0.0)
                     val total = json.optDouble("total", json.optDouble("monto", cantidad * precioUnitario))
-                    val moneda = json.optString("moneda").ifBlank { "EUR" }
+                    val moneda = resolveCommandCurrency(
+                        rawCurrency = json.optString("moneda"),
+                        defaultCurrency = getDefaultCurrency(),
+                        originalCommand = originalCommand
+                    )
                     val invoice = Invoice(
                         fecha = parseDate(json.optString("fecha", "")),
                         proveedor = descripcion,
@@ -502,7 +522,11 @@ class AIService @Inject constructor(
                     val totalDevengado = json.optDouble("total_devengado", 0.0)
                     val totalNeto = json.optDouble("total_neto", 0.0)
                     val monto = json.optDouble("monto", if (totalNeto > 0) totalNeto else totalDevengado)
-                    val moneda = json.optString("moneda").ifBlank { "EUR" }
+                    val moneda = resolveCommandCurrency(
+                        rawCurrency = json.optString("moneda"),
+                        defaultCurrency = getDefaultCurrency(),
+                        originalCommand = originalCommand
+                    )
                     val income = Income(
                         fecha = parseDate(json.optString("fecha", "")),
                         concepto = concepto,
@@ -537,6 +561,11 @@ class AIService @Inject constructor(
             System.currentTimeMillis()
         }
     }
+
+    private fun getDefaultCurrency(): String = resolveCurrency(
+        rawCurrency = currencyPreference.defaultCurrency.value,
+        defaultCurrency = "EUR"
+    )
 
     private fun uriToBitmap(uri: Uri): Bitmap? {
         return try {
@@ -661,3 +690,60 @@ class AIService @Inject constructor(
         )
     }
 }
+
+internal fun resolveCurrency(rawCurrency: String?, defaultCurrency: String): String {
+    val fallback = defaultCurrency.trim().uppercase().takeIf { it in SUPPORTED_CURRENCIES } ?: "EUR"
+    val candidate = rawCurrency?.trim()?.uppercase().orEmpty()
+    return candidate.takeUnless { it in MISSING_CURRENCY_VALUES } ?: fallback
+}
+
+internal fun resolveCommandCurrency(
+    rawCurrency: String?,
+    defaultCurrency: String,
+    originalCommand: String
+): String {
+    val fallback = resolveCurrency(null, defaultCurrency)
+    val candidate = resolveCurrency(rawCurrency, fallback)
+    if (mentionsCurrency(originalCommand, candidate)) return candidate
+    val mentionedCurrencies = (SUPPORTED_CURRENCIES + CURRENCY_ALIASES.keys)
+        .distinct()
+        .filter { mentionsCurrency(originalCommand, it) }
+    return mentionedCurrencies.singleOrNull() ?: fallback
+}
+
+private fun mentionsCurrency(command: String, currency: String): Boolean {
+    val codePattern = Regex("(?i)(?<![\\p{L}\\p{N}])${Regex.escape(currency)}(?![\\p{L}\\p{N}])")
+    if (codePattern.containsMatchIn(command)) return true
+    val normalizedCommand = command.lowercase()
+    return CURRENCY_ALIASES[currency].orEmpty().any { alias ->
+        if (alias.any { !it.isLetterOrDigit() && !it.isWhitespace() }) {
+            normalizedCommand.contains(alias)
+        } else {
+            Regex("(?<![\\p{L}\\p{N}])${Regex.escape(alias)}(?![\\p{L}\\p{N}])")
+                .containsMatchIn(normalizedCommand)
+        }
+    }
+}
+
+private val MISSING_CURRENCY_VALUES: Set<String> = setOf("", "NULL", "UNKNOWN", "XX")
+
+private val CURRENCY_ALIASES: Map<String, List<String>> = mapOf(
+    "EUR" to listOf("€", "euro", "euros"),
+    "USD" to listOf("dólar", "dólares", "dolar", "dolares", "dollar", "dollars"),
+    "MXN" to listOf("peso mexicano", "pesos mexicanos"),
+    "ARS" to listOf("peso argentino", "pesos argentinos"),
+    "COP" to listOf("peso colombiano", "pesos colombianos"),
+    "CLP" to listOf("peso chileno", "pesos chilenos"),
+    "PEN" to listOf("sol peruano", "soles peruanos", "s/"),
+    "BOB" to listOf("boliviano", "bolivianos"),
+    "GTQ" to listOf("quetzal", "quetzales"),
+    "NIO" to listOf("córdoba", "córdobas", "cordoba", "cordobas"),
+    "PYG" to listOf("guaraní", "guaraníes", "guarani", "guaranies", "₲"),
+    "UYU" to listOf("peso uruguayo", "pesos uruguayos", "\$u"),
+    "VES" to listOf("bolívar", "bolívares", "bolivar", "bolivares"),
+    "GBP" to listOf("£", "libra", "libras", "libra esterlina", "libras esterlinas"),
+    "BRL" to listOf("r$", "real brasileño", "reales brasileños"),
+    "JPY" to listOf("¥", "yen", "yenes"),
+    "CNY" to listOf("yuan", "yuanes"),
+    "CHF" to listOf("franco suizo", "francos suizos")
+)

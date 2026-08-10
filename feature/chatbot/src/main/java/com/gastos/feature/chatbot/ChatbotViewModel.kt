@@ -523,7 +523,7 @@ class ChatbotViewModel @Inject constructor(
      * - Si respondió con JSON de acción, ejecuta la acción y reemplaza el mensaje.
      */
     private suspend fun handleFinalResult(raw: String, originalQuestion: String, streaming: Boolean = false) {
-        val result = aiService.parseStreamingResult(raw)
+        val result = aiService.parseStreamingResult(raw, originalQuestion)
         handleAIResult(result, originalQuestion, streaming)
     }
 

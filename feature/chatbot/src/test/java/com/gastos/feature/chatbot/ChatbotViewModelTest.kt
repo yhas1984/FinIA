@@ -70,7 +70,7 @@ class ChatbotViewModelTest {
     fun `premium messages stream into one placeholder and persist only the final response`() = runTest(dispatcher) {
         val fixture = fixture(isPremium = true)
         every { fixture.aiService.processCommandStreaming("Hola") } returns flowOf("Res", "puesta")
-        every { fixture.aiService.parseStreamingResult("Respuesta") } returns
+        every { fixture.aiService.parseStreamingResult("Respuesta", "Hola") } returns
             AIResult(success = true, message = "Respuesta")
 
         val viewModel = fixture.createViewModel()
