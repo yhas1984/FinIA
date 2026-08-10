@@ -401,7 +401,7 @@ fun BackupScreen(
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
-                                    "✓ Spreadsheet creado",
+                                    "✓ Spreadsheet sincronizado",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )

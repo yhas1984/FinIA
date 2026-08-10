@@ -147,11 +147,12 @@ class BackupViewModel @Inject constructor(
     }
 
     private fun checkSignInStatus() {
+        val account = sheetsExportService.getLastSignedInAccount()
         _uiState.update {
             it.copy(
                 isSignedIn = sheetsExportService.isSignedIn(),
-                email = sheetsExportService.getSignedInEmail(),
-                hasSheetLink = sheetsSyncManager.isEnabled()
+                email = account?.email,
+                hasSheetLink = account?.let(sheetsSyncManager::isEnabled) == true
             )
         }
     }
@@ -181,6 +182,7 @@ class BackupViewModel @Inject constructor(
                 it.copy(
                     isSignedIn = true,
                     email = account.email,
+                    hasSheetLink = sheetsSyncManager.isEnabled(account),
                     error = null
                 )
             }
@@ -193,7 +195,7 @@ class BackupViewModel @Inject constructor(
     }
 
     /**
-     * Exporta los datos a un Google Sheet nuevo. Requiere sesión iniciada.
+     * Exporta los datos al Google Sheet vinculado o crea uno si no existe.
      * El resultado (URL del sheet) se expone en [BackupUiState.sheetsUrl].
      */
     fun exportToSheets() {
@@ -214,12 +216,11 @@ class BackupViewModel @Inject constructor(
                 }
                 val (invoices, incomes, products) = loadData()
                 // Reutiliza el sheet existente si ya había uno vinculado.
-                val existingId = sheetsSyncManager.getStoredId()
+                val existingId = sheetsSyncManager.getStoredId(account)
                 val (url, spreadsheetId) = sheetsExportService.exportToSheets(
                     account, invoices, incomes, products, existingId
                 )
-                // Persistir para que la sincronización en background funcione.
-                sheetsSyncManager.setSpreadsheetId(spreadsheetId)
+                sheetsSyncManager.setSpreadsheetId(account, spreadsheetId)
                 _uiState.update {
                     it.copy(isExportingSheets = false, sheetsUrl = url, hasSheetLink = true)
                 }
@@ -244,18 +245,24 @@ class BackupViewModel @Inject constructor(
             _uiState.update { it.copy(isExportingSheets = true, sheetsUrl = null, error = null) }
             try {
                 val account = sheetsExportService.getLastSignedInAccount()
-                val existingId = sheetsSyncManager.getStoredId()
-                if (account == null || existingId.isBlank()) {
+                if (account == null) {
+                    _uiState.update {
+                        it.copy(isExportingSheets = false, error = "No hay sheet vinculado. Exporta primero.")
+                    }
+                    return@launch
+                }
+                val existingId = sheetsSyncManager.getStoredId(account)
+                if (existingId.isBlank()) {
                     _uiState.update {
                         it.copy(isExportingSheets = false, error = "No hay sheet vinculado. Exporta primero.")
                     }
                     return@launch
                 }
                 val (invoices, incomes, products) = loadData()
-                val (url, _) = sheetsExportService.exportToSheets(
+                val (url, spreadsheetId) = sheetsExportService.exportToSheets(
                     account, invoices, incomes, products, existingId
                 )
-                sheetsSyncManager.setSpreadsheetId(existingId)
+                sheetsSyncManager.setSpreadsheetId(account, spreadsheetId)
                 _uiState.update { it.copy(isExportingSheets = false, sheetsUrl = url) }
             } catch (e: Exception) {
                 _uiState.update {
@@ -788,7 +795,6 @@ class BackupViewModel @Inject constructor(
         viewModelScope.launch {
             sheetsExportService.signOut()
             cloudBackupScheduler.setEnabled(false)
-            sheetsSyncManager.clearSpreadsheetId()
             invoiceDriveService.clearAccountCache()
             _uiState.update {
                 it.copy(
