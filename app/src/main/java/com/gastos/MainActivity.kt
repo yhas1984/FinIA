@@ -72,9 +72,9 @@ sealed class Screen(val route: String, val title: String, val selectedIcon: @Com
     )
     object Invoices : Screen(
         route = "invoices",
-        title = "Facturas",
-        selectedIcon = { Icon(Icons.Filled.Description, contentDescription = "Facturas") },
-        unselectedIcon = { Icon(Icons.Outlined.Description, contentDescription = "Facturas") }
+        title = "Gastos",
+        selectedIcon = { Icon(Icons.Filled.Description, contentDescription = "Gastos") },
+        unselectedIcon = { Icon(Icons.Outlined.Description, contentDescription = "Gastos") }
     )
     object Incomes : Screen(
         route = "incomes",
