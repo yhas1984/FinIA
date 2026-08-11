@@ -29,13 +29,17 @@ internal data class RestoreJournalSettings(
     val systemInstructions: String,
     val defaultCurrency: String,
     val defaultCountry: String,
-    val darkMode: String
+    val darkMode: String,
+    val dashboardWidgetOrder: List<String> = emptyList(),
+    val dashboardHiddenWidgets: List<String> = emptyList()
 ) {
     fun toDomain(): RestorableSettings = RestorableSettings(
         systemInstructions = systemInstructions,
         defaultCurrency = defaultCurrency,
         defaultCountry = defaultCountry,
-        darkMode = darkMode
+        darkMode = darkMode,
+        dashboardWidgetOrder = dashboardWidgetOrder,
+        dashboardHiddenWidgets = dashboardHiddenWidgets
     )
 
     companion object {
@@ -43,7 +47,9 @@ internal data class RestoreJournalSettings(
             systemInstructions = settings.systemInstructions,
             defaultCurrency = settings.defaultCurrency,
             defaultCountry = settings.defaultCountry,
-            darkMode = settings.darkMode
+            darkMode = settings.darkMode,
+            dashboardWidgetOrder = settings.dashboardWidgetOrder,
+            dashboardHiddenWidgets = settings.dashboardHiddenWidgets
         )
     }
 }

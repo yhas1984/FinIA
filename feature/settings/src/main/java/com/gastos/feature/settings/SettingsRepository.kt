@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.BackupSettingsProvider
+import com.gastos.repository.DashboardLayout
+import com.gastos.repository.DashboardLayoutPreference
 import com.gastos.repository.RestorableSettings
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -35,7 +37,7 @@ data class AppSettings(
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secureStorage: SecureStorage
-) : CurrencyPreference, BackupSettingsProvider {
+) : CurrencyPreference, BackupSettingsProvider, DashboardLayoutPreference {
 
     // Scope propio para stateIn (el repo es un @Singleton a nivel app).
     private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -45,6 +47,8 @@ class SettingsRepository @Inject constructor(
         val DEFAULT_CURRENCY = stringPreferencesKey("default_currency")
         val DEFAULT_COUNTRY = stringPreferencesKey("default_country")
         val DARK_MODE = stringPreferencesKey("dark_mode")
+        val DASHBOARD_WIDGET_ORDER = stringPreferencesKey("dashboard_widget_order")
+        val DASHBOARD_HIDDEN_WIDGETS = stringPreferencesKey("dashboard_hidden_widgets")
     }
 
     /**
@@ -105,13 +109,42 @@ class SettingsRepository @Inject constructor(
         }
     }
 
+    // ---- Distribución del Dashboard ----
+
+    override val dashboardLayout: Flow<DashboardLayout> = context.dataStore.data.map { preferences ->
+        DashboardLayout(
+            widgetOrder = (preferences[Keys.DASHBOARD_WIDGET_ORDER] ?: "")
+                .split(",").filter { it.isNotBlank() },
+            hiddenWidgets = (preferences[Keys.DASHBOARD_HIDDEN_WIDGETS] ?: "")
+                .split(",").filter { it.isNotBlank() }.toSet()
+        )
+    }
+
+    override suspend fun updateDashboardLayout(layout: DashboardLayout) {
+        context.dataStore.edit { preferences ->
+            if (layout.widgetOrder.isEmpty()) {
+                preferences.remove(Keys.DASHBOARD_WIDGET_ORDER)
+            } else {
+                preferences[Keys.DASHBOARD_WIDGET_ORDER] = layout.widgetOrder.joinToString(",")
+            }
+            if (layout.hiddenWidgets.isEmpty()) {
+                preferences.remove(Keys.DASHBOARD_HIDDEN_WIDGETS)
+            } else {
+                preferences[Keys.DASHBOARD_HIDDEN_WIDGETS] = layout.hiddenWidgets.joinToString(",")
+            }
+        }
+    }
+
     override suspend fun snapshotSettings(): RestorableSettings {
         val current = settings.first()
+        val layout = dashboardLayout.first()
         return RestorableSettings(
             systemInstructions = current.systemInstructions,
             defaultCurrency = current.defaultCurrency,
             defaultCountry = current.defaultCountry,
-            darkMode = current.darkMode
+            darkMode = current.darkMode,
+            dashboardWidgetOrder = layout.widgetOrder,
+            dashboardHiddenWidgets = layout.hiddenWidgets.toList()
         )
     }
 
@@ -121,6 +154,16 @@ class SettingsRepository @Inject constructor(
             preferences[Keys.DEFAULT_CURRENCY] = settings.defaultCurrency
             preferences[Keys.DEFAULT_COUNTRY] = settings.defaultCountry
             preferences[Keys.DARK_MODE] = settings.darkMode
+            if (settings.dashboardWidgetOrder.isEmpty()) {
+                preferences.remove(Keys.DASHBOARD_WIDGET_ORDER)
+            } else {
+                preferences[Keys.DASHBOARD_WIDGET_ORDER] = settings.dashboardWidgetOrder.joinToString(",")
+            }
+            if (settings.dashboardHiddenWidgets.isEmpty()) {
+                preferences.remove(Keys.DASHBOARD_HIDDEN_WIDGETS)
+            } else {
+                preferences[Keys.DASHBOARD_HIDDEN_WIDGETS] = settings.dashboardHiddenWidgets.joinToString(",")
+            }
         }
     }
 

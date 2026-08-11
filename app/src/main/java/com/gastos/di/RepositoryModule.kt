@@ -46,4 +46,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindBackupSettingsProvider(impl: SettingsRepository): BackupSettingsProvider
+
+    @Binds
+    @Singleton
+    abstract fun bindDashboardLayoutPreference(impl: SettingsRepository): DashboardLayoutPreference
 }

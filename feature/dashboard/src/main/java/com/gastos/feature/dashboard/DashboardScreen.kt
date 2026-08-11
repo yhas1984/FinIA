@@ -3,9 +3,10 @@ package com.gastos.feature.dashboard
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
@@ -31,7 +32,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.formatMoney
 import java.text.NumberFormat
 import java.util.*
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.Dp
 
 @Composable
@@ -47,8 +50,42 @@ fun DashboardScreen(
     val fmt = { amt: Double -> com.gastos.domain.model.formatMoney(amt, defaultCurrency) }
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
 
+    val listState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val visibleWidgets = remember(uiState.widgetOrder, uiState.hiddenWidgets) {
+        uiState.widgetOrder.filter { it !in uiState.hiddenWidgets }
+    }
+
+    val hiddenWidgetsList = remember(uiState.hiddenWidgets) {
+        DashboardWidget.entries
+            .filter { it.id in uiState.hiddenWidgets }
+            .sortedBy { it.defaultOrder }
+    }
+
+    // Acumulador de arrastre; el cruce de posición se decide con la altura
+    // real del widget que se está arrastrando (listState).
+    var dragAccumulated by remember { mutableStateOf(0f) }
+    val handleDrag by rememberUpdatedState<(String, Float) -> Unit> { widgetId, deltaY ->
+        dragAccumulated += deltaY
+        val draggedHeight = listState.layoutInfo.visibleItemsInfo
+            .firstOrNull { it.key == widgetId }?.size?.toFloat() ?: 0f
+        if (draggedHeight > 0f && abs(dragAccumulated) >= draggedHeight) {
+            val current = visibleWidgets.indexOf(widgetId)
+            if (current >= 0) {
+                val steps = (dragAccumulated / draggedHeight).roundToInt()
+                val target = (current + steps).coerceIn(0, visibleWidgets.lastIndex)
+                if (target != current) {
+                    viewModel.moveWidget(current, target)
+                    dragAccumulated -= steps * draggedHeight
+                }
+            }
+        }
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             FloatingActionButton(onClick = onNavigateToChat) {
                 Icon(
@@ -59,6 +96,7 @@ fun DashboardScreen(
         }
     ) { innerPadding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
@@ -78,7 +116,6 @@ fun DashboardScreen(
 
             item {
                 Spacer(modifier = Modifier.height(32.dp))
-                // Header with settings
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -106,262 +143,78 @@ fun DashboardScreen(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        IconButton(
+                            onClick = { viewModel.setEditMode(!uiState.isEditMode) }
+                        ) {
+                            Icon(
+                                Icons.Filled.Tune,
+                                contentDescription = if (uiState.isEditMode) {
+                                    "Terminar personalización"
+                                } else {
+                                    "Personalizar Dashboard"
+                                },
+                                tint = if (uiState.isEditMode) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
                     }
                 }
             }
 
-            item {
-                // Balance Section (mes seleccionado)
-                Text(
-                    text = "Balance · ${uiState.selectedMonthLabel}",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                )
-                AutoSizeMonetaryText(
-                    text = fmt(uiState.balanceMes),
-                    style = MaterialTheme.typography.displayLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = if (uiState.balanceMes >= 0)
-                            MaterialTheme.colorScheme.secondary
-                        else
-                            MaterialTheme.colorScheme.error
-                    ),
-                    modifier = Modifier
-                        .padding(top = 8.dp)
-                        .fillMaxWidth(),
-                    minFontSize = 20.sp,
-                    textAlign = TextAlign.Start
-                )
-            }
-
-            item {
-                // Glassmorphic Cashflow Card
-                CashflowCard(
-                    totalGastos = fmt(uiState.totalGastosMes),
-                    totalIngresos = fmt(uiState.totalIngresosMes)
-                )
-            }
-
-            // Sección "Conversión aplicada": solo si hay registros con
-            // moneda distinta a la default en el mes.
-            if (uiState.convertedRecords.isNotEmpty()) {
+            if (uiState.isEditMode) {
                 item {
-                    GlassCard {
-                        Text(
-                            text = "Conversión de moneda",
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            ),
-                            modifier = Modifier.padding(bottom = 12.dp)
-                        )
-                        Text(
-                            text = when {
-                                uiState.defaultCurrency.equals("USD", ignoreCase = true) ->
-                                    "1 USD = 1 USD"
-                                uiState.defaultToUsdRate != null ->
-                                    "1 ${uiState.defaultCurrency} ≈ ${"%.6f".format(uiState.defaultToUsdRate)} USD"
-                                else -> "Tasa ${uiState.defaultCurrency} → USD no disponible"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        uiState.convertedRecords.forEach { rec ->
-                            ConversionRow(rec = rec, defaultCurrency = uiState.defaultCurrency, fmt = fmt)
-                        }
-                    }
+                    EditModeToolbar(
+                        onDone = { viewModel.setEditMode(false) },
+                        onReset = viewModel::resetLayout
+                    )
                 }
             }
 
-            // Weekly summary card
-            item {
-                GlassCard {
-                    Text(
-                        text = "Últimos 7 Días",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        ),
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    if (uiState.dailyData.isNotEmpty()) {
-                        WeeklyBarChart(dailyData = uiState.dailyData)
-                    } else {
-                        Text(
-                            text = "Sin datos esta semana",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
-            // Weekly summary card
-            item {
-                GlassCard {
-                    Text(
-                        text = "Esta Semana",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        ),
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Gastos",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        AutoSizeMonetaryText(
-                            text = fmt(uiState.totalGastosSemana),
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.weight(1f),
-                            minFontSize = 12.sp,
-                            textAlign = TextAlign.End
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Ingresos",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        AutoSizeMonetaryText(
-                            text = fmt(uiState.totalIngresosSemana),
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.weight(1f),
-                            minFontSize = 12.sp,
-                            textAlign = TextAlign.End
-                        )
-                    }
-                }
-            }
-
-            item {
-                InteractiveAnalyticsCard(
-                    type = uiState.analyticsType,
-                    monthLabel = uiState.selectedMonthLabel,
-                    total = fmt(uiState.analyticsTotal),
-                    slices = uiState.analyticsSlices,
-                    emptyMessage = if (uiState.analyticsType == AnalyticsType.GASTOS) {
-                        "Sin gastos en ${uiState.selectedMonthLabel.lowercase()}. Prueba a cambiar de mes."
-                    } else {
-                        "Sin ingresos en ${uiState.selectedMonthLabel.lowercase()}. Prueba a cambiar de mes."
-                    },
-                    fmt = fmt,
-                    onTypeChange = viewModel::setAnalyticsType,
-                    onSliceClick = viewModel::selectCategory
-                )
-            }
-
-            // Today summary
-            item {
-                GlassCard {
-                    Text(
-                        text = "Hoy",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        ),
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Gastos",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        AutoSizeMonetaryText(
-                            text = fmt(uiState.totalGastosHoy),
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.weight(1f),
-                            minFontSize = 12.sp,
-                            textAlign = TextAlign.End
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Ingresos",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        AutoSizeMonetaryText(
-                            text = fmt(uiState.totalIngresosHoy),
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.weight(1f),
-                            minFontSize = 12.sp,
-                            textAlign = TextAlign.End
-                        )
-                    }
-                }
-            }
-
-            // Chatbot access card
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onNavigateToChat,
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                    )
+            items(
+                count = visibleWidgets.size,
+                key = { visibleWidgets[it] }
+            ) { index ->
+                val widgetId = visibleWidgets[index]
+                val widget = DashboardWidget.fromId(widgetId) ?: return@items
+                DashboardWidgetContainer(
+                    widget = widget,
+                    isEditMode = uiState.isEditMode,
+                    isDragging = uiState.draggingWidgetId == widgetId,
+                    canMoveUp = index > 0,
+                    canMoveDown = index < visibleWidgets.lastIndex,
+                    onMoveUp = { viewModel.moveWidget(index, index - 1) },
+                    onMoveDown = { viewModel.moveWidget(index, index + 1) },
+                    onHide = { viewModel.hideWidget(widgetId) },
+                    onDragStart = { viewModel.onDragStart(widgetId) },
+                    onDragBy = { deltaY -> handleDrag(widgetId, deltaY) },
+                    onDragEnd = viewModel::onDragEnd,
+                    onLongPressEdit = { viewModel.setEditMode(true) },
+                    modifier = Modifier.animateItem()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "💬 Habla con FinAI",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Registra gastos, ingresos o consulta tus finanzas",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Icon(
-                            Icons.AutoMirrored.Filled.Chat,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
+                    DashboardWidgetContent(
+                        widgetId = widgetId,
+                        uiState = uiState,
+                        fmt = fmt,
+                        isEditMode = uiState.isEditMode,
+                        onNavigateToChat = onNavigateToChat,
+                        onTypeChange = viewModel::setAnalyticsType,
+                        onSliceClick = viewModel::selectCategory
+                    )
                 }
             }
 
-            // Loading indicator
+            if (uiState.isEditMode && hiddenWidgetsList.isNotEmpty()) {
+                item {
+                    HiddenWidgetsTray(
+                        hidden = hiddenWidgetsList,
+                        onRestore = { viewModel.restoreWidget(it.id) }
+                    )
+                }
+            }
+
             if (uiState.isLoading) {
                 item {
                     Box(
@@ -377,6 +230,22 @@ fun DashboardScreen(
 
             item {
                 Spacer(modifier = Modifier.height(80.dp)) // Space for FAB
+            }
+        }
+    }
+
+    // Snackbar de "Distribución restablecida" con Deshacer.
+    LaunchedEffect(uiState.showResetUndo) {
+        if (uiState.showResetUndo) {
+            val result = snackbarHostState.showSnackbar(
+                message = "Distribución restablecida",
+                actionLabel = "Deshacer",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoResetLayout()
+            } else {
+                viewModel.dismissResetUndo()
             }
         }
     }
@@ -415,6 +284,275 @@ fun DashboardScreen(
             onOpenMovement = onOpenMovement,
             onDismiss = viewModel::resetDrillDown
         )
+    }
+}
+
+/** Contenido de cada widget según su ID estable. */
+@Composable
+private fun DashboardWidgetContent(
+    widgetId: String,
+    uiState: DashboardUiState,
+    fmt: (Double) -> String,
+    isEditMode: Boolean,
+    onNavigateToChat: () -> Unit,
+    onTypeChange: (AnalyticsType) -> Unit,
+    onSliceClick: (String) -> Unit
+) {
+    when (widgetId) {
+        DashboardWidget.BALANCE.id -> BalanceWidget(uiState = uiState, fmt = fmt)
+        DashboardWidget.CASHFLOW.id -> CashflowCard(
+            totalGastos = fmt(uiState.totalGastosMes),
+            totalIngresos = fmt(uiState.totalIngresosMes)
+        )
+        DashboardWidget.ANALYTICS.id -> InteractiveAnalyticsCard(
+            type = uiState.analyticsType,
+            monthLabel = uiState.selectedMonthLabel,
+            total = fmt(uiState.analyticsTotal),
+            slices = uiState.analyticsSlices,
+            emptyMessage = if (uiState.analyticsType == AnalyticsType.GASTOS) {
+                "Sin gastos en ${uiState.selectedMonthLabel.lowercase()}. Prueba a cambiar de mes."
+            } else {
+                "Sin ingresos en ${uiState.selectedMonthLabel.lowercase()}. Prueba a cambiar de mes."
+            },
+            fmt = fmt,
+            onTypeChange = onTypeChange,
+            onSliceClick = onSliceClick
+        )
+        DashboardWidget.WEEKLY_CHART.id -> WeeklyChartWidget(uiState = uiState)
+        DashboardWidget.WEEKLY_TOTALS.id -> WeeklyTotalsWidget(uiState = uiState, fmt = fmt)
+        DashboardWidget.TODAY.id -> TodayWidget(uiState = uiState, fmt = fmt)
+        DashboardWidget.CONVERSION.id -> {
+            if (isEditMode || uiState.convertedRecords.isNotEmpty()) {
+                ConversionWidget(uiState = uiState, fmt = fmt)
+            }
+        }
+        DashboardWidget.CHAT_CTA.id -> ChatCtaWidget(onNavigateToChat = onNavigateToChat)
+    }
+}
+
+@Composable
+private fun BalanceWidget(
+    uiState: DashboardUiState,
+    fmt: (Double) -> String
+) {
+    Column {
+        Text(
+            text = "Balance · ${uiState.selectedMonthLabel}",
+            style = MaterialTheme.typography.labelMedium.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        )
+        AutoSizeMonetaryText(
+            text = fmt(uiState.balanceMes),
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.Bold,
+                color = if (uiState.balanceMes >= 0)
+                    MaterialTheme.colorScheme.secondary
+                else
+                    MaterialTheme.colorScheme.error
+            ),
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .fillMaxWidth(),
+            minFontSize = 20.sp,
+            textAlign = TextAlign.Start
+        )
+    }
+}
+
+@Composable
+private fun WeeklyChartWidget(uiState: DashboardUiState) {
+    GlassCard {
+        Text(
+            text = "Últimos 7 Días",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        if (uiState.dailyData.isNotEmpty()) {
+            WeeklyBarChart(dailyData = uiState.dailyData)
+        } else {
+            Text(
+                text = "Sin datos esta semana",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun WeeklyTotalsWidget(
+    uiState: DashboardUiState,
+    fmt: (Double) -> String
+) {
+    GlassCard {
+        Text(
+            text = "Esta Semana",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        TotalsRow(
+            label = "Gastos",
+            amount = fmt(uiState.totalGastosSemana),
+            color = MaterialTheme.colorScheme.error
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        TotalsRow(
+            label = "Ingresos",
+            amount = fmt(uiState.totalIngresosSemana),
+            color = MaterialTheme.colorScheme.secondary
+        )
+    }
+}
+
+@Composable
+private fun TodayWidget(
+    uiState: DashboardUiState,
+    fmt: (Double) -> String
+) {
+    GlassCard {
+        Text(
+            text = "Hoy",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        TotalsRow(
+            label = "Gastos",
+            amount = fmt(uiState.totalGastosHoy),
+            color = MaterialTheme.colorScheme.error
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        TotalsRow(
+            label = "Ingresos",
+            amount = fmt(uiState.totalIngresosHoy),
+            color = MaterialTheme.colorScheme.secondary
+        )
+    }
+}
+
+@Composable
+private fun TotalsRow(
+    label: String,
+    amount: String,
+    color: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        AutoSizeMonetaryText(
+            text = amount,
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+            color = color,
+            modifier = Modifier.weight(1f),
+            minFontSize = 12.sp,
+            textAlign = TextAlign.End
+        )
+    }
+}
+
+@Composable
+private fun ConversionWidget(
+    uiState: DashboardUiState,
+    fmt: (Double) -> String
+) {
+    if (uiState.convertedRecords.isEmpty()) {
+        GlassCard {
+            Text(
+                text = "Conversión de moneda",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Text(
+                text = "Sin conversiones en ${uiState.selectedMonthLabel.lowercase()}.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+    GlassCard {
+        Text(
+            text = "Conversión de moneda",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            ),
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        Text(
+            text = when {
+                uiState.defaultCurrency.equals("USD", ignoreCase = true) ->
+                    "1 USD = 1 USD"
+                uiState.defaultToUsdRate != null ->
+                    "1 ${uiState.defaultCurrency} ≈ ${"%.6f".format(uiState.defaultToUsdRate)} USD"
+                else -> "Tasa ${uiState.defaultCurrency} → USD no disponible"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        uiState.convertedRecords.forEach { rec ->
+            ConversionRow(rec = rec, defaultCurrency = uiState.defaultCurrency, fmt = fmt)
+        }
+    }
+}
+
+@Composable
+private fun ChatCtaWidget(onNavigateToChat: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onNavigateToChat,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "💬 Habla con FinAI",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Registra gastos, ingresos o consulta tus finanzas",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.Chat,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(32.dp)
+            )
+        }
     }
 }
 
@@ -496,7 +634,7 @@ private fun ConversionRow(
                 text = rec.descripcion,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis
             )
             AutoSizeMonetaryText(
                 text = "${formatMoney(rec.montoOriginal, rec.monedaOriginal)} · 1 ${rec.monedaOriginal} = ${"%.6f".format(rec.rateApplied)} $defaultCurrency",

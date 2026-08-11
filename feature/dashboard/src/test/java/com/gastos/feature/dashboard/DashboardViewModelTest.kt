@@ -5,9 +5,12 @@ import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.repository.CurrencyPreference
+import com.gastos.repository.DashboardLayout
+import com.gastos.repository.DashboardLayoutPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,6 +19,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -74,7 +78,9 @@ class DashboardViewModelTest {
         incomes: List<Income> = emptyList(),
         rates: Map<String, Double> = mapOf("EUR" to 1.0, "USD" to 1.0),
         defaultCurrency: String = "EUR",
-        now: Long = fixedNow
+        now: Long = fixedNow,
+        persistedLayout: DashboardLayout? = null,
+        layoutPref: DashboardLayoutPreference? = null
     ): DashboardViewModel {
         val invoiceRepo = mockk<InvoiceRepository>()
         every { invoiceRepo.getAllInvoices() } returns flowOf(invoices)
@@ -110,7 +116,9 @@ class DashboardViewModelTest {
         }
         val currency = mockk<CurrencyPreference>()
         every { currency.defaultCurrency } returns MutableStateFlow(defaultCurrency)
-        return DashboardViewModel(invoiceRepo, incomeRepo, exchange, currency).apply {
+        val layout = layoutPref ?: mockk<DashboardLayoutPreference>(relaxed = true)
+        every { layout.dashboardLayout } returns MutableStateFlow(persistedLayout ?: DashboardLayout())
+        return DashboardViewModel(invoiceRepo, incomeRepo, exchange, currency, layout).apply {
             nowProvider = { now }
         }
     }
@@ -307,6 +315,102 @@ class DashboardViewModelTest {
             assertEquals(100.0, state.totalGastosMes, 0.001)
             assertEquals(300.0, state.totalIngresosMes, 0.001)
             assertEquals(200.0, state.balanceMes, 0.001)
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    // ---- Widgets configurables ----
+
+    @Test
+    fun `orden por defecto coincide con el registro y nada oculto`() = runTest(dispatcher) {
+        val vm = newViewModel()
+
+        vm.uiState.test {
+            val state = awaitStable { it.widgetOrder.isNotEmpty() }
+            assertEquals(DashboardWidget.defaultOrder, state.widgetOrder)
+            assertTrue(state.hiddenWidgets.isEmpty())
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `distribucion persistida se normaliza descartando ids desconocidos`() = runTest(dispatcher) {
+        val persisted = DashboardLayout(
+            widgetOrder = listOf("analytics", "desconocido", "balance"),
+            hiddenWidgets = setOf("balance", "fantasma")
+        )
+        val vm = newViewModel(persistedLayout = persisted)
+
+        vm.uiState.test {
+            val state = awaitStable { it.widgetOrder.isNotEmpty() }
+            // "desconocido" se descarta; "balance" se mantiene oculto; el
+            // resto de widgets por defecto se añaden al final.
+            assertEquals(
+                listOf("analytics", "balance") + DashboardWidget.defaultOrder.filter { it != "analytics" && it != "balance" },
+                state.widgetOrder
+            )
+            assertEquals(setOf("balance"), state.hiddenWidgets)
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `mover widget reordena y persiste`() = runTest(dispatcher) {
+        val layoutPref = mockk<DashboardLayoutPreference>(relaxed = true)
+        val vm = newViewModel(layoutPref = layoutPref)
+
+        vm.uiState.test {
+            awaitStable { it.widgetOrder.isNotEmpty() }
+            vm.moveWidget(0, 2)
+
+            val state = awaitItem()
+            assertEquals("cashflow", state.widgetOrder[0])
+            assertEquals("balance", state.widgetOrder[2])
+            coVerify { layoutPref.updateDashboardLayout(any()) }
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `ocultar y restaurar widget`() = runTest(dispatcher) {
+        val vm = newViewModel()
+
+        vm.uiState.test {
+            awaitStable { it.widgetOrder.isNotEmpty() }
+            vm.hideWidget("balance")
+
+            val hiddenState = awaitItem()
+            assertEquals(setOf("balance"), hiddenState.hiddenWidgets)
+
+            vm.restoreWidget("balance")
+
+            val restoredState = awaitItem()
+            assertTrue(restoredState.hiddenWidgets.isEmpty())
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `reset restaura el orden por defecto y deshacer lo recupera`() = runTest(dispatcher) {
+        val vm = newViewModel()
+
+        vm.uiState.test {
+            awaitStable { it.widgetOrder.isNotEmpty() }
+            vm.moveWidget(0, 2)
+            awaitItem()
+
+            vm.resetLayout()
+
+            val resetState = awaitItem()
+            assertEquals(DashboardWidget.defaultOrder, resetState.widgetOrder)
+            assertTrue(resetState.hiddenWidgets.isEmpty())
+            assertEquals(true, resetState.showResetUndo)
+
+            vm.undoResetLayout()
+
+            val undoState = awaitItem()
+            assertEquals("cashflow", undoState.widgetOrder[0])
+            assertEquals(false, undoState.showResetUndo)
             cancelAndConsumeRemainingEvents()
         }
     }

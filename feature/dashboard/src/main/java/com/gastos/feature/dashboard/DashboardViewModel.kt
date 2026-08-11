@@ -8,6 +8,8 @@ import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.extension.SafeLog
 import com.gastos.repository.CurrencyPreference
+import com.gastos.repository.DashboardLayout
+import com.gastos.repository.DashboardLayoutPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
@@ -114,7 +116,18 @@ data class DashboardUiState(
     /** Detalle de [selectedCategory] cuando está seleccionada. */
     val categoryDetail: CategoryDetail? = null,
     /** Movimientos de la categoría+subcategoría seleccionada. */
-    val movements: List<AnalyticsMovement> = emptyList()
+    val movements: List<AnalyticsMovement> = emptyList(),
+    // ---- Widgets configurables ----
+    /** Orden de widgets visibles (IDs estables, ya normalizados). */
+    val widgetOrder: List<String> = emptyList(),
+    /** Widgets ocultos por el usuario (IDs estables). */
+    val hiddenWidgets: Set<String> = emptySet(),
+    /** Modo de personalización activo. */
+    val isEditMode: Boolean = false,
+    /** Widget que se está arrastrando (para realce visual). */
+    val draggingWidgetId: String? = null,
+    /** Pendiente de mostrar snackbar de "Distribución restablecida" con Deshacer. */
+    val showResetUndo: Boolean = false
 )
 
 /**
@@ -137,7 +150,8 @@ class DashboardViewModel @Inject constructor(
     private val invoiceRepository: InvoiceRepository,
     private val incomeRepository: IncomeRepository,
     private val exchangeRateProvider: ExchangeRateProvider,
-    private val currencyPreference: CurrencyPreference
+    private val currencyPreference: CurrencyPreference,
+    private val dashboardLayoutPreference: DashboardLayoutPreference
 ) : ViewModel() {
 
     /** Reloj inyectable para pruebas deterministas. */
@@ -151,8 +165,12 @@ class DashboardViewModel @Inject constructor(
     private val selectedCategory = MutableStateFlow<String?>(null)
     private val selectedSubcategory = MutableStateFlow<String?>(null)
 
+    /** Última distribución antes de un reset (para Deshacer). */
+    private var lastResetLayout: DashboardLayout? = null
+
     init {
         observeDashboardData()
+        observeLayout()
     }
 
     /**
@@ -180,9 +198,116 @@ class DashboardViewModel @Inject constructor(
             ) { data, selection ->
                 computeState(data.first, data.second, data.third, selection)
             }.collect { state ->
-                _uiState.value = state
+                // computeState construye un estado nuevo desde cero; hay que
+                // preservar los campos de la distribución de widgets, que
+                // viven en su propio flujo persistido.
+                _uiState.update { current ->
+                    state.copy(
+                        widgetOrder = current.widgetOrder,
+                        hiddenWidgets = current.hiddenWidgets,
+                        isEditMode = current.isEditMode,
+                        draggingWidgetId = current.draggingWidgetId,
+                        showResetUndo = current.showResetUndo
+                    )
+                }
             }
         }
+    }
+
+    // ---- Widgets configurables ----
+
+    /**
+     * Observa la distribución persistida y la normaliza contra el registro
+     * de widgets: se descartan IDs desconocidos y se añaden al final los
+     * widgets nuevos que lleguen en versiones futuras.
+     */
+    private fun observeLayout() {
+        viewModelScope.launch {
+            dashboardLayoutPreference.dashboardLayout
+                .map(::normalizeLayout)
+                .collect { layout ->
+                    _uiState.update {
+                        it.copy(
+                            widgetOrder = layout.widgetOrder,
+                            hiddenWidgets = layout.hiddenWidgets
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun normalizeLayout(persisted: DashboardLayout): DashboardLayout {
+        val known = DashboardWidget.entries.map { it.id }.toSet()
+        val validOrder = persisted.widgetOrder.filter { it in known }
+        val order = (validOrder + DashboardWidget.defaultOrder).distinct()
+        val hidden = persisted.hiddenWidgets.filter { it in known }.toSet()
+        return DashboardLayout(order, hidden)
+    }
+
+    private fun persistLayout(order: List<String>, hidden: Set<String>) {
+        val layout = DashboardLayout(order, hidden)
+        _uiState.update { it.copy(widgetOrder = order, hiddenWidgets = hidden) }
+        viewModelScope.launch {
+            dashboardLayoutPreference.updateDashboardLayout(layout)
+        }
+    }
+
+    fun setEditMode(enabled: Boolean) {
+        _uiState.update { it.copy(isEditMode = enabled) }
+    }
+
+    fun onDragStart(widgetId: String) {
+        _uiState.update { it.copy(draggingWidgetId = widgetId) }
+    }
+
+    fun onDragEnd() {
+        _uiState.update { it.copy(draggingWidgetId = null) }
+    }
+
+    /** Mueve un widget visible de [from] a [to] y persiste. */
+    fun moveWidget(from: Int, to: Int) {
+        val order = _uiState.value.widgetOrder.toMutableList()
+        if (from !in order.indices || to !in order.indices) return
+        val id = order.removeAt(from)
+        order.add(to, id)
+        persistLayout(order, _uiState.value.hiddenWidgets)
+    }
+
+    fun hideWidget(widgetId: String) {
+        persistLayout(
+            _uiState.value.widgetOrder,
+            _uiState.value.hiddenWidgets + widgetId
+        )
+    }
+
+    fun restoreWidget(widgetId: String) {
+        persistLayout(
+            _uiState.value.widgetOrder,
+            _uiState.value.hiddenWidgets - widgetId
+        )
+    }
+
+    /** Restaura el orden y visibilidad predeterminados (con Deshacer). */
+    fun resetLayout() {
+        lastResetLayout = DashboardLayout(
+            widgetOrder = _uiState.value.widgetOrder,
+            hiddenWidgets = _uiState.value.hiddenWidgets
+        )
+        persistLayout(DashboardWidget.defaultOrder, emptySet())
+        _uiState.update { it.copy(showResetUndo = true) }
+    }
+
+    fun undoResetLayout() {
+        lastResetLayout?.let {
+            persistLayout(it.widgetOrder, it.hiddenWidgets)
+        }
+        lastResetLayout = null
+        _uiState.update { it.copy(showResetUndo = false) }
+    }
+
+    fun dismissResetUndo() {
+        lastResetLayout = null
+        _uiState.update { it.copy(showResetUndo = false) }
     }
 
     // ---- Acciones de selección ----
@@ -600,7 +725,16 @@ class DashboardViewModel @Inject constructor(
                     category = selectedCategory.value,
                     subcategory = selectedSubcategory.value
                 )
-                _uiState.value = computeState(invoices, incomes, target, selection)
+                val computed = computeState(invoices, incomes, target, selection)
+                _uiState.update { current ->
+                    computed.copy(
+                        widgetOrder = current.widgetOrder,
+                        hiddenWidgets = current.hiddenWidgets,
+                        isEditMode = current.isEditMode,
+                        draggingWidgetId = current.draggingWidgetId,
+                        showResetUndo = current.showResetUndo
+                    )
+                }
             } catch (e: Exception) {
                 SafeLog.e(TAG, "Error refrescando dashboard", e)
                 _uiState.update { it.copy(isLoading = false) }
