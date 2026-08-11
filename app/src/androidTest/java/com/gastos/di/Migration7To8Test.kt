@@ -83,7 +83,7 @@ class Migration7To8Test {
         }
 
         val db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_7_8)
+            .addMigrations(MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
             .build()
         db.openHelper.writableDatabase.use { sqlite ->
             sqlite.query("SELECT proveedor, categoria FROM invoices WHERE id=1").use { c ->

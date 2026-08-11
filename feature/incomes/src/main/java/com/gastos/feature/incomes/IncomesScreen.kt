@@ -11,12 +11,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.TransactionCategories
+import com.gastos.feature.incomes.R
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -30,13 +33,14 @@ fun IncomesScreen(
     viewModel: IncomesViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val language = LocalLocale.current.platformLocale.language
     
     val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.forLanguageTag("es-ES"))
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Ingresos") },
+                title = { Text(stringResource(R.string.incomes_title)) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -58,12 +62,12 @@ fun IncomesScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "No hay ingresos",
+                        text = stringResource(R.string.no_incomes),
                         style = MaterialTheme.typography.headlineSmall
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Agrega tu primer ingreso con el botón +",
+                        text = stringResource(R.string.add_first_income),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -102,15 +106,15 @@ fun IncomesScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Total Ingresos",
+                            text = stringResource(R.string.total_incomes),
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (total != null) {
-                                com.gastos.domain.model.formatMoney(total, target)
-                            } else {
-                                "— ($target)"
-                            },
+                        text = if (total != null) {
+                            com.gastos.domain.model.formatMoney(total, target)
+                        } else {
+                                stringResource(R.string.total_unavailable, target)
+                        },
                             style = MaterialTheme.typography.headlineMedium.copy(
                                 fontWeight = FontWeight.Bold
                             )
@@ -128,18 +132,18 @@ fun IncomesScreen(
                     FilterChip(
                         selected = uiState.selectedCategoryFilter == null,
                         onClick = { viewModel.filterByCategory(null) },
-                        label = { Text("Todas") }
+                        label = { Text(stringResource(R.string.all_items)) }
                     )
                     FilterChip(
                         selected = uiState.selectedCategoryFilter == UNCATEGORIZED_FILTER,
                         onClick = { viewModel.filterByCategory(UNCATEGORIZED_FILTER) },
-                        label = { Text(TransactionCategories.UNCATEGORIZED_LABEL) }
+                         label = { Text(TransactionCategories.currentUncategorizedLabel(language)) }
                     )
                     uiState.availableCategories.forEach { category ->
                         FilterChip(
                             selected = uiState.selectedCategoryFilter == category,
                             onClick = { viewModel.filterByCategory(category) },
-                            label = { Text(category) }
+                             label = { Text(TransactionCategories.displayCategory(category, language)) }
                         )
                     }
                 }
@@ -158,13 +162,13 @@ fun IncomesScreen(
                         FilterChip(
                             selected = uiState.selectedSubcategoryFilter == null,
                             onClick = { viewModel.filterBySubcategory(null) },
-                            label = { Text("Todas") }
+                        label = { Text(stringResource(R.string.all_items)) }
                         )
                         uiState.availableSubcategories.forEach { subcategory ->
                             FilterChip(
                                 selected = uiState.selectedSubcategoryFilter == subcategory,
                                 onClick = { viewModel.filterBySubcategory(subcategory) },
-                                label = { Text(subcategory) }
+                                 label = { Text(TransactionCategories.displayCategory(subcategory, language)) }
                             )
                         }
                     }
@@ -179,6 +183,7 @@ fun IncomesScreen(
                         item {
                             FilteredEmptyState(
                                 category = uiState.selectedCategoryFilter,
+                                language = language,
                                 onClearFilter = { viewModel.filterByCategory(null) }
                             )
                         }
@@ -203,10 +208,11 @@ fun IncomesScreen(
 @Composable
 private fun FilteredEmptyState(
     category: String?,
+    language: String,
     onClearFilter: () -> Unit
 ) {
     val categoryLabel = if (category == UNCATEGORIZED_FILTER) {
-        TransactionCategories.UNCATEGORIZED_LABEL
+        TransactionCategories.currentUncategorizedLabel(language)
     } else {
         category.orEmpty()
     }
@@ -223,16 +229,16 @@ private fun FilteredEmptyState(
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            text = "No hay movimientos en $categoryLabel",
+            text = stringResource(R.string.filtered_no_movements, categoryLabel),
             style = MaterialTheme.typography.titleMedium
         )
         Text(
-            text = "Prueba otra categoría o vuelve a ver todos los ingresos.",
+            text = stringResource(R.string.try_other_category_incomes),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         OutlinedButton(onClick = onClearFilter) {
-            Text("Ver todos")
+            Text(stringResource(R.string.view_all))
         }
     }
 }
@@ -246,6 +252,7 @@ private fun IncomeCard(
     onEdit: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val language = LocalLocale.current.platformLocale.language
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -268,7 +275,7 @@ private fun IncomeCard(
                     )
                     if (income.fuente != null) {
                         Text(
-                            text = "Fuente: ${income.fuente}",
+                            text = stringResource(R.string.source_label, income.fuente.orEmpty()),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -276,8 +283,8 @@ private fun IncomeCard(
                     Spacer(modifier = Modifier.height(6.dp))
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant) {
                         Text(
-                            text = TransactionCategories.displayCategory(income.categoria) +
-                                income.subcategoria?.takeIf { it.isNotBlank() }?.let { " / $it" }.orEmpty(),
+                             text = TransactionCategories.displayCategory(income.categoria, language) +
+                                 income.subcategoria?.takeIf { it.isNotBlank() }?.let { " / ${TransactionCategories.displayCategory(it, language)}" }.orEmpty(),
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             style = MaterialTheme.typography.labelLarge
                         )
@@ -306,14 +313,14 @@ private fun IncomeCard(
                 IconButton(onClick = onEdit) {
                     Icon(
                         Icons.Default.Edit,
-                        contentDescription = "Editar",
+                        contentDescription = stringResource(R.string.edit),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
                 IconButton(onClick = { showDeleteDialog = true }) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "Eliminar",
+                        contentDescription = stringResource(R.string.delete),
                         tint = MaterialTheme.colorScheme.error
                     )
                 }
@@ -324,8 +331,8 @@ private fun IncomeCard(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Eliminar ingreso") },
-            text = { Text("¿Estás seguro de eliminar este ingreso?") },
+            title = { Text(stringResource(R.string.delete_income_title)) },
+            text = { Text(stringResource(R.string.delete_income_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -333,12 +340,12 @@ private fun IncomeCard(
                         showDeleteDialog = false
                     }
                 ) {
-                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancelar")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )

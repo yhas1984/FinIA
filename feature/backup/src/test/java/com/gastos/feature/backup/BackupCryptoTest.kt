@@ -60,7 +60,7 @@ class BackupCryptoTest {
         createdAt = 1L,
         appVersionName = "test",
         appVersionCode = 1L,
-        databaseVersion = 8,
+        databaseVersion = 10,
         invoiceCount = 0,
         productCount = 0,
         incomeCount = 0,

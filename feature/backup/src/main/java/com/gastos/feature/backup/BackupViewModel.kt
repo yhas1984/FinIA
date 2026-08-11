@@ -3,6 +3,7 @@
 package com.gastos.feature.backup
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Intent
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
@@ -89,6 +90,7 @@ data class BackupResult(
 
 @HiltViewModel
 class BackupViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val backupArchiveService: BackupArchiveService,
     private val cloudBackupService: CloudBackupService,
     private val cloudBackupScheduler: CloudBackupScheduler,
@@ -172,7 +174,7 @@ class BackupViewModel @Inject constructor(
     /** Procesa el resultado del Sign-In (desde StartActivityForResult). */
     fun handleSignInResult(data: Intent?) {
         if (data == null) {
-            _uiState.update { it.copy(error = "Inicio de sesión cancelado o sin respuesta de Google.") }
+            _uiState.update { it.copy(error = context.getString(R.string.google_sign_in_cancelled)) }
             return
         }
         try {
@@ -189,7 +191,7 @@ class BackupViewModel @Inject constructor(
             if (premiumStatus.isPremium.value) loadCloudBackups()
         } catch (e: ApiException) {
             _uiState.update {
-                it.copy(error = "Error al iniciar sesión con Google (código ${e.statusCode}): ${e.message ?: "sin detalle"}")
+                it.copy(error = context.getString(R.string.google_sign_in_error, e.statusCode, e.message ?: context.getString(R.string.no_details)))
             }
         }
     }
@@ -209,7 +211,7 @@ class BackupViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             isExportingSheets = false,
-                            error = "Debes iniciar sesión con Google primero."
+                            error = context.getString(R.string.google_sign_in_required)
                         )
                     }
                     return@launch
@@ -228,7 +230,7 @@ class BackupViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isExportingSheets = false,
-                        error = "Error al exportar a Sheets: ${e.message}"
+                        error = context.getString(R.string.sheets_export_error, e.message.orEmpty())
                     )
                 }
             }
@@ -247,14 +249,14 @@ class BackupViewModel @Inject constructor(
                 val account = sheetsExportService.getLastSignedInAccount()
                 if (account == null) {
                     _uiState.update {
-                        it.copy(isExportingSheets = false, error = "No hay sheet vinculado. Exporta primero.")
+                        it.copy(isExportingSheets = false, error = context.getString(R.string.no_sheet_linked_export_first))
                     }
                     return@launch
                 }
                 val existingId = sheetsSyncManager.getStoredId(account)
                 if (existingId.isBlank()) {
                     _uiState.update {
-                        it.copy(isExportingSheets = false, error = "No hay sheet vinculado. Exporta primero.")
+                        it.copy(isExportingSheets = false, error = context.getString(R.string.no_sheet_linked_export_first))
                     }
                     return@launch
                 }
@@ -266,7 +268,10 @@ class BackupViewModel @Inject constructor(
                 _uiState.update { it.copy(isExportingSheets = false, sheetsUrl = url) }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isExportingSheets = false, error = "Error al sincronizar: ${e.message}")
+                    it.copy(
+                        isExportingSheets = false,
+                        error = context.getString(R.string.sheets_sync_error, e.message.orEmpty())
+                    )
                 }
             }
         }
@@ -288,12 +293,14 @@ class BackupViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isBackupKeyConfigured = true,
-                        backupResult = BackupResult(true, "Contraseña de recuperación configurada."),
+                        backupResult = BackupResult(true, context.getString(R.string.backup_password_configured)),
                         error = null
                     )
                 }
             } catch (error: Exception) {
-                _uiState.update { it.copy(error = error.message ?: "No se pudo configurar la contraseña.") }
+                _uiState.update {
+                    it.copy(error = error.message ?: context.getString(R.string.backup_password_configure_failed))
+                }
             } finally {
                 chars.fill('\u0000')
             }
@@ -308,24 +315,25 @@ class BackupViewModel @Inject constructor(
                     "Configura una contraseña de recuperación primero."
                 }
                 val output = context.contentResolver.openOutputStream(uri)
-                    ?: error("No se pudo abrir el archivo de destino.")
+                    ?: error(context.getString(R.string.destination_open_error))
                 val preview = output.use { backupArchiveService.createArchive(it) }
                 _uiState.update {
                     it.copy(
                         isLoading = false,
                         backupResult = BackupResult(
                             success = true,
-                            message = "Backup cifrado creado: ${preview.invoiceCount} facturas, " +
-                                "${preview.productCount} productos y ${preview.incomeCount} ingresos."
+                            message = context.getString(
+                                R.string.encrypted_backup_created,
+                                preview.invoiceCount,
+                                preview.productCount,
+                                preview.incomeCount
+                            )
                         )
                     )
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.message ?: "Error al crear backup"
-                    )
+                    it.copy(isLoading = false, error = e.message ?: context.getString(R.string.backup_create_failed))
                 }
             }
         }
@@ -335,13 +343,13 @@ class BackupViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val input = context.contentResolver.openInputStream(uri)
-                    ?: error("No se pudo abrir el backup seleccionado.")
+                    ?: error(context.getString(R.string.backup_open_selected_failed))
                 val preview = input.use(backupArchiveService::inspect)
                 _uiState.update {
                     it.copy(pendingRestore = PendingBackupRestore.Manual(uri, preview), error = null)
                 }
             } catch (error: Exception) {
-                _uiState.update { it.copy(error = error.message ?: "Backup no válido.") }
+                _uiState.update { it.copy(error = error.message ?: context.getString(R.string.backup_invalid)) }
             }
         }
     }
@@ -359,24 +367,24 @@ class BackupViewModel @Inject constructor(
         val pending = _uiState.value.pendingRestore ?: return
         val chars = password.toCharArray()
         val sourceLabel = when (pending) {
-            is PendingBackupRestore.Manual -> "archivo .finai"
+            is PendingBackupRestore.Manual -> context.getString(R.string.backup_file_label)
             is PendingBackupRestore.Cloud -> pending.backup.name
         }
         val started = restoreCoordinator.start(viewModelScope, sourceLabel) {
             _uiState.update { it.copy(error = null) }
             var downloaded: File? = null
             try {
-                restoreCoordinator.updateStage("Abriendo backup...")
+                restoreCoordinator.updateStage(context.getString(R.string.restore_stage_opening))
                 val input = when (pending) {
                     is PendingBackupRestore.Manual -> context.contentResolver.openInputStream(pending.uri)
-                        ?: error("No se pudo abrir el backup seleccionado.")
+                        ?: error(context.getString(R.string.backup_open_selected_failed))
                     is PendingBackupRestore.Cloud -> {
-                        restoreCoordinator.updateStage("Descargando backup de Drive...")
+                        restoreCoordinator.updateStage(context.getString(R.string.restore_stage_downloading))
                         downloaded = cloudBackupService.downloadBackup(pending.backup.fileId)
                         requireNotNull(downloaded).inputStream()
                     }
                 }
-                restoreCoordinator.updateStage("Verificando y restaurando datos...")
+                restoreCoordinator.updateStage(context.getString(R.string.restore_stage_restoring))
                 val result = input.use {
                     backupArchiveService.restore(it, chars, restoreCoordinator::beginCommit)
                 }
@@ -386,18 +394,22 @@ class BackupViewModel @Inject constructor(
                         pendingRestore = null,
                         backupResult = BackupResult(
                             true,
-                            "Restauración completada: ${result.preview.invoiceCount} facturas, " +
-                                "${result.preview.productCount} productos, ${result.preview.incomeCount} ingresos " +
-                                "y ${result.restoredImages} imágenes."
+                            context.getString(
+                                R.string.restore_completed,
+                                result.preview.invoiceCount,
+                                result.preview.productCount,
+                                result.preview.incomeCount,
+                                result.restoredImages
+                            )
                         )
                     )
                 }
             } catch (error: CancellationException) {
-                _uiState.update { it.copy(error = "Restauración cancelada.") }
+                _uiState.update { it.copy(error = context.getString(R.string.restore_cancelled)) }
                 throw error
             } catch (error: Exception) {
                 _uiState.update {
-                    it.copy(error = error.message ?: "No se pudo restaurar el backup.")
+                    it.copy(error = error.message ?: context.getString(R.string.restore_failed))
                 }
             } finally {
                 chars.fill('\u0000')
@@ -406,7 +418,7 @@ class BackupViewModel @Inject constructor(
         }
         if (!started) {
             chars.fill('\u0000')
-            _uiState.update { it.copy(error = "Ya hay una restauración en curso.") }
+            _uiState.update { it.copy(error = context.getString(R.string.restore_in_progress)) }
         }
     }
 
@@ -418,15 +430,15 @@ class BackupViewModel @Inject constructor(
         if (enabled) {
             when {
                 !_uiState.value.isPremium -> {
-                    _uiState.update { it.copy(error = "El backup automático en Drive requiere Premium.") }
+                    _uiState.update { it.copy(error = context.getString(R.string.auto_backup_requires_premium)) }
                     return
                 }
                 !_uiState.value.isSignedIn -> {
-                    _uiState.update { it.copy(error = "Conecta tu cuenta Google primero.") }
+                    _uiState.update { it.copy(error = context.getString(R.string.connect_google_first)) }
                     return
                 }
                 !backupArchiveService.isPasswordConfigured() -> {
-                    _uiState.update { it.copy(error = "Configura una contraseña de recuperación primero.") }
+                    _uiState.update { it.copy(error = context.getString(R.string.configure_recovery_password_before_auto_backup)) }
                     return
                 }
             }
@@ -447,17 +459,13 @@ class BackupViewModel @Inject constructor(
                         isCloudLoading = false,
                         cloudBackups = backups,
                         cloudBackupStatus = cloudBackupPreferences.status(),
-                        backupResult = BackupResult(true, "Backup guardado en Drive: ${backup.name}")
+                        backupResult = BackupResult(true, context.getString(R.string.drive_backup_saved, backup.name))
                     )
                 }
             } catch (error: Exception) {
-                cloudBackupPreferences.recordError(error.message ?: "No se pudo crear el backup en Drive.")
+                cloudBackupPreferences.recordError(error.message ?: context.getString(R.string.drive_backup_create_failed))
                 _uiState.update {
-                    it.copy(
-                        isCloudLoading = false,
-                        cloudBackupStatus = cloudBackupPreferences.status(),
-                        error = error.message ?: "No se pudo crear el backup en Drive."
-                    )
+                    it.copy(isCloudLoading = false, cloudBackupStatus = cloudBackupPreferences.status(), error = error.message ?: context.getString(R.string.drive_backup_create_failed))
                 }
             }
         }
@@ -478,7 +486,7 @@ class BackupViewModel @Inject constructor(
                 }
             } catch (error: Exception) {
                 _uiState.update {
-                    it.copy(isCloudLoading = false, error = error.message ?: "No se pudieron cargar los backups.")
+                    it.copy(isCloudLoading = false, error = error.message ?: context.getString(R.string.drive_backup_load_failed))
                 }
             }
         }
@@ -493,12 +501,12 @@ class BackupViewModel @Inject constructor(
                     it.copy(
                         isCloudLoading = false,
                         cloudBackups = emptyList(),
-                        backupResult = BackupResult(true, "$deleted copias eliminadas de Google Drive.")
+                        backupResult = BackupResult(true, context.getString(R.string.drive_backups_deleted, deleted))
                     )
                 }
             } catch (error: Exception) {
                 _uiState.update {
-                    it.copy(isCloudLoading = false, error = error.message ?: "No se pudieron eliminar las copias.")
+                    it.copy(isCloudLoading = false, error = error.message ?: context.getString(R.string.drive_backups_delete_failed))
                 }
             }
         }
@@ -517,19 +525,39 @@ class BackupViewModel @Inject constructor(
         products: List<Product>
     ): String = buildString {
         append('\uFEFF')
-        appendCsvRow("Tipo", "ID", "Fecha", "Concepto", "Monto", "Moneda", "IVA%", "IRPF%", "Devengado", "Neto", "Categoría", "Subcategoría", "Notas")
+        appendCsvRow(
+            context.getString(R.string.csv_header_type),
+            context.getString(R.string.csv_header_id),
+            context.getString(R.string.csv_header_date),
+            context.getString(R.string.csv_header_invoice_number),
+            context.getString(R.string.csv_header_concept),
+            context.getString(R.string.csv_header_amount),
+            context.getString(R.string.csv_header_currency),
+            context.getString(R.string.csv_header_tax_base),
+            context.getString(R.string.csv_header_vat_percent),
+            context.getString(R.string.csv_header_vat_amount),
+            context.getString(R.string.csv_header_irpf_percent),
+            context.getString(R.string.csv_header_gross),
+            context.getString(R.string.csv_header_net),
+            context.getString(R.string.csv_header_category),
+            context.getString(R.string.csv_header_subcategory),
+            context.getString(R.string.csv_header_notes)
+        )
         val invoiceById = invoices.associateBy { it.id }
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
 
         invoices.forEach { invoice ->
             appendCsvRow(
-                if (invoice.tipo == InvoiceType.GASTO) "Gasto" else "Ingreso",
+                 if (invoice.tipo == InvoiceType.GASTO) context.getString(R.string.csv_type_expense) else context.getString(R.string.csv_type_income),
                 invoice.id,
                 dateFormat.format(Date(invoice.fecha)),
+                invoice.numeroFactura.orEmpty(),
                 invoice.proveedor,
                 invoice.total,
                 invoice.moneda,
+                invoice.baseImponible ?: "",
                 invoice.ivaPercent,
+                invoice.cuotaIva ?: "",
                 invoice.irpfPercent,
                 "",
                 "",
@@ -540,13 +568,16 @@ class BackupViewModel @Inject constructor(
         }
         products.forEach { product ->
             appendCsvRow(
-                "Producto",
+                 context.getString(R.string.csv_type_product),
                 product.id,
                 dateFormat.format(Date(product.createdAt)),
+                "",
                 product.descripcion,
                 product.subtotal,
                 invoiceById[product.invoiceId]?.moneda.orEmpty(),
+                "",
                 product.ivaPercent,
+                "",
                 0,
                 "",
                 "",
@@ -557,13 +588,16 @@ class BackupViewModel @Inject constructor(
         }
         incomes.forEach { income ->
             appendCsvRow(
-                "Ingreso",
+                 context.getString(R.string.csv_type_income),
                 income.id,
                 dateFormat.format(Date(income.fecha)),
+                "",
                 income.concepto,
                 income.monto,
                 income.moneda,
+                "",
                 income.ivaPercent,
+                "",
                 income.irpfPercent,
                 income.totalDevengado,
                 income.totalNeto,
@@ -580,11 +614,11 @@ class BackupViewModel @Inject constructor(
             invoices.filter { it.tipo == InvoiceType.INGRESO }
                 .sumOf { converted(it.total, it.moneda) }
         append('\n')
-        appendCsvRow("RESUMEN", "Moneda", target)
-        appendCsvRow("Total Gastos", totalGastos)
-        appendCsvRow("Total Ingresos", totalIngresos)
-        appendCsvRow("Balance", totalIngresos - totalGastos)
-        appendCsvRow("Fecha exportación", SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()))
+        appendCsvRow(context.getString(R.string.csv_summary), context.getString(R.string.csv_summary_currency), target)
+        appendCsvRow(context.getString(R.string.csv_summary_expenses), totalGastos)
+        appendCsvRow(context.getString(R.string.csv_summary_income), totalIngresos)
+        appendCsvRow(context.getString(R.string.csv_summary_balance), totalIngresos - totalGastos)
+        appendCsvRow(context.getString(R.string.csv_summary_exported_at), SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).format(Date()))
     }
 
     fun exportToCsv(context: Context, uri: Uri) {
@@ -595,7 +629,7 @@ class BackupViewModel @Inject constructor(
                 val (invoices, incomes, products) = loadData()
 
                 val outputStream = context.contentResolver.openOutputStream(uri)
-                    ?: error("No se pudo abrir el archivo de destino")
+                    ?: error(context.getString(R.string.destination_open_error))
                 outputStream.use {
                     it.write(buildCsvContent(invoices, incomes, products).toByteArray(Charsets.UTF_8))
                 }
@@ -605,7 +639,12 @@ class BackupViewModel @Inject constructor(
                         isExporting = false,
                         exportResult = BackupResult(
                             success = true,
-                            message = "CSV exportado: ${invoices.size} facturas, ${products.size} productos, ${incomes.size} ingresos"
+                            message = context.getString(
+                                R.string.csv_exported,
+                                invoices.size,
+                                products.size,
+                                incomes.size
+                            )
                         )
                     )
                 }
@@ -615,7 +654,7 @@ class BackupViewModel @Inject constructor(
                         isExporting = false,
                         exportResult = BackupResult(
                             success = false,
-                            message = "Error al exportar CSV: ${e.message}"
+                            message = context.getString(R.string.csv_export_error, e.message.orEmpty())
                         )
                     )
                 }
@@ -629,7 +668,7 @@ class BackupViewModel @Inject constructor(
 
             try {
                 val (invoices, incomes, products) = loadData()
-                val df = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                val df = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
                 val targetCurrency = currencyPreference.defaultCurrency.value
 
                 val pdfDocument = PdfDocument()
@@ -655,26 +694,58 @@ class BackupViewModel @Inject constructor(
                 }
 
                 // Title
-                canvas.drawText("FinAI - Informe Financiero", 40f, y, titlePaint)
+                canvas.drawText(context.getString(R.string.pdf_title), 40f, y, titlePaint)
                 y += 30f
-                canvas.drawText("Generado: ${SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())}", 40f, y, bodyPaint)
+                canvas.drawText(
+                    context.getString(
+                        R.string.pdf_generated,
+                         SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.ROOT).format(Date())
+                    ),
+                    40f,
+                    y,
+                    bodyPaint
+                )
                 y += 30f
 
                 // Summary (convertido a la moneda por defecto del usuario)
                 val totalGastos = invoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { converted(it.total, it.moneda) }
                 val totalIngresos = incomes.sumOf { converted(it.monto, it.moneda) } + invoices.filter { it.tipo == InvoiceType.INGRESO }.sumOf { converted(it.total, it.moneda) }
 
-                canvas.drawText("RESUMEN", 40f, y, headerPaint)
+                canvas.drawText(context.getString(R.string.pdf_summary), 40f, y, headerPaint)
                 y += 20f
-                canvas.drawText("Total Gastos: ${com.gastos.domain.model.formatMoney(totalGastos, targetCurrency)}", 60f, y, bodyPaint)
+                canvas.drawText(
+                    context.getString(
+                        R.string.pdf_total_expenses,
+                        com.gastos.domain.model.formatMoney(totalGastos, targetCurrency)
+                    ),
+                    60f,
+                    y,
+                    bodyPaint
+                )
                 y += 18f
-                canvas.drawText("Total Ingresos: ${com.gastos.domain.model.formatMoney(totalIngresos, targetCurrency)}", 60f, y, bodyPaint)
+                canvas.drawText(
+                    context.getString(
+                        R.string.pdf_total_income,
+                        com.gastos.domain.model.formatMoney(totalIngresos, targetCurrency)
+                    ),
+                    60f,
+                    y,
+                    bodyPaint
+                )
                 y += 18f
-                canvas.drawText("Balance: ${com.gastos.domain.model.formatMoney(totalIngresos - totalGastos, targetCurrency)}", 60f, y, bodyPaint)
+                canvas.drawText(
+                    context.getString(
+                        R.string.pdf_balance,
+                        com.gastos.domain.model.formatMoney(totalIngresos - totalGastos, targetCurrency)
+                    ),
+                    60f,
+                    y,
+                    bodyPaint
+                )
                 y += 30f
 
                 // Gastos
-                canvas.drawText("GASTOS", 40f, y, headerPaint)
+                canvas.drawText(context.getString(R.string.pdf_expenses), 40f, y, headerPaint)
                 y += 20f
                 invoices.filter { it.tipo == InvoiceType.GASTO }.forEach { inv ->
                     if (y > 780f) {
@@ -689,7 +760,7 @@ class BackupViewModel @Inject constructor(
                 y += 15f
 
                 // Ingresos
-                canvas.drawText("INGRESOS", 40f, y, headerPaint)
+                canvas.drawText(context.getString(R.string.pdf_income), 40f, y, headerPaint)
                 y += 20f
                 incomes.forEach { inc ->
                     if (y > 780f) {
@@ -705,7 +776,7 @@ class BackupViewModel @Inject constructor(
                 pdfDocument.finishPage(page)
 
                 val outputStream = context.contentResolver.openOutputStream(uri)
-                    ?: error("No se pudo abrir el archivo de destino")
+                    ?: error(context.getString(R.string.destination_open_error))
                 outputStream.use { pdfDocument.writeTo(it) }
                 } finally {
                     pdfDocument.close()
@@ -716,7 +787,7 @@ class BackupViewModel @Inject constructor(
                         isExporting = false,
                         exportResult = BackupResult(
                             success = true,
-                            message = "PDF exportado correctamente"
+                            message = context.getString(R.string.pdf_exported)
                         )
                     )
                 }
@@ -726,7 +797,7 @@ class BackupViewModel @Inject constructor(
                         isExporting = false,
                         exportResult = BackupResult(
                             success = false,
-                            message = "Error al exportar PDF: ${e.message}"
+                            message = context.getString(R.string.pdf_export_error, e.message.orEmpty())
                         )
                     )
                 }
@@ -756,11 +827,14 @@ class BackupViewModel @Inject constructor(
                 val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                     type = "text/csv"
                     putExtra(android.content.Intent.EXTRA_STREAM, fileUri)
-                    putExtra(android.content.Intent.EXTRA_SUBJECT, "FinAI Backup - $timestamp")
+                     putExtra(android.content.Intent.EXTRA_SUBJECT, context.getString(R.string.share_subject, timestamp))
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
 
-                val chooser = android.content.Intent.createChooser(shareIntent, "Compartir backup FinAI")
+                 val chooser = android.content.Intent.createChooser(
+                     shareIntent,
+                     context.getString(R.string.share_chooser)
+                 )
                 chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(chooser)
 
@@ -769,7 +843,12 @@ class BackupViewModel @Inject constructor(
                         isExporting = false,
                         exportResult = BackupResult(
                             success = true,
-                            message = "Backup listo para compartir: ${invoices.size} facturas, ${products.size} productos, ${incomes.size} ingresos",
+                            message = context.getString(
+                                R.string.share_ready,
+                                invoices.size,
+                                products.size,
+                                incomes.size
+                            ),
                             sharedFile = csvFile
                         )
                     )
@@ -780,7 +859,7 @@ class BackupViewModel @Inject constructor(
                         isExporting = false,
                         exportResult = BackupResult(
                             success = false,
-                            message = "Error al crear backup: ${e.message}"
+                            message = context.getString(R.string.share_error, e.message.orEmpty())
                         )
                     )
                 }

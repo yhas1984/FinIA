@@ -4,8 +4,119 @@ import java.text.Normalizer
 import java.util.Locale
 
 object TransactionCategories {
-    const val UNCATEGORIZED_LABEL: String = "Sin categoría"
-    const val CUSTOM_OPTION_LABEL: String = "Personalizada…"
+    const val UNCATEGORIZED_LABEL_ES: String = "Sin categoría"
+    const val UNCATEGORIZED_LABEL_EN: String = "Uncategorized"
+    const val NO_SUBCATEGORY_LABEL_ES: String = "Sin subcategoría"
+    const val NO_SUBCATEGORY_LABEL_EN: String = "No subcategory"
+    const val CUSTOM_OPTION_LABEL_ES: String = "Personalizada…"
+    const val CUSTOM_OPTION_LABEL_EN: String = "Custom…"
+
+    private val expenseLabelsEn = linkedMapOf(
+        "Alimentación" to "Food",
+        "Vivienda" to "Housing",
+        "Transporte" to "Transport",
+        "Servicios" to "Utilities",
+        "Salud" to "Health",
+        "Educación" to "Education",
+        "Ocio" to "Leisure",
+        "Viajes" to "Travel",
+        "Impuestos" to "Taxes",
+        "Negocio" to "Business",
+        "Otros" to "Other"
+    )
+
+    private val incomeLabelsEn = linkedMapOf(
+        "Nómina" to "Salary",
+        "Ventas" to "Sales",
+        "Honorarios" to "Fees",
+        "Alquiler" to "Rent",
+        "Intereses" to "Interest",
+        "Reembolsos" to "Refunds",
+        "Otros" to "Other"
+    )
+
+    private val expenseAliasesEn = mapOf(
+        "Food" to "Alimentación",
+        "Housing" to "Vivienda",
+        "Transport" to "Transporte",
+        "Utilities" to "Servicios",
+        "Health" to "Salud",
+        "Education" to "Educación",
+        "Leisure" to "Ocio",
+        "Travel" to "Viajes",
+        "Taxes" to "Impuestos",
+        "Business" to "Negocio",
+        "Other" to "Otros"
+    )
+
+    private val incomeAliasesEn = mapOf(
+        "Salary" to "Nómina",
+        "Sales" to "Ventas",
+        "Fees" to "Honorarios",
+        "Rent" to "Alquiler",
+        "Interest" to "Intereses",
+        "Refunds" to "Reembolsos",
+        "Other" to "Otros"
+    )
+
+    private val subcategoryLabelsEn = mapOf(
+        "Supermercado" to "Grocery store",
+        "Restaurantes" to "Restaurants",
+        "Cafetería" to "Cafe",
+        "Frutería" to "Greengrocer",
+        "Carnicería" to "Butcher",
+        "Panadería" to "Bakery",
+        "Bebidas" to "Drinks",
+        "Hipoteca" to "Mortgage",
+        "Alquiler" to "Rent",
+        "Comunidad" to "Community",
+        "Reparaciones" to "Repairs",
+        "Mobiliario" to "Furniture",
+        "Electrodomésticos" to "Appliances",
+        "Combustible" to "Fuel",
+        "Transporte público" to "Public transport",
+        "Aparcamiento" to "Parking",
+        "Peajes" to "Tolls",
+        "Mantenimiento" to "Maintenance",
+        "Seguro del coche" to "Car insurance",
+        "Electricidad" to "Electricity",
+        "Agua" to "Water",
+        "Teléfono" to "Phone",
+        "Farmacia" to "Pharmacy",
+        "Médico" to "Doctor",
+        "Seguro médico" to "Health insurance",
+        "Óptica" to "Optician",
+        "Cursos" to "Courses",
+        "Matrícula" to "Tuition",
+        "Libros" to "Books",
+        "Material escolar" to "School supplies",
+        "Cine" to "Cinema",
+        "Deporte" to "Sports",
+        "Videojuegos" to "Video games",
+        "Suscripciones" to "Subscriptions",
+        "Fiestas" to "Parties",
+        "Alojamiento" to "Accommodation",
+        "Vuelos" to "Flights",
+        "Tren" to "Train",
+        "Comidas" to "Meals",
+        "Turismo" to "Sightseeing",
+        "Impuestos municipales" to "Local taxes",
+        "Otros tributos" to "Other taxes",
+        "Material" to "Supplies",
+        "Publicidad" to "Advertising",
+        "Envíos" to "Shipping",
+        "Imprenta" to "Printing",
+        "Salario base" to "Base salary",
+        "Pagas extra" to "Extra pay",
+        "Proyectos" to "Projects",
+        "Consultoría" to "Consulting",
+        "Vivienda" to "Housing",
+        "Local" to "Commercial property",
+        "Bancarios" to "Banking",
+        "Inversiones" to "Investments",
+        "Gastos" to "Expenses",
+        "Seguros" to "Insurance"
+    )
 
     val defaultExpenseCategories: List<String> = listOf(
         "Alimentación",
@@ -60,7 +171,12 @@ object TransactionCategories {
     fun suggestedSubcategories(category: String?, isIncome: Boolean): List<String> {
         val normalized = normalizeCategory(category) ?: return emptyList()
         val map = if (isIncome) suggestedIncomeSubcategories else suggestedExpenseSubcategories
-        return map[normalized].orEmpty()
+        val canonical = if (isIncome) {
+            canonicalIncomeCategory(normalized)
+        } else {
+            canonicalExpenseCategory(normalized)
+        }
+        return map[canonical].orEmpty()
     }
 
     fun availableSubcategories(
@@ -80,16 +196,36 @@ object TransactionCategories {
         ?.trim()
         ?.takeIf { it.isNotBlank() }
 
-    fun displayCategory(value: String?): String = normalizeCategory(value) ?: UNCATEGORIZED_LABEL
+    fun displayCategory(value: String?): String = displayCategory(value, Locale.getDefault().language)
 
-    fun canonicalExpenseCategory(value: String?): String? = canonicalize(value, defaultExpenseCategories)
+    fun displayCategory(value: String?, language: String): String = normalizeCategory(value)?.let { normalized ->
+        if (normalizeKey(normalized) == normalizeKey(UNCATEGORIZED_LABEL_ES) ||
+            normalizeKey(normalized) == normalizeKey(UNCATEGORIZED_LABEL_EN)
+        ) {
+            if (isEnglishLanguage(language)) UNCATEGORIZED_LABEL_EN else UNCATEGORIZED_LABEL_ES
+        } else if (normalizeKey(normalized) == normalizeKey(NO_SUBCATEGORY_LABEL_ES) ||
+            normalizeKey(normalized) == normalizeKey(NO_SUBCATEGORY_LABEL_EN)
+        ) {
+            if (isEnglishLanguage(language)) NO_SUBCATEGORY_LABEL_EN else NO_SUBCATEGORY_LABEL_ES
+        } else {
+            localizedCategoryLabel(normalized, language)
+        }
+    } ?: if (isEnglishLanguage(language)) UNCATEGORIZED_LABEL_EN else UNCATEGORIZED_LABEL_ES
 
-    fun canonicalIncomeCategory(value: String?): String? = canonicalize(value, defaultIncomeCategories)
+    fun canonicalExpenseCategory(value: String?): String? = canonicalize(value, defaultExpenseCategories, expenseAliasesEn)
+
+    fun canonicalIncomeCategory(value: String?): String? = canonicalize(value, defaultIncomeCategories, incomeAliasesEn)
 
     fun matchesCategory(category: String?, filter: String?): Boolean {
         val normalizedFilter: String? = normalizeKey(filter)
         if (normalizedFilter == null) return true
-        return normalizeKey(category) == normalizedFilter
+        val canonicalFilter = canonicalExpenseCategory(filter)
+            ?: canonicalIncomeCategory(filter)
+            ?: filter
+        val canonicalCategory = canonicalExpenseCategory(category)
+            ?: canonicalIncomeCategory(category)
+            ?: category
+        return normalizeKey(canonicalCategory) == normalizeKey(canonicalFilter)
     }
 
     fun availableCategories(defaults: List<String>, existing: List<String?>): List<String> {
@@ -105,9 +241,31 @@ object TransactionCategories {
         return labelsByKey.values.toList()
     }
 
-    private fun canonicalize(value: String?, defaults: List<String>): String? {
+    fun currentUncategorizedLabel(language: String = Locale.getDefault().language): String =
+        if (isEnglishLanguage(language)) UNCATEGORIZED_LABEL_EN else UNCATEGORIZED_LABEL_ES
+
+    fun currentCustomOptionLabel(language: String = Locale.getDefault().language): String =
+        if (isEnglishLanguage(language)) CUSTOM_OPTION_LABEL_EN else CUSTOM_OPTION_LABEL_ES
+
+    fun isUncategorized(value: String?): Boolean =
+        normalizeKey(value) == normalizeKey(UNCATEGORIZED_LABEL_ES) ||
+            normalizeKey(value) == normalizeKey(UNCATEGORIZED_LABEL_EN)
+
+    private fun canonicalize(value: String?, defaults: List<String>, aliases: Map<String, String>): String? {
         val normalized: String = normalizeCategory(value) ?: return null
         val key: String = normalizeKey(normalized) ?: return normalized
-        return defaults.firstOrNull { normalizeKey(it) == key } ?: normalized
+        return defaults.firstOrNull { normalizeKey(it) == key }
+            ?: aliases[normalized]
+            ?: aliases.entries.firstOrNull { normalizeKey(it.key) == key }?.value
+            ?: normalized
     }
+
+    private fun localizedCategoryLabel(value: String, language: String): String {
+        if (!isEnglishLanguage(language)) return value
+        return expenseLabelsEn[value] ?: incomeLabelsEn[value] ?: subcategoryLabelsEn[value] ?: value
+    }
+
+    private fun isEnglishLocale(): Boolean = Locale.getDefault().language == "en"
+
+    private fun isEnglishLanguage(language: String): Boolean = language.lowercase(Locale.ROOT) == "en"
 }

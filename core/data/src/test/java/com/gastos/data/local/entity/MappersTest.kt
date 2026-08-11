@@ -64,6 +64,9 @@ class MappersTest {
             categoria = "Alimentación",
             moneda = "EUR",
             total = 121.0,
+            numeroFactura = "F-2026-001",
+            baseImponible = 100.0,
+            cuotaIva = 21.0,
             ivaPercent = 21.0,
             irpfPercent = 0.0,
             paisCodigo = "ES",
@@ -84,6 +87,9 @@ class MappersTest {
         assertEquals(entity.proveedor, back.proveedor)
         assertEquals(entity.tipo, back.tipo)
         assertEquals(entity.total, back.total, 0.0)
+        assertEquals(entity.numeroFactura, back.numeroFactura)
+        assertEquals(entity.baseImponible, back.baseImponible)
+        assertEquals(entity.cuotaIva, back.cuotaIva)
         assertEquals(entity.ivaPercent, back.ivaPercent, 0.0)
         assertEquals(entity.nifEmisor, back.nifEmisor)
         assertEquals(entity.driveFileId, back.driveFileId)

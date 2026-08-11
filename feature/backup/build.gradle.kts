@@ -55,6 +55,7 @@ dependencies {
     // Room types used by BackupService through AppDatabase
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
+    ksp(libs.room.compiler)
 
     // Google Sign In (Drive backup)
     implementation(libs.play.services.auth)

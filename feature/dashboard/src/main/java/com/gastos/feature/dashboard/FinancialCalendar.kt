@@ -20,11 +20,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import java.util.Calendar
 import java.util.Locale
-
-private val CALENDAR_WEEKDAYS = listOf("LU", "MA", "MI", "JU", "VI", "SA", "DO")
-
 /** Widget mensual con totales diarios y acceso al detalle de cada día. */
 @Composable
 fun FinancialCalendarCard(
@@ -40,6 +38,15 @@ fun FinancialCalendarCard(
 ) {
     val dayDataByNumber = days.associateBy { it.day }
     val gridDays = calendarGridDays(month)
+    val weekdays = listOf(
+        stringResource(R.string.weekday_monday_short),
+        stringResource(R.string.weekday_tuesday_short),
+        stringResource(R.string.weekday_wednesday_short),
+        stringResource(R.string.weekday_thursday_short),
+        stringResource(R.string.weekday_friday_short),
+        stringResource(R.string.weekday_saturday_short),
+        stringResource(R.string.weekday_sunday_short)
+    )
 
     GlassCard {
         Row(
@@ -48,7 +55,7 @@ fun FinancialCalendarCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Calendario financiero",
+                    text = stringResource(R.string.calendar_financial),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -63,13 +70,13 @@ fun FinancialCalendarCard(
             IconButton(onClick = onPreviousMonth) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    contentDescription = "Mes anterior"
+                    contentDescription = stringResource(R.string.previous_month)
                 )
             }
             IconButton(onClick = onNextMonth, enabled = !isCurrentMonth) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Mes siguiente",
+                    contentDescription = stringResource(R.string.next_month),
                     tint = if (isCurrentMonth) {
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
                     } else {
@@ -82,7 +89,7 @@ fun FinancialCalendarCard(
         Spacer(modifier = Modifier.height(16.dp))
 
         Row(modifier = Modifier.fillMaxWidth()) {
-            CALENDAR_WEEKDAYS.forEach { weekday ->
+            weekdays.forEach { weekday ->
                 Text(
                     text = weekday,
                     modifier = Modifier.weight(1f),
@@ -116,12 +123,12 @@ fun FinancialCalendarCard(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            CalendarLegendDot(color = MaterialTheme.colorScheme.error, label = "Gastos")
+            CalendarLegendDot(color = MaterialTheme.colorScheme.error, label = stringResource(R.string.expenses))
             Spacer(modifier = Modifier.width(16.dp))
-            CalendarLegendDot(color = MaterialTheme.colorScheme.secondary, label = "Ingresos")
+            CalendarLegendDot(color = MaterialTheme.colorScheme.secondary, label = stringResource(R.string.income))
         }
         Text(
-            text = "Toca un día para ver sus movimientos",
+            text = stringResource(R.string.tap_day_movements),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
@@ -262,7 +269,7 @@ fun CalendarDayDetailSheet(
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                text = "Día $day · $monthLabel",
+                text = stringResource(R.string.day_details, day, monthLabel),
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -270,7 +277,7 @@ fun CalendarDayDetailSheet(
             CalendarDayTotals(dayData = dayData, balance = balance, fmt = fmt)
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Movimientos",
+                text = stringResource(R.string.movements),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -278,7 +285,7 @@ fun CalendarDayDetailSheet(
             MovementList(
                 movements = movements,
                 fmt = fmt,
-                emptyText = "Sin movimientos convertibles este día.",
+                emptyText = stringResource(R.string.no_convertible_movements_day),
                 onOpenMovement = onOpenMovement
             )
         }
@@ -300,17 +307,17 @@ private fun CalendarDayTotals(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         CalendarTotalRow(
-            label = "Balance",
+            label = stringResource(R.string.month_balance),
             amount = fmt(balance),
             color = if (balance >= 0.0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
         )
         CalendarTotalRow(
-            label = "Gastos",
+            label = stringResource(R.string.expenses),
             amount = fmt(dayData?.gastos ?: 0.0),
             color = MaterialTheme.colorScheme.error
         )
         CalendarTotalRow(
-            label = "Ingresos",
+            label = stringResource(R.string.income),
             amount = fmt(dayData?.ingresos ?: 0.0),
             color = MaterialTheme.colorScheme.secondary
         )

@@ -10,6 +10,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -32,7 +33,7 @@ class VoiceRecognitionService @Inject constructor(
 
     fun startListening(): Flow<VoiceResult> = callbackFlow {
         if (!isAvailable()) {
-            trySend(VoiceResult(text = "Reconocimiento de voz no disponible", isFinal = true, confidence = 0.0f, isError = true))
+            trySend(VoiceResult(text = context.getString(R.string.voice_unavailable), isFinal = true, confidence = 0.0f, isError = true))
             close()
             return@callbackFlow
         }
@@ -41,11 +42,11 @@ class VoiceRecognitionService @Inject constructor(
 
         val recognitionListener = object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
-                trySend(VoiceResult(text = "Escuchando...", isFinal = false))
+                trySend(VoiceResult(text = context.getString(R.string.voice_listening), isFinal = false))
             }
 
             override fun onBeginningOfSpeech() {
-                trySend(VoiceResult(text = "Habla ahora...", isFinal = false))
+                trySend(VoiceResult(text = context.getString(R.string.voice_speak_now), isFinal = false))
             }
 
             override fun onRmsChanged(rmsdB: Float) {
@@ -55,21 +56,21 @@ class VoiceRecognitionService @Inject constructor(
             override fun onBufferReceived(buffer: ByteArray?) {}
 
             override fun onEndOfSpeech() {
-                trySend(VoiceResult(text = "Procesando...", isFinal = false))
+                trySend(VoiceResult(text = context.getString(R.string.voice_processing), isFinal = false))
             }
 
             override fun onError(error: Int) {
                 val errorMessage = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> "Error de audio"
-                    SpeechRecognizer.ERROR_CLIENT -> "Error del cliente"
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permisos insuficientes"
-                    SpeechRecognizer.ERROR_NETWORK -> "Error de red"
-                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Tiempo de espera de red agotado"
-                    SpeechRecognizer.ERROR_NO_MATCH -> "No se encontró coincidencia"
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Reconocedor ocupado"
-                    SpeechRecognizer.ERROR_SERVER -> "Error del servidor"
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Tiempo de espera agotado"
-                    else -> "Error desconocido: $error"
+                    SpeechRecognizer.ERROR_AUDIO -> context.getString(R.string.voice_error_audio)
+                    SpeechRecognizer.ERROR_CLIENT -> context.getString(R.string.voice_error_client)
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> context.getString(R.string.voice_error_permissions)
+                    SpeechRecognizer.ERROR_NETWORK -> context.getString(R.string.voice_error_network)
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> context.getString(R.string.voice_error_network_timeout)
+                    SpeechRecognizer.ERROR_NO_MATCH -> context.getString(R.string.voice_error_no_match)
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> context.getString(R.string.voice_error_busy)
+                    SpeechRecognizer.ERROR_SERVER -> context.getString(R.string.voice_error_server)
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> context.getString(R.string.voice_error_speech_timeout)
+                    else -> context.getString(R.string.voice_error_unknown, error)
                 }
                 trySend(VoiceResult(text = errorMessage, isFinal = true, confidence = 0.0f, isError = true))
                 close()
@@ -84,7 +85,7 @@ class VoiceRecognitionService @Inject constructor(
                     val confidence = confidenceScores?.getOrNull(0) ?: 0.0f
                     trySend(VoiceResult(text = bestResult, isFinal = true, confidence = confidence))
                 } else {
-                    trySend(VoiceResult(text = "No se detectó texto", isFinal = true, confidence = 0.0f, isError = true))
+                    trySend(VoiceResult(text = context.getString(R.string.voice_no_text), isFinal = true, confidence = 0.0f, isError = true))
                 }
                 close()
             }
@@ -103,7 +104,7 @@ class VoiceRecognitionService @Inject constructor(
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, activeLocale().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
@@ -125,4 +126,7 @@ class VoiceRecognitionService @Inject constructor(
     fun destroy() {
         stopListening()
     }
+
+    private fun activeLocale(): Locale = context.resources.configuration.locales[0]
+        ?: Locale.getDefault()
 }

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dashboard_title">Dashboard</string>
+    <string name="expenses_title">Gastos</string>
+    <string name="income_title">Ingresos</string>
+    <string name="open_ai_assistant">Abrir asistente de IA</string>
+    <string name="new_expense">Nuevo gasto</string>
+    <string name="new_income">Nuevo ingreso</string>
+
+    <string name="dashboard_header">FinAI</string>
+    <string name="backup">Backup</string>
+    <string name="settings">Configuración</string>
+    <string name="customize_dashboard">Personalizar Dashboard</string>
+    <string name="finish_customization">Terminar personalización</string>
+    <string name="reset_layout">Restablecer</string>
+    <string name="done">Hecho</string>
+    <string name="personalize_dashboard">Personaliza tu Dashboard</string>
+    <string name="drag_handle_instruction">Mantén pulsado el asa para arrastrar</string>
+    <string name="hidden_widgets">Widgets ocultos</string>
+    <string name="show">Mostrar</string>
+    <string name="move_widget_up">Mover %1$s arriba</string>
+    <string name="move_widget_down">Mover %1$s abajo</string>
+    <string name="hide_widget">Ocultar %1$s</string>
+    <string name="drag_widget">Arrastrar %1$s</string>
+
+    <string name="balance_for_month">Balance · %1$s</string>
+    <string name="last_7_days">Últimos 7 días</string>
+    <string name="this_week">Esta semana</string>
+    <string name="today">Hoy</string>
+    <string name="expenses">Gastos</string>
+    <string name="income">Ingresos</string>
+    <string name="cashflow">Flujo de caja</string>
+    <string name="analytics">Estadísticas</string>
+    <string name="calendar_financial">Calendario financiero</string>
+    <string name="conversion_currency">Conversión de moneda</string>
+    <string name="chat_with_finai">💬 Habla con FinAI</string>
+    <string name="chat_with_finai_subtitle">Registra gastos, ingresos o consulta tus finanzas</string>
+
+    <string name="no_data_this_week">Sin datos esta semana</string>
+    <string name="distribution_restored">Distribución restablecida</string>
+    <string name="undo">Deshacer</string>
+    <string name="back">Volver</string>
+    <string name="select_month">Elegir mes</string>
+    <string name="previous_month">Mes anterior</string>
+    <string name="next_month">Mes siguiente</string>
+    <string name="choose_month">Elegir mes</string>
+    <string name="previous_year">Año anterior</string>
+    <string name="next_year">Año siguiente</string>
+    <string name="month_january">Enero</string>
+    <string name="month_february">Febrero</string>
+    <string name="month_march">Marzo</string>
+    <string name="month_april">Abril</string>
+    <string name="month_may">Mayo</string>
+    <string name="month_june">Junio</string>
+    <string name="month_july">Julio</string>
+    <string name="month_august">Agosto</string>
+    <string name="month_september">Septiembre</string>
+    <string name="month_october">Octubre</string>
+    <string name="month_november">Noviembre</string>
+    <string name="month_december">Diciembre</string>
+    <string name="weekday_monday_short">LU</string>
+    <string name="weekday_tuesday_short">MA</string>
+    <string name="weekday_wednesday_short">MI</string>
+    <string name="weekday_thursday_short">JU</string>
+    <string name="weekday_friday_short">VI</string>
+    <string name="weekday_saturday_short">SA</string>
+    <string name="weekday_sunday_short">DO</string>
+
+    <string name="no_expense_in_month">Sin gastos en %1$s. Prueba a cambiar de mes.</string>
+    <string name="no_income_in_month">Sin ingresos en %1$s. Prueba a cambiar de mes.</string>
+    <string name="conversion_no_records">Sin conversiones en %1$s.</string>
+    <string name="conversion_rate_usd">1 USD = 1 USD</string>
+    <string name="conversion_rate">1 %1$s ≈ %2$.6f USD</string>
+    <string name="conversion_rate_unavailable">Tasa %1$s → USD no disponible</string>
+    <string name="move_separator">·</string>
+    <string name="showing_no_description">Sin descripción</string>
+    <string name="no_subcategory_label">Sin subcategoría</string>
+    <string name="no_movements_month">Sin movimientos en este mes.</string>
+    <string name="no_convertible_movements_day">Sin movimientos convertibles este día.</string>
+    <string name="day_details">Día %1$d · %2$s</string>
+    <string name="movements">Movimientos</string>
+    <string name="tap_day_movements">Toca un día para ver sus movimientos</string>
+    <string name="month_prev_next">%1$s</string>
+    <string name="week_gastos">Gastos</string>
+    <string name="week_ingresos">Ingresos</string>
+    <string name="day_gastos">Gastos</string>
+    <string name="day_ingresos">Ingresos</string>
+    <string name="month_balance">Balance</string>
+    <string name="category_gastos_month">Gastos · %1$s</string>
+    <string name="category_ingresos_month">Ingresos · %1$s</string>
+    <string name="category_total_format">%1$s</string>
+    <string name="percent_format">%1$.1f%%</string>
+    <string name="count_movements_format">%1$d mov. · %2$s</string>
+
+</resources>

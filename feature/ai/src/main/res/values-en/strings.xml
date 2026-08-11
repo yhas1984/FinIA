@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_api_key_empty">Empty API key</string>
+    <string name="ai_image_load_error">Error loading image</string>
+    <string name="ai_query_processed">Query processed</string>
+    <string name="ai_friendly_api_key_invalid">Your Gemini API key is not valid. Check it in %1$s.</string>
+    <string name="ai_friendly_api_rate_limit">The free Gemini API usage limit has been reached. Try again later.</string>
+    <string name="ai_friendly_api_temporary_unavailable">Gemini is temporarily unavailable. Try again later.</string>
+    <string name="ai_friendly_api_generic">Error contacting Gemini. Try again later.</string>
+    <string name="ai_expense_added">Expense added: %1$s - %2$s %3$s</string>
+    <string name="ai_income_amount_format">%1$s %2$s</string>
+    <string name="ai_income_amounts_format">Accrued: %1$s %2$s / Net: %3$s %4$s</string>
+    <string name="ai_income_added">Income added: %1$s - %2$s</string>
+    <string name="ai_parse_response_error">Could not parse response: %1$s</string>
+    <string name="ai_no_api_key">You have not configured your Gemini API key yet. Go to Settings &gt; AI to add yours (it is free in Google AI Studio).</string>
+    <string name="ai_manual_review_payroll">Manual review: payroll amount is missing, invalid, or not positive</string>
+    <string name="ai_payroll_processed">Payroll processed: %1$s — net %2$s %3$s%4$s</string>
+    <string name="ai_manual_review_invoice_missing">Manual review: invoice total is missing or invalid</string>
+    <string name="ai_manual_review_invoice_non_positive">Manual review: invoice total is not positive</string>
+    <string name="ai_invoice_processed">Invoice processed successfully</string>
+    <string name="ai_expense_processed">Expense processed successfully</string>
+    <string name="ai_income_processed">Income processed successfully</string>
+    <string name="ai_parse_document_error">Could not parse document: %1$s</string>
+    <string name="ai_system_prompt_es">You are FinAI, a smart personal finance assistant. Reply in English only, with a friendly and professional tone.</string>
+    <string name="ai_system_prompt_en">You are FinAI, a smart personal finance assistant. Reply in English only, with a friendly and professional tone.</string>
+</resources>

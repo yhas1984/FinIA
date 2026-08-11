@@ -11,12 +11,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.TransactionCategories
+import com.gastos.feature.incomes.R
 import com.gastos.extension.fromDatePickerUtcMillis
 import com.gastos.extension.toDatePickerUtcMillis
 import java.text.SimpleDateFormat
@@ -55,10 +57,10 @@ fun EditIncomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (incomeId > 0) "Editar Ingreso" else "Nuevo Ingreso") },
+                title = { Text(stringResource(if (incomeId > 0) R.string.edit_income else R.string.new_income)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
@@ -68,7 +70,7 @@ fun EditIncomeScreen(
                             form.monto.toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true &&
                             form.concepto.isNotBlank()
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = "Guardar")
+                        Icon(Icons.Default.Save, contentDescription = stringResource(R.string.save))
                     }
                 }
             )
@@ -87,7 +89,7 @@ fun EditIncomeScreen(
             OutlinedTextField(
                 value = form.concepto,
                 onValueChange = { viewModel.updateConcepto(it) },
-                label = { Text("Concepto") },
+                label = { Text(stringResource(R.string.concept)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -96,12 +98,12 @@ fun EditIncomeScreen(
             OutlinedTextField(
                 value = SimpleDateFormat("dd/MM/yyyy", locale).format(Date(form.fecha)),
                 onValueChange = {},
-                label = { Text("Fecha") },
+                label = { Text(stringResource(R.string.date)) },
                 modifier = Modifier.fillMaxWidth(),
                 readOnly = true,
                 trailingIcon = {
                     IconButton(onClick = { showDatePicker = true }) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = "Seleccionar fecha")
+                        Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.select_date))
                     }
                 }
             )
@@ -114,7 +116,7 @@ fun EditIncomeScreen(
                 OutlinedTextField(
                     value = form.moneda,
                     onValueChange = {},
-                    label = { Text("Moneda") },
+                    label = { Text(stringResource(R.string.currency)) },
                     readOnly = true,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCurrencyPicker) },
                     modifier = Modifier
@@ -141,7 +143,7 @@ fun EditIncomeScreen(
             OutlinedTextField(
                 value = form.monto,
                 onValueChange = { viewModel.updateMonto(it) },
-                label = { Text("Monto") },
+                label = { Text(stringResource(R.string.amount)) },
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
@@ -155,11 +157,11 @@ fun EditIncomeScreen(
                 OutlinedTextField(
                     value = when {
                         form.isCustomCategory && form.categoria.isNotBlank() -> form.categoria
-                        form.isCustomCategory -> TransactionCategories.CUSTOM_OPTION_LABEL
-                        else -> TransactionCategories.displayCategory(form.categoria)
+                         form.isCustomCategory -> TransactionCategories.currentCustomOptionLabel(locale.language)
+                         else -> TransactionCategories.displayCategory(form.categoria, locale.language)
                     },
                     onValueChange = {},
-                    label = { Text("Categoría") },
+                    label = { Text(stringResource(R.string.category)) },
                     readOnly = true,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCategoryPicker) },
                     modifier = Modifier
@@ -171,7 +173,7 @@ fun EditIncomeScreen(
                     onDismissRequest = { showCategoryPicker = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text(TransactionCategories.UNCATEGORIZED_LABEL) },
+                         text = { Text(TransactionCategories.currentUncategorizedLabel(locale.language)) },
                         onClick = {
                             viewModel.selectCategory(value = null, isCustomCategory = false)
                             showCategoryPicker = false
@@ -179,7 +181,7 @@ fun EditIncomeScreen(
                     )
                     uiState.availableCategories.forEach { category ->
                         DropdownMenuItem(
-                            text = { Text(category) },
+                             text = { Text(TransactionCategories.displayCategory(category, locale.language)) },
                             onClick = {
                                 viewModel.selectCategory(value = category, isCustomCategory = false)
                                 showCategoryPicker = false
@@ -187,7 +189,7 @@ fun EditIncomeScreen(
                         )
                     }
                     DropdownMenuItem(
-                        text = { Text(TransactionCategories.CUSTOM_OPTION_LABEL) },
+                         text = { Text(TransactionCategories.currentCustomOptionLabel(locale.language)) },
                         onClick = {
                             viewModel.selectCategory(
                                 value = if (form.isCustomCategory) form.categoria else null,
@@ -199,16 +201,16 @@ fun EditIncomeScreen(
                 }
             }
 
-            if (form.isCustomCategory) {
-                OutlinedTextField(
-                    value = form.categoria,
-                    onValueChange = { viewModel.updateCategoria(it) },
-                    label = { Text("Categoría personalizada") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    supportingText = { Text("Déjala vacía para guardar sin categoría.") }
-                )
-            }
+                if (form.isCustomCategory) {
+                    OutlinedTextField(
+                        value = form.categoria,
+                        onValueChange = { viewModel.updateCategoria(it) },
+                        label = { Text(stringResource(R.string.custom_category)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = { Text(stringResource(R.string.leave_empty_no_category)) }
+                    )
+                }
 
             if (form.categoria.isNotBlank()) {
                 ExposedDropdownMenuBox(
@@ -218,11 +220,11 @@ fun EditIncomeScreen(
                     OutlinedTextField(
                         value = when {
                             form.isCustomSubcategory && form.subcategoria.isNotBlank() -> form.subcategoria
-                            form.isCustomSubcategory -> TransactionCategories.CUSTOM_OPTION_LABEL
-                            else -> TransactionCategories.displayCategory(form.subcategoria)
+                             form.isCustomSubcategory -> TransactionCategories.currentCustomOptionLabel(locale.language)
+                             else -> TransactionCategories.displayCategory(form.subcategoria, locale.language)
                         },
                         onValueChange = {},
-                        label = { Text("Subcategoría") },
+                        label = { Text(stringResource(R.string.subcategory)) },
                         readOnly = true,
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showSubcategoryPicker) },
                         modifier = Modifier
@@ -234,7 +236,7 @@ fun EditIncomeScreen(
                         onDismissRequest = { showSubcategoryPicker = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text(TransactionCategories.UNCATEGORIZED_LABEL) },
+                             text = { Text(TransactionCategories.currentUncategorizedLabel(locale.language)) },
                             onClick = {
                                 viewModel.selectSubcategory(value = null, isCustom = false)
                                 showSubcategoryPicker = false
@@ -242,7 +244,7 @@ fun EditIncomeScreen(
                         )
                         uiState.availableSubcategories.forEach { subcategory ->
                             DropdownMenuItem(
-                                text = { Text(subcategory) },
+                                 text = { Text(TransactionCategories.displayCategory(subcategory, locale.language)) },
                                 onClick = {
                                     viewModel.selectSubcategory(value = subcategory, isCustom = false)
                                     showSubcategoryPicker = false
@@ -250,7 +252,7 @@ fun EditIncomeScreen(
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text(TransactionCategories.CUSTOM_OPTION_LABEL) },
+                         text = { Text(TransactionCategories.currentCustomOptionLabel(locale.language)) },
                             onClick = {
                                 viewModel.selectSubcategory(
                                     value = if (form.isCustomSubcategory) form.subcategoria else null,
@@ -266,10 +268,10 @@ fun EditIncomeScreen(
                     OutlinedTextField(
                         value = form.subcategoria,
                         onValueChange = { viewModel.updateSubcategoria(it) },
-                        label = { Text("Subcategoría personalizada") },
+                        label = { Text(stringResource(R.string.custom_subcategory)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        supportingText = { Text("Déjala vacía para guardar sin subcategoría.") }
+                        supportingText = { Text(stringResource(R.string.leave_empty_no_subcategory)) }
                     )
                 }
             }
@@ -279,7 +281,7 @@ fun EditIncomeScreen(
                 OutlinedTextField(
                     value = form.totalDevengado,
                     onValueChange = { viewModel.updateTotalDevengado(it) },
-                    label = { Text("Devengado (bruto)") },
+                    label = { Text(stringResource(R.string.gross_amount)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -288,7 +290,7 @@ fun EditIncomeScreen(
                 OutlinedTextField(
                     value = form.totalNeto,
                     onValueChange = { viewModel.updateTotalNeto(it) },
-                    label = { Text("Líquido (neto)") },
+                    label = { Text(stringResource(R.string.net_amount)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -302,7 +304,7 @@ fun EditIncomeScreen(
             if (dev > 0 && irpf > 0) {
                 val netoCalc = dev * (1.0 - irpf / 100.0)
                 Text(
-                    "Líquido calculado: ${String.format("%.2f", netoCalc)} ${form.moneda}",
+                    stringResource(R.string.calculated_net, String.format("%.2f", netoCalc), form.moneda),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(start = 4.dp)
@@ -313,7 +315,7 @@ fun EditIncomeScreen(
             OutlinedTextField(
                 value = form.fuente,
                 onValueChange = { viewModel.updateFuente(it) },
-                label = { Text("Fuente (opcional)") },
+                label = { Text(stringResource(R.string.source_optional)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -323,7 +325,7 @@ fun EditIncomeScreen(
                 OutlinedTextField(
                     value = form.ivaPercent,
                     onValueChange = { viewModel.updateIvaPercent(it) },
-                    label = { Text("IVA %") },
+                    label = { Text(stringResource(R.string.vat_percent)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true
@@ -331,7 +333,7 @@ fun EditIncomeScreen(
                 OutlinedTextField(
                     value = form.irpfPercent,
                     onValueChange = { viewModel.updateIrpfPercent(it) },
-                    label = { Text("IRPF %") },
+                    label = { Text(stringResource(R.string.irpf_percent)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true
@@ -342,7 +344,7 @@ fun EditIncomeScreen(
             OutlinedTextField(
                 value = form.notas,
                 onValueChange = { viewModel.updateNotas(it) },
-                label = { Text("Notas (opcional)") },
+                label = { Text(stringResource(R.string.notes_optional)) },
                 modifier = Modifier.fillMaxWidth().height(120.dp),
                 minLines = 3
             )
@@ -387,7 +389,7 @@ fun EditIncomeScreen(
                 state = datePickerState
             )
             Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") }
+                TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.cancel)) }
                 TextButton(
                     onClick = {
                         datePickerState.selectedDateMillis?.let {
@@ -395,7 +397,7 @@ fun EditIncomeScreen(
                         }
                         showDatePicker = false
                     }
-                ) { Text("OK") }
+                ) { Text(stringResource(R.string.ok)) }
             }
         }
     }

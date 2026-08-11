@@ -43,6 +43,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -208,6 +209,16 @@ internal fun MovableFloatingActionButton(
         label = "floatingButtonScale"
     )
     val previewEdge = offsetToPosition(targetOffset, bounds).edge
+    val edgeStateDescription = stringResource(
+        if (previewEdge == FloatingButtonEdge.LEFT) {
+            R.string.floating_button_state_left
+        } else {
+            R.string.floating_button_state_right
+        }
+    )
+    val moveLeftLabel = stringResource(R.string.floating_button_move_left)
+    val moveRightLabel = stringResource(R.string.floating_button_move_right)
+    val resetPositionLabel = stringResource(R.string.floating_button_reset_position)
 
     fun snapAndPersist(edge: FloatingButtonEdge? = null) {
         val calculated = offsetToPosition(targetOffset, bounds)
@@ -258,21 +269,21 @@ internal fun MovableFloatingActionButton(
                 .semantics(mergeDescendants = true) {
                     this.contentDescription = contentDescription
                     role = Role.Button
-                    stateDescription = "Botón movible en el borde ${previewEdge.name.lowercase()}"
+                    stateDescription = edgeStateDescription
                     onClick(label = contentDescription) {
                         onClick()
                         true
                     }
                     customActions = listOf(
-                        CustomAccessibilityAction("Mover al borde izquierdo") {
+                        CustomAccessibilityAction(moveLeftLabel) {
                             snapAndPersist(FloatingButtonEdge.LEFT)
                             true
                         },
-                        CustomAccessibilityAction("Mover al borde derecho") {
+                        CustomAccessibilityAction(moveRightLabel) {
                             snapAndPersist(FloatingButtonEdge.RIGHT)
                             true
                         },
-                        CustomAccessibilityAction("Restablecer posición") {
+                        CustomAccessibilityAction(resetPositionLabel) {
                             isSettling = true
                             val defaultPosition = FloatingButtonPosition()
                             targetOffset = positionToOffset(defaultPosition, bounds)

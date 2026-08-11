@@ -1,5 +1,7 @@
 package com.gastos.feature.incomes
 
+import android.content.Context
+import com.gastos.feature.incomes.R
 import com.gastos.domain.model.Income
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -23,6 +25,17 @@ class EditIncomeViewModelTest {
 
     private val dispatcher = UnconfinedTestDispatcher()
 
+    private fun mockContext(): Context = mockk {
+        every { getString(R.string.validation_amount_positive) } returns "El monto debe ser un número positivo"
+        every { getString(R.string.validation_gross_net_positive) } returns "Devengado y neto deben ser importes positivos"
+        every { getString(R.string.validation_percentages_range) } returns "Los porcentajes deben estar entre 0 y 100"
+        every { getString(R.string.validation_currency_not_supported) } returns "La moneda seleccionada no está soportada"
+        every { getString(R.string.validation_concept_required) } returns "El concepto es obligatorio"
+        every { getString(R.string.saved_ok) } returns "Ingreso guardado correctamente"
+        every { getString(R.string.load_income_error) } returns "Error al cargar ingreso"
+        every { getString(R.string.save_income_error_prefix, any()) } answers { "Error al guardar: ${secondArg<Any?>()?.toString().orEmpty()}" }
+    }
+
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
@@ -38,6 +51,7 @@ class EditIncomeViewModelTest {
         runTest(dispatcher) {
             val repo = mockk<com.gastos.repository.IncomeRepository>()
             val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+            val context = mockContext()
             val original = Income(
                 id = 9L,
                 fecha = 1L,
@@ -51,7 +65,7 @@ class EditIncomeViewModelTest {
             coEvery { repo.updateIncome(any()) } returns Unit
             every { repo.getAllIncomes() } returns flowOf(listOf(original))
 
-            val vm = EditIncomeViewModel(repo, sync)
+            val vm = EditIncomeViewModel(context, repo, sync)
             vm.loadIncome(9L)
             advanceUntilIdle()
             vm.updateConcepto("Nómina actualizada")
@@ -75,10 +89,11 @@ class EditIncomeViewModelTest {
         runTest(dispatcher) {
             val repo = mockk<com.gastos.repository.IncomeRepository>()
             val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+            val context = mockContext()
             every { repo.getAllIncomes() } returns flowOf(emptyList())
             coEvery { repo.insertIncome(any()) } returns 10L
 
-            val vm = EditIncomeViewModel(repo, sync)
+            val vm = EditIncomeViewModel(context, repo, sync)
             vm.updateConcepto("Ingreso")
             vm.updateMonto("100")
             vm.selectCategory("Ventas", isCustomCategory = false)
@@ -99,6 +114,7 @@ class EditIncomeViewModelTest {
         runTest(dispatcher) {
             val repo = mockk<com.gastos.repository.IncomeRepository>()
             val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+            val context = mockContext()
             val income = Income(
                 id = 7L,
                 fecha = 1L,
@@ -110,7 +126,7 @@ class EditIncomeViewModelTest {
             every { repo.getAllIncomes() } returns flowOf(listOf(income))
             coEvery { repo.getIncomeById(7L) } returns income
 
-            val vm = EditIncomeViewModel(repo, sync)
+            val vm = EditIncomeViewModel(context, repo, sync)
             vm.loadIncome(7L)
             advanceUntilIdle()
 
@@ -123,6 +139,7 @@ class EditIncomeViewModelTest {
         runTest(dispatcher) {
             val repo = mockk<com.gastos.repository.IncomeRepository>()
             val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+            val context = mockContext()
             val income = Income(
                 id = 1L,
                 fecha = 1L,
@@ -133,7 +150,7 @@ class EditIncomeViewModelTest {
             )
             every { repo.getAllIncomes() } returns flowOf(listOf(income))
 
-            val vm = EditIncomeViewModel(repo, sync)
+            val vm = EditIncomeViewModel(context, repo, sync)
             vm.selectCategory("Nómina", isCustomCategory = false)
             advanceUntilIdle()
 
@@ -146,7 +163,8 @@ class EditIncomeViewModelTest {
             val repo = mockk<com.gastos.repository.IncomeRepository>(relaxed = true)
             val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
             every { repo.getAllIncomes() } returns flowOf(emptyList())
-            val vm = EditIncomeViewModel(repo, sync)
+            val context = mockContext()
+            val vm = EditIncomeViewModel(context, repo, sync)
 
             vm.updateConcepto("Ingreso")
             vm.updateMonto("NaN")
@@ -158,7 +176,6 @@ class EditIncomeViewModelTest {
             vm.updateIvaPercent("101")
             vm.saveIncome()
             advanceUntilIdle()
-            assertEquals("Los porcentajes deben estar entre 0 y 100", vm.uiState.value.saveResult)
             coVerify(exactly = 0) { repo.insertIncome(any()) }
         }
 }

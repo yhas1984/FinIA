@@ -1,9 +1,11 @@
 package com.gastos.feature.chatbot
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
+import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.extension.SafeLog
@@ -11,8 +13,12 @@ import com.gastos.feature.ai.AIResult
 import com.gastos.feature.ai.AIService
 import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.feature.backup.InvoiceDriveService
+import com.gastos.feature.backup.RemoteSyncAction
+import com.gastos.feature.backup.RemoteSyncOutboxRepository
+import com.gastos.feature.backup.RemoteSyncTarget
 import com.gastos.domain.usecase.SaveIncomeUseCase
 import com.gastos.domain.usecase.SaveInvoiceUseCase
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.ChatMessageRepository
@@ -52,6 +58,7 @@ private data class PendingProductClarification(
     val requestedItem: String,
     val provider: String?,
     val category: String?,
+    val subcategory: String?,
     val variants: List<String>
 )
 
@@ -60,6 +67,7 @@ internal data class ResolvedFinancialQuery(
     val item: String?,
     val matchMode: String?,
     val category: String?,
+    val subcategory: String?,
     val provider: String?
 )
 
@@ -75,12 +83,30 @@ internal data class ResolvedProductClarification(
 
 internal object FinancialQueryResolver {
     fun normalizePeriod(value: String?): String = when (normalizeProductName(value.orEmpty())) {
-        "hoy" -> "hoy"
-        "semana", "esta semana", "semana actual", "lo que va de semana" -> "semana"
-        "ano", "este ano", "ano actual", "lo que va de ano" -> "año"
-        "mes", "este mes", "mes actual", "lo que va de mes" -> "mes"
+        "hoy", "today" -> "hoy"
+        "semana", "esta semana", "semana actual", "lo que va de semana", "week", "this week" -> "semana"
+        "ano", "este ano", "ano actual", "lo que va de ano", "year", "this year" -> "año"
+        "mes", "este mes", "mes actual", "lo que va de mes", "month", "this month" -> "mes"
         else -> "mes"
     }
+
+    fun normalizeQueryType(value: String?): String? = when (normalizeProductName(value.orEmpty())) {
+        "gastos", "expense", "expenses" -> "gastos"
+        "ingreso", "ingresos", "income", "incomes" -> "ingresos"
+        "balance", "neto", "profit", "net income" -> "balance"
+        "productos", "producto", "product", "products" -> "productos"
+        "productos por comercio", "productos en comercio", "products by store", "product by store" -> "productos_por_comercio"
+        else -> value?.takeIf { it.isNotBlank() }
+    }
+
+    fun periodLabel(periodo: String, language: String = Locale.getDefault().language): String = when (normalizePeriod(periodo)) {
+        "hoy" -> if (isEnglishLanguage(language)) "today" else "hoy"
+        "semana" -> if (isEnglishLanguage(language)) "this week" else "esta semana"
+        "año" -> if (isEnglishLanguage(language)) "this year" else "este año"
+        else -> if (isEnglishLanguage(language)) "this month" else "este mes"
+    }
+
+    private fun isEnglishLanguage(language: String): Boolean = language.equals("en", ignoreCase = true)
 
     fun resolve(
         queryType: String?,
@@ -89,13 +115,15 @@ internal object FinancialQueryResolver {
         originalQuestion: String?,
         productNames: List<String>,
         category: String? = null,
+        subcategory: String? = null,
         provider: String? = null,
         providerNames: List<String> = emptyList(),
         categoryNames: List<String> = emptyList()
     ): ResolvedFinancialQuery {
-        val normalizedType = queryType?.lowercase(Locale.ROOT)
+        val normalizedType = normalizeQueryType(queryType)
         val explicitItem = item?.trim()?.takeIf { it.isNotEmpty() }
         val explicitCategory = category?.trim()?.takeIf { it.isNotEmpty() }
+        val explicitSubcategory = subcategory?.trim()?.takeIf { it.isNotEmpty() }
         val explicitProvider = provider?.trim()?.takeIf { it.isNotEmpty() }
         val knownProduct = explicitItem?.let { findKnownName(it, productNames) }
         val knownCategory = explicitCategory?.let { findKnownExactName(it, categoryNames) }
@@ -153,6 +181,7 @@ internal object FinancialQueryResolver {
             item = resolvedItem,
             matchMode = resolvedMode,
             category = resolvedCategory,
+            subcategory = explicitSubcategory,
             provider = resolvedProvider
         )
     }
@@ -297,7 +326,7 @@ internal object FinancialQueryResolver {
 
     private fun questionRequestsCategory(question: String?): Boolean {
         val normalizedQuestion = normalizeProductName(question.orEmpty())
-        return normalizedQuestion.contains("categoria")
+        return normalizedQuestion.contains("categoria") || normalizedQuestion.contains("category")
     }
 
     private fun questionRequestsExactProduct(question: String?, hasResolvedProvider: Boolean): Boolean {
@@ -325,7 +354,7 @@ internal object FinancialQueryResolver {
     )
     private val PRODUCT_QUERY_TYPES = setOf("productos", "producto")
     private val PRODUCT_LIST_QUERY_TYPES = setOf("productos_por_comercio", "productos_en_comercio")
-    private val EXACT_PRODUCT_TERMS = setOf("solo", "solamente", "unicamente", "exactamente", "producto exacto")
+    private val EXACT_PRODUCT_TERMS = setOf("solo", "solamente", "unicamente", "exactamente", "producto exacto", "only", "exactly", "precisely")
     private val PRODUCT_LIST_VERB_TERMS = setOf(
         "he comprado",
         "has comprado",
@@ -333,16 +362,20 @@ internal object FinancialQueryResolver {
         "tienes comprado",
         "compre",
         "comprado",
-        "compramos"
+        "compramos",
+        "did i buy",
+        "what did i buy",
+        "have i bought",
+        "purchased"
     )
     private val NET_TERMS = setOf(
         "balance", "ganado", "ganancia", "beneficio", "neto", "lo que me queda",
-        "ingresos menos gastos"
+        "ingresos menos gastos", "net income", "profit", "what's left", "whats left", "what s left", "remaining"
     )
     private val INCOME_TERMS = setOf(
-        "ingreso", "ingresado", "cobrado", "recibido", "salario", "sueldo", "nomina"
+        "ingreso", "ingresado", "cobrado", "recibido", "salario", "sueldo", "nomina", "income", "received", "receive", "salary", "wages"
     )
-    private val EXPENSE_TERMS = setOf("gasto", "gastado", "comprado", "pagado")
+    private val EXPENSE_TERMS = setOf("gasto", "gastado", "comprado", "pagado", "expense", "spent", "paid", "bought")
 }
 
 data class ChatbotUiState(
@@ -353,6 +386,7 @@ data class ChatbotUiState(
 
 @HiltViewModel
 class ChatbotViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val aiService: AIService,
     private val chatMessageRepository: ChatMessageRepository,
     private val premiumStatusProvider: PremiumStatusProvider,
@@ -362,6 +396,7 @@ class ChatbotViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val sheetsSyncManager: SheetsSyncManager,
     private val invoiceDriveService: InvoiceDriveService,
+    private val remoteSyncOutboxRepository: RemoteSyncOutboxRepository,
     private val invoiceImageStorage: InvoiceImageStorage,
     private val saveInvoiceUseCase: SaveInvoiceUseCase,
     private val saveIncomeUseCase: SaveIncomeUseCase,
@@ -447,7 +482,7 @@ class ChatbotViewModel @Inject constructor(
         if (!aiService.isConfigured()) {
             _uiState.update {
                 it.copy(
-                    messages = it.messages + ChatMessage.AI(com.gastos.feature.ai.AIService.NO_API_KEY_MESSAGE),
+                    messages = it.messages + ChatMessage.AI(context.getString(R.string.chatbot_no_api_key)),
                     isProcessing = false
                 )
             }
@@ -470,7 +505,7 @@ class ChatbotViewModel @Inject constructor(
                     if (raw.isNotBlank()) {
                         handleFinalResult(raw, text, streaming = true)
                     } else {
-                        replacePlaceholder("No recibí respuesta. Inténtalo de nuevo.")
+                        replacePlaceholder(context.getString(R.string.chatbot_no_response_retry))
                     }
                 } else {
                     val result = aiService.processCommand(text)
@@ -478,7 +513,7 @@ class ChatbotViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 SafeLog.e(TAG, "Error processing message", e)
-                val message = "Error al procesar: ${e.message}"
+                val message = context.getString(R.string.chatbot_processing_error, e.message ?: "")
                 if (responseMode == ChatResponseMode.PREMIUM_STREAM) {
                     replacePlaceholder(message)
                 } else {
@@ -503,6 +538,7 @@ class ChatbotViewModel @Inject constructor(
                 queryType = "productos",
                 periodo = pending.periodo,
                 categoria = pending.category,
+                subcategoria = pending.subcategory,
                 provider = pending.provider,
                 item = clarification.item,
                 matchMode = clarification.matchMode,
@@ -562,7 +598,7 @@ class ChatbotViewModel @Inject constructor(
         }
 
         validateAction(result)?.let { message ->
-            showResult("❌ $message", shouldPersist = false)
+            showResult(context.getString(R.string.chatbot_validation_error_prefix, message), shouldPersist = false)
             return
         }
 
@@ -574,22 +610,11 @@ class ChatbotViewModel @Inject constructor(
                 )
                 val invoiceId = saveInvoiceUseCase(invoice, result.products)
                 val savedInvoice = invoice.copy(id = invoiceId)
-                val driveResult = if (savedInvoice.driveUploadPending) {
-                    invoiceDriveService.upload(savedInvoice)
-                } else {
-                    null
-                }
-                val syncedInvoice = driveResult?.invoice ?: savedInvoice
-                val savedProducts = productRepository.getProductsByInvoiceId(invoiceId).first()
-                sheetsSyncManager.syncExpense(
-                    syncedInvoice,
-                    savedProducts
-                )
-                val driveMessage = driveResult?.let { "\n${if (it.uploaded) "☁️" else "⚠️"} ${it.message}" }.orEmpty()
                 showResult(
-                    "✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}$driveMessage",
+                    context.getString(R.string.chatbot_expense_saved, invoice.proveedor, invoice.total.toString(), invoice.moneda),
                     shouldIncludeInContext = false
                 )
+                syncInvoiceInBackground(savedInvoice)
             }
             // Ingreso detectado por OCR (factura marcada como ingreso)
             result.invoice != null && result.invoice!!.tipo == InvoiceType.INGRESO -> {
@@ -600,7 +625,7 @@ class ChatbotViewModel @Inject constructor(
                 val incomeId = saveIncomeUseCase(income)
                 sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
                 showResult(
-                    "✅ Ingreso registrado: ${income.concepto} - ${income.monto} ${income.moneda}",
+                    context.getString(R.string.chatbot_income_saved, income.concepto, income.monto.toString(), income.moneda),
                     shouldIncludeInContext = false
                 )
             }
@@ -610,12 +635,18 @@ class ChatbotViewModel @Inject constructor(
                 val incomeId = saveIncomeUseCase(income)
                 sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
                 val display = if (income.totalDevengado > 0 && income.totalNeto > 0) {
-                    "Devengado: ${income.totalDevengado} ${income.moneda} / Neto: ${income.totalNeto} ${income.moneda}"
+                    context.getString(
+                        R.string.chatbot_income_breakdown,
+                        income.totalDevengado.toString(),
+                        income.moneda,
+                        income.totalNeto.toString(),
+                        income.moneda
+                    )
                 } else {
-                    "${income.monto} ${income.moneda}"
+                    context.getString(R.string.chatbot_income_saved_with_breakdown, income.monto.toString(), income.moneda)
                 }
                 showResult(
-                    "✅ Ingreso registrado: ${income.concepto} - $display",
+                    context.getString(R.string.chatbot_income_saved_with_breakdown, income.concepto, display),
                     shouldIncludeInContext = false
                 )
             }
@@ -624,18 +655,20 @@ class ChatbotViewModel @Inject constructor(
                 try {
                     val json = JSONObject(result.queryResult!!)
                     if (json.optString("action") == "query") {
-                        val queryType = json.optString("query_type")
+                        val queryType = json.optString("query_type", json.optString("queryType"))
                         val periodo = FinancialQueryResolver.normalizePeriod(
-                            json.optString("periodo", "mes")
+                            json.optString("periodo", json.optString("period", "mes"))
                         )
-                        val categoria = json.optString("categoria", "").takeIf { it.isNotEmpty() && it != "null" }
-                        val provider = json.optString("proveedor", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val categoria = json.optString("categoria", json.optString("category", "")).takeIf { it.isNotEmpty() && it != "null" }
+                        val subcategoria = json.optString("subcategoria", json.optString("subcategory", "")).takeIf { it.isNotEmpty() && it != "null" }
+                        val provider = json.optString("proveedor", json.optString("provider", "")).takeIf { it.isNotEmpty() && it != "null" }
                         val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
                         val matchMode = json.optString("match_mode", "").takeIf { it.isNotEmpty() && it != "null" }
                         val response = executeQuery(
                             queryType = queryType,
                             periodo = periodo,
                             categoria = categoria,
+                            subcategoria = subcategoria,
                             provider = provider,
                             item = item,
                             matchMode = matchMode,
@@ -654,7 +687,16 @@ class ChatbotViewModel @Inject constructor(
                 }
             }
             result.success -> showResult(result.message)
-            else -> showResult("❌ ${result.message}", shouldPersist = false)
+            else -> showResult(context.getString(R.string.chatbot_validation_error_prefix, result.message), shouldPersist = false)
+        }
+    }
+
+    private fun syncInvoiceInBackground(invoice: Invoice) {
+        viewModelScope.launch {
+            if (invoice.driveUploadPending) {
+                remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INVOICE_DRIVE, invoice.id, RemoteSyncAction.UPSERT)
+            }
+            remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT)
         }
     }
 
@@ -683,28 +725,28 @@ class ChatbotViewModel @Inject constructor(
     private fun validateAction(result: AIResult): String? {
         result.invoice?.let { invoice ->
             if (!invoice.total.isFinite() || invoice.total <= 0.0) {
-                return "El importe detectado debe ser un número finito mayor que cero."
+                return context.getString(R.string.chatbot_invalid_amount)
             }
             if (!invoice.ivaPercent.isFinite() || invoice.ivaPercent !in 0.0..100.0 ||
                 !invoice.irpfPercent.isFinite() || invoice.irpfPercent !in 0.0..100.0
-            ) return "Los porcentajes fiscales detectados no son válidos."
-            if (invoice.proveedor.isBlank()) return "No se detectó un proveedor o concepto válido."
+            ) return context.getString(R.string.chatbot_invalid_tax_percentages)
+            if (invoice.proveedor.isBlank()) return context.getString(R.string.chatbot_invalid_provider)
             if (invoice.moneda.uppercase() !in SUPPORTED_CURRENCIES) {
-                return "La moneda ${invoice.moneda} no está soportada."
+                return context.getString(R.string.chatbot_unsupported_currency, invoice.moneda)
             }
         }
         result.income?.let { income ->
             if (!income.monto.isFinite() || income.monto <= 0.0) {
-                return "El importe detectado debe ser un número finito mayor que cero."
+                return context.getString(R.string.chatbot_invalid_amount)
             }
             if (!income.ivaPercent.isFinite() || income.ivaPercent !in 0.0..100.0 ||
                 !income.irpfPercent.isFinite() || income.irpfPercent !in 0.0..100.0 ||
                 (income.totalDevengado != 0.0 && (!income.totalDevengado.isFinite() || income.totalDevengado <= 0.0)) ||
                 (income.totalNeto != 0.0 && (!income.totalNeto.isFinite() || income.totalNeto <= 0.0))
-            ) return "Los importes o porcentajes fiscales detectados no son válidos."
-            if (income.concepto.isBlank()) return "No se detectó un concepto válido."
+            ) return context.getString(R.string.chatbot_invalid_amounts_or_percentages)
+            if (income.concepto.isBlank()) return context.getString(R.string.chatbot_invalid_concept)
             if (income.moneda.uppercase() !in SUPPORTED_CURRENCIES) {
-                return "La moneda ${income.moneda} no está soportada."
+                return context.getString(R.string.chatbot_unsupported_currency, income.moneda)
             }
         }
         if (result.products.any {
@@ -715,7 +757,7 @@ class ChatbotViewModel @Inject constructor(
                     !it.ivaPercent.isFinite() || it.ivaPercent !in 0.0..100.0
             }
         ) {
-            return "Las líneas de producto detectadas contienen valores inválidos."
+            return context.getString(R.string.chatbot_invalid_product_lines)
         }
         return null
     }
@@ -773,7 +815,7 @@ class ChatbotViewModel @Inject constructor(
         anoCal.set(Calendar.MILLISECOND, 999)
         val anoEnd = anoCal.timeInMillis
 
-        return when (periodo.lowercase()) {
+        return when (normalizePeriodLabel(periodo)) {
             "hoy" -> hoyStart to hoyEnd
             "semana" -> semanaStart to semanaEnd
             "mes" -> mesStart to mesEnd
@@ -782,10 +824,20 @@ class ChatbotViewModel @Inject constructor(
         }
     }
 
+    private fun normalizePeriodLabel(periodo: String): String = when (periodo.lowercase(Locale.ROOT)) {
+        "today", "hoy" -> "hoy"
+        "week", "this week", "semana", "esta semana" -> "semana"
+        "year", "this year", "año", "ano", "este año", "este ano" -> "año"
+        else -> "mes"
+    }
+
+    private fun isEnglishLocale(): Boolean = activeLanguage().equals("en", ignoreCase = true)
+
     private suspend fun executeQuery(
         queryType: String?,
         periodo: String,
         categoria: String?,
+        subcategoria: String?,
         provider: String?,
         item: String?,
         matchMode: String?,
@@ -793,7 +845,7 @@ class ChatbotViewModel @Inject constructor(
     ): ExecutedFinancialQuery {
         val (start, end) = getDateRange(periodo)
         val target = currencyPreference.defaultCurrency.value
-        val fmt = java.text.NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-ES")).apply {
+        val fmt = java.text.NumberFormat.getCurrencyInstance(activeLocale()).apply {
             try { currency = java.util.Currency.getInstance(target) } catch (_: Exception) { /* fallback al locale */ }
         }
         val invoices = invoiceRepository.getAllInvoices().first()
@@ -810,40 +862,42 @@ class ChatbotViewModel @Inject constructor(
             originalQuestion = originalQuestion,
             productNames = allProducts.map { it.descripcion },
             category = categoria,
+            subcategory = subcategoria,
             provider = provider,
             providerNames = invoices.map { it.proveedor },
             categoryNames = categoryNames
         )
         val resolvedQueryType = resolvedQuery.queryType
         val normalizedCategory = TransactionCategories.normalizeCategory(resolvedQuery.category)
+        val normalizedSubcategory = TransactionCategories.normalizeCategory(resolvedQuery.subcategory)
         val resolvedProvider = resolvedQuery.provider
         val periodInvoices = invoices.filter { it.fecha in start..end }
         val periodIncomes = incomes.filter { it.fecha in start..end }
         val filteredInvoices = periodInvoices.filter {
             TransactionCategories.matchesCategory(it.categoria, normalizedCategory) &&
+                TransactionCategories.matchesCategory(it.subcategoria, normalizedSubcategory) &&
                 (resolvedProvider == null || FinancialQueryResolver.matchesProvider(it.proveedor, resolvedProvider))
         }
         val filteredIncomes = periodIncomes.filter {
-            TransactionCategories.matchesCategory(it.categoria, normalizedCategory)
+            TransactionCategories.matchesCategory(it.categoria, normalizedCategory) &&
+                TransactionCategories.matchesCategory(it.subcategoria, normalizedSubcategory)
         }
         val filteredInvoiceIds = filteredInvoices.map { it.id }.toSet()
         val periodProducts = allProducts.filter { it.invoiceId in filteredInvoiceIds }
         val invoiceById = filteredInvoices.associateBy { it.id }
-        val periodLabel = when (periodo) {
-            "hoy" -> "hoy"
-            "semana" -> "esta semana"
-            "año" -> "este año"
-            else -> "este mes"
-        }
+        val language = activeLanguage()
+        val periodLabelText = FinancialQueryResolver.periodLabel(periodo, language)
         val scopeLabel = buildString {
-            append(periodLabel)
-            resolvedProvider?.let { append(" en $it") }
-            normalizedCategory?.let { append(" · categoría ${TransactionCategories.displayCategory(it)}") }
+            append(periodLabelText)
+            resolvedProvider?.let { append(context.getString(R.string.chatbot_scope_provider, it)) }
+            normalizedCategory?.let { append(context.getString(R.string.chatbot_scope_category, TransactionCategories.displayCategory(it, language))) }
+            normalizedSubcategory?.let { append(context.getString(R.string.chatbot_scope_subcategory, TransactionCategories.displayCategory(it, language))) }
         }
         val contextText = buildString {
             append("Consulta financiera ejecutada: tipo=${resolvedQueryType ?: "desconocido"}; periodo=$periodo")
             append("; proveedor=${resolvedProvider ?: "ninguno"}")
             append("; categoria=${normalizedCategory ?: "ninguna"}")
+            append("; subcategoria=${normalizedSubcategory ?: "ninguna"}")
             append("; producto=${resolvedQuery.item ?: "ninguno"}.")
         }
         fun result(text: String): ExecutedFinancialQuery = ExecutedFinancialQuery(text, contextText)
@@ -861,17 +915,17 @@ class ChatbotViewModel @Inject constructor(
                     invoices = invoices.filter { it.tipo == InvoiceType.GASTO },
                     resolvedProvider = resolvedProvider,
                     normalizedCategory = normalizedCategory,
-                    requestedPeriod = periodLabel,
+                    requestedPeriod = periodLabelText,
                     convertedAmount = ::convertedInvoiceAmount,
                     fmt = fmt
-                ).replace("compras", "ticket")
+                )
                 return result(fallback)
             }
             return result(
                 buildProductsByProviderReport(
                     products = periodProducts,
                     invoicesById = invoiceById,
-                    periodoLabel = periodLabel,
+                    periodoLabel = periodLabelText,
                     providerLabel = resolvedProvider,
                     fmt = fmt,
                     convertedProductAmount = ::convertedProductAmount
@@ -894,45 +948,49 @@ class ChatbotViewModel @Inject constructor(
                         invoices = invoices,
                         resolvedProvider = resolvedProvider,
                         normalizedCategory = normalizedCategory,
-                        requestedPeriod = periodLabel,
+                        requestedPeriod = periodLabelText,
                         convertedAmount = ::convertedInvoiceAmount,
                         fmt = fmt
                     ))
                 }
                 val title = if (resolvedProvider != null) {
-                    "🛒 Gastos en $resolvedProvider $periodLabel:\n"
+                    context.getString(R.string.chatbot_report_spending_title, resolvedProvider, periodLabelText)
                 } else {
-                    "💰 Gastos de $scopeLabel:\n"
+                    context.getString(R.string.chatbot_report_spending_scope_title, scopeLabel)
                 }
                 val sb = StringBuilder(title)
-                sb.append("• Total: ${fmt.format(totalGastos)}\n")
-                sb.append("• Cantidad: $countGastos ${if (resolvedProvider != null) "compras" else "transacciones"}\n")
+                 sb.append("\n")
+                     .append(context.getString(R.string.chatbot_report_total_line, fmt.format(totalGastos)))
+                     .append("\n")
+                sb.append("\n").append(if (resolvedProvider != null) context.getString(R.string.chatbot_report_count_purchases, countGastos) else context.getString(R.string.chatbot_report_count_transactions, countGastos)).append("\n")
                 if (resolvedProvider == null && filteredInvoices.isNotEmpty()) {
                     val byProvider = filteredInvoices.filter { it.tipo == InvoiceType.GASTO }
                         .groupBy { it.proveedor }
                         .mapValues { (_, values) -> values.sumOf(::convertedInvoiceAmount) }
                         .toList().sortedByDescending { it.second }.take(5)
                     if (byProvider.isNotEmpty()) {
-                        sb.append("\n📋 Top proveedores:\n")
+                        sb.append("\n").append(context.getString(R.string.chatbot_report_top_providers)).append("\n")
                         byProvider.forEach { (name, total) ->
-                            sb.append("  • $name: ${fmt.format(total)}\n")
+                            sb.append(context.getString(R.string.chatbot_report_breakdown_line, name, fmt.format(total)))
+                                .append('\n')
                         }
                     }
                 }
                 result(sb.toString().trimEnd())
             }
             "ingresos" -> {
-                val sb = StringBuilder("💵 Ingresos de $scopeLabel:\n")
-                sb.append("• Total: ${fmt.format(totalIngresos)}\n")
-                sb.append("• Cantidad: $countIngresos transacciones\n")
+                val sb = StringBuilder(context.getString(R.string.chatbot_report_income_title, scopeLabel)).append("\n")
+                sb.append(context.getString(R.string.chatbot_report_total_line, fmt.format(totalIngresos))).append("\n")
+                sb.append(context.getString(R.string.chatbot_report_income_count, countIngresos)).append("\n")
                 if (filteredIncomes.isNotEmpty()) {
                     val bySource = filteredIncomes.groupBy { it.fuente ?: it.concepto }
                         .mapValues { (_, values) -> values.sumOf(::convertedIncomeAmount) }
                         .toList().sortedByDescending { it.second }.take(5)
                     if (bySource.isNotEmpty()) {
-                        sb.append("\n📋 Fuentes principales:\n")
+                        sb.append("\n").append(context.getString(R.string.chatbot_report_top_sources)).append("\n")
                         bySource.forEach { (name, total) ->
-                            sb.append("  • $name: ${fmt.format(total)}\n")
+                            sb.append(context.getString(R.string.chatbot_report_breakdown_line, name, fmt.format(total)))
+                                .append('\n')
                         }
                     }
                 }
@@ -942,14 +1000,14 @@ class ChatbotViewModel @Inject constructor(
                 val balance = totalIngresos - totalGastos
                 val emoji = if (balance >= 0) "✅" else "⚠️"
                 val title = if (FinancialQueryResolver.requestsNetBalance(originalQuestion)) {
-                    "📊 Ganancia neta de $scopeLabel:"
+                    context.getString(R.string.chatbot_report_net_income_title, scopeLabel)
                 } else {
-                    "📊 Balance de $scopeLabel:"
+                    context.getString(R.string.chatbot_report_balance_title, scopeLabel)
                 }
                 result(
-                    "$title\n• Ingresos: ${fmt.format(totalIngresos)} ($countIngresos)\n" +
-                        "• Gastos: ${fmt.format(totalGastos)} ($countGastos)\n" +
-                        "• Te queda: $emoji ${fmt.format(balance)}"
+                    "$title\n${context.getString(R.string.chatbot_report_balance_income, fmt.format(totalIngresos), countIngresos)}\n" +
+                        "${context.getString(R.string.chatbot_report_balance_expenses, fmt.format(totalGastos), countGastos)}\n" +
+                        context.getString(R.string.chatbot_report_balance_remaining, emoji, fmt.format(balance))
                 )
             }
             "productos", "producto" -> {
@@ -966,25 +1024,26 @@ class ChatbotViewModel @Inject constructor(
                             requestedItem = resolvedItem,
                             provider = resolvedProvider,
                             category = normalizedCategory,
+                            subcategory = normalizedSubcategory,
                             variants = matchResult.variants
                         )
-                        return result(buildProductClarification(periodo, resolvedItem, matchResult.variants))
+                        return result(buildProductClarification(periodo, resolvedItem, matchResult.variants, normalizedCategory, normalizedSubcategory, resolvedProvider))
                     }
                     if (matchResult.matches.isEmpty()) {
-                        return result("📦 No encontré un producto exacto para '$resolvedItem' durante $scopeLabel.")
+                        return result(context.getString(R.string.chatbot_product_not_found, resolvedItem, scopeLabel))
                     }
                     val total = matchResult.matches.sumOf(::convertedProductAmount)
                     val totalUnits = matchResult.matches.sumOf { it.cantidad }
                     val intro = if (matchResult.usedGroupMode) {
-                        "📦 Gasto en variantes de '$resolvedItem' durante $scopeLabel:"
+                        context.getString(R.string.chatbot_report_product_intro_group, resolvedItem, scopeLabel)
                     } else {
-                        "📦 Gasto en '$resolvedItem' durante $scopeLabel:"
+                        context.getString(R.string.chatbot_report_product_intro_exact, resolvedItem, scopeLabel)
                     }
                     return result(buildString {
                         appendLine(intro)
-                        appendLine("• Total: ${fmt.format(total)}")
-                        appendLine("• Cantidad: ${if (totalUnits % 1.0 == 0.0) totalUnits.toInt() else totalUnits} uds")
-                        append("• Coincidencias: ${matchResult.matches.size} líneas · ${matchResult.variants.size} variantes")
+                        appendLine(context.getString(R.string.chatbot_report_total_line, fmt.format(total)))
+                        appendLine(context.getString(R.string.chatbot_report_units_line, if (totalUnits % 1.0 == 0.0) totalUnits.toInt() else totalUnits))
+                        append(context.getString(R.string.chatbot_report_matches, matchResult.matches.size, matchResult.variants.size))
                         if (matchResult.usedGroupMode) {
                             val byProduct = matchResult.matches
                                 .groupBy { FinancialQueryResolver.normalizeProductName(it.descripcion) }
@@ -997,28 +1056,28 @@ class ChatbotViewModel @Inject constructor(
                                 }
                                 .sortedByDescending { it.third }
                             val byProvider = matchResult.matches
-                                .groupBy { product -> invoiceById[product.invoiceId]?.proveedor ?: "Sin comercio" }
+                                .groupBy { product -> invoiceById[product.invoiceId]?.proveedor ?: context.getString(R.string.chatbot_report_no_store) }
                                 .mapValues { (_, products) -> products.sumOf(::convertedProductAmount) }
                                 .toList()
                                 .sortedByDescending { it.second }
-                            appendLine("\n\nDesglose por producto:")
+                            appendLine("\n\n" + context.getString(R.string.chatbot_report_breakdown_product))
                             byProduct.take(5).forEach { (name, units, amount) ->
                                 val unitsText = if (units % 1.0 == 0.0) units.toInt() else units
-                                appendLine("  • $name: $unitsText uds · ${fmt.format(amount)}")
+                                appendLine(context.getString(R.string.chatbot_report_product_line, name, unitsText, fmt.format(amount)))
                             }
-                            if (byProduct.size > 5) appendLine("  • +${byProduct.size - 5} variantes más")
-                            appendLine("\nPor comercio:")
+                            if (byProduct.size > 5) appendLine(context.getString(R.string.chatbot_report_more_variants, byProduct.size - 5))
+                            appendLine("\n" + context.getString(R.string.chatbot_report_by_store))
                             byProvider.take(5).forEach { (name, amount) ->
                                 appendLine("  • $name: ${fmt.format(amount)}")
                             }
-                            if (byProvider.size > 5) append("  • +${byProvider.size - 5} comercios más")
+                            if (byProvider.size > 5) append(context.getString(R.string.chatbot_report_more_stores, byProvider.size - 5))
                         }
                     })
                 }
                 if (periodProducts.isEmpty()) {
-                    return result("📦 No hay productos registrados durante $scopeLabel.")
+                    return result(context.getString(R.string.chatbot_report_no_products, scopeLabel))
                 }
-                val sb = StringBuilder("📦 Productos de $scopeLabel:\n")
+                val sb = StringBuilder(context.getString(R.string.chatbot_report_products_header, scopeLabel)).append("\n")
                 val byFrequency = periodProducts.groupBy { it.descripcion.lowercase().trim() }
                     .mapValues { (_, values) ->
                         values.sumOf { p -> p.cantidad }.toInt() to
@@ -1026,40 +1085,58 @@ class ChatbotViewModel @Inject constructor(
                     }
                     .toList().sortedByDescending { it.second.first }.take(5)
 
-                sb.append("\n🏆 Más comprados (por frecuencia):\n")
+                sb.append("\n").append(context.getString(R.string.chatbot_report_most_bought)).append("\n")
                 byFrequency.forEachIndexed { i, (name, pair) ->
-                    sb.append("  ${i + 1}. ${name.replaceFirstChar { it.uppercase() }}: ${pair.first} uds - ${fmt.format(pair.second)}\n")
+                    sb.append(context.getString(R.string.chatbot_report_ranked_product, (i + 1).toString(), name.replaceFirstChar { it.uppercase() }, pair.first, fmt.format(pair.second)))
+                    sb.append('\n')
                 }
                 val byAmount = periodProducts.groupBy { it.descripcion.lowercase().trim() }
                     .mapValues { (_, values) -> values.sumOf(::convertedProductAmount) }
                     .toList().sortedByDescending { it.second }.take(5)
 
-                sb.append("\n💸 Mayor gasto por producto:\n")
+                sb.append("\n").append(context.getString(R.string.chatbot_report_highest_spend)).append("\n")
                 byAmount.forEachIndexed { i, (name, total) ->
-                    sb.append("  ${i + 1}. ${name.replaceFirstChar { it.uppercase() }}: ${fmt.format(total)}\n")
+                    sb.append(context.getString(R.string.chatbot_report_ranked_product_amount, (i + 1).toString(), name.replaceFirstChar { it.uppercase() }, fmt.format(total)))
+                    sb.append('\n')
                 }
-                sb.append("\n📊 Total productos: ${periodProducts.size} items - ${fmt.format(periodProducts.sumOf(::convertedProductAmount))}")
+                sb.append("\n").append(context.getString(R.string.chatbot_report_total_products, periodProducts.size, fmt.format(periodProducts.sumOf(::convertedProductAmount))))
                 result(sb.toString().trimEnd())
             }
             else -> {
-                result(
-                    "No entendí del todo la consulta. Pídeme gastos por comercio, categoría o producto, " +
-                        "tus ingresos o tu balance indicando el periodo."
-                )
+                result(context.getString(R.string.chatbot_unknown_query))
             }
         }
     }
 
-    private fun buildProductClarification(periodo: String, item: String, variants: List<String>): String {
+    private fun buildProductClarification(
+        periodo: String,
+        item: String,
+        variants: List<String>,
+        category: String?,
+        subcategory: String?,
+        provider: String?
+    ): String {
         val options = variants.take(5).mapIndexed { index, variant ->
             "${index + 1}. ${variant.trim()}"
         }.joinToString("\n")
-        val instruction = if (variants.size == 1) {
-            "¿Te refieres a ese producto? Responde “sí” o escribe su nombre exacto."
-        } else {
-            "Responde con el número, el nombre exacto o “todas”."
+        val scope = buildString {
+            provider?.let { append(context.getString(R.string.chatbot_scope_provider, it)) }
+            category?.let { append(context.getString(R.string.chatbot_scope_category, TransactionCategories.displayCategory(it, activeLanguage()))) }
+            subcategory?.let { append(context.getString(R.string.chatbot_scope_subcategory, TransactionCategories.displayCategory(it, activeLanguage()))) }
         }
-        return "No encontré “$item” como producto exacto durante $periodo.\n\nEncontré:\n$options\n\n$instruction"
+        val instruction = if (variants.size == 1) {
+            context.getString(R.string.chatbot_clarification_single)
+        } else {
+            context.getString(R.string.chatbot_clarification_multiple)
+        }
+        return context.getString(
+            R.string.chatbot_clarification_message,
+            item,
+            FinancialQueryResolver.periodLabel(periodo, activeLanguage()),
+            scope,
+            options,
+            instruction
+        )
     }
 
     private fun buildProductsByProviderReport(
@@ -1071,23 +1148,25 @@ class ChatbotViewModel @Inject constructor(
         convertedProductAmount: (com.gastos.domain.model.Product) -> Double
     ): String {
         if (products.isEmpty()) {
-            val scope = if (providerLabel != null) " en $providerLabel" else ""
-            return "📦 No hay productos registrados $periodoLabel$scope."
+            val scope = providerLabel?.let { context.getString(R.string.chatbot_scope_provider, it) }.orEmpty()
+            return context.getString(R.string.chatbot_no_products_scope, "$periodoLabel$scope")
         }
         val grouped = if (providerLabel != null) {
             mapOf(providerLabel to products)
         } else {
-            products.groupBy { invoicesById[it.invoiceId]?.proveedor ?: "Sin comercio" }
+            products.groupBy { invoicesById[it.invoiceId]?.proveedor ?: context.getString(R.string.chatbot_report_no_store) }
         }
-        val scopePrefix = if (providerLabel != null) " en $providerLabel" else ""
-        val sb = StringBuilder("🧾 Productos comprados $periodoLabel$scopePrefix:\n")
+        val scopePrefix = providerLabel?.let { context.getString(R.string.chatbot_scope_provider, it) }.orEmpty()
+        val sb = StringBuilder("🧾 ${context.getString(R.string.chatbot_products_bought_prefix, periodoLabel + scopePrefix)}:\n")
         grouped.entries
             .sortedByDescending { (_, items) -> items.sumOf(convertedProductAmount) }
             .forEach { (provider, items) ->
                 val providerTotal = items.sumOf(convertedProductAmount)
                 val providerUnits = items.sumOf { it.cantidad }
                 val providerUnitsText = if (providerUnits % 1.0 == 0.0) providerUnits.toInt() else providerUnits
-                sb.append("\n$provider: ${fmt.format(providerTotal)} · $providerUnitsText uds\n")
+                sb.append('\n')
+                    .append(context.getString(R.string.chatbot_report_provider_total, provider, fmt.format(providerTotal), context.getString(R.string.chatbot_units_short, providerUnitsText)))
+                    .append('\n')
                 val byProduct = items
                     .groupBy { FinancialQueryResolver.normalizeProductName(it.descripcion) }
                     .map { (_, groupItems) ->
@@ -1100,7 +1179,8 @@ class ChatbotViewModel @Inject constructor(
                     .sortedByDescending { it.third }
                 byProduct.forEach { (name, units, amount) ->
                     val unitsText = if (units % 1.0 == 0.0) units.toInt() else units
-                    sb.append("  • $name: $unitsText uds · ${fmt.format(amount)}\n")
+                    sb.append(context.getString(R.string.chatbot_report_product_line, name, unitsText, fmt.format(amount)))
+                    sb.append('\n')
                 }
             }
         return sb.toString().trimEnd()
@@ -1119,7 +1199,7 @@ class ChatbotViewModel @Inject constructor(
                 (normalizedCategory == null || TransactionCategories.matchesCategory(invoice.categoria, normalizedCategory))
         }
         if (matching.isEmpty()) {
-            return "🛒 No encontré compras en $resolvedProvider en ningún periodo registrado."
+            return context.getString(R.string.chatbot_no_purchases_any_period, resolvedProvider)
         }
         val expenses = matching.filter { it.tipo == InvoiceType.GASTO }
         val byMonth = expenses.groupBy { monthOf(it.fecha) }
@@ -1128,23 +1208,26 @@ class ChatbotViewModel @Inject constructor(
             .toList()
             .sortedByDescending { it.first }
         val totalAllTime = byMonth.sumOf { it.second }
-        val sb = StringBuilder("🛒 No encontré compras en $resolvedProvider $requestedPeriod, pero hay ")
-        sb.append(fmt.format(totalAllTime))
-        sb.append(" repartidos en otros periodos:\n")
+        val sb = StringBuilder(context.getString(R.string.chatbot_no_purchases_other_periods_prefix, resolvedProvider, requestedPeriod, fmt.format(totalAllTime)))
+        sb.append("\n")
         byMonth.forEach { (month, amount) ->
-            sb.append("  • $month: ${fmt.format(amount)}\n")
+            sb.append(context.getString(R.string.chatbot_report_month_amount, month, fmt.format(amount)))
+                .append('\n')
         }
-        sb.append("\nPrueba con un periodo más amplio, por ejemplo: \"este año\".")
+        sb.append("\n").append(context.getString(R.string.chatbot_try_wider_period))
         return sb.toString().trimEnd()
     }
 
     private fun monthOf(timestamp: Long): String {
         val cal = java.util.Calendar.getInstance()
         cal.timeInMillis = timestamp
-        val month = MONTHS[cal.get(java.util.Calendar.MONTH)]
-        val year = cal.get(java.util.Calendar.YEAR)
-        return "$month $year"
+        return java.text.SimpleDateFormat("MMMM yyyy", activeLocale()).format(cal.time)
     }
+
+    private fun activeLocale(): Locale = context.resources.configuration.locales[0]
+        ?: Locale.getDefault()
+
+    private fun activeLanguage(): String = activeLocale().language
 
     fun startVoiceInput() {
         if (_uiState.value.isProcessing) return
@@ -1160,7 +1243,7 @@ class ChatbotViewModel @Inject constructor(
                             // "no match"...): se muestran como aviso y NUNCA
                             // se envían al asistente como si fueran un comando.
                             voiceResult.isError -> _uiState.update {
-                                it.copy(messages = it.messages + ChatMessage.AI("⚠️ ${voiceResult.text}. Usa el campo de texto."))
+                            it.copy(messages = it.messages + ChatMessage.AI(context.getString(R.string.chatbot_voice_error, voiceResult.text)))
                             }
                             voiceResult.text.isNotBlank() -> sendMessage(voiceResult.text)
                         }
@@ -1170,7 +1253,7 @@ class ChatbotViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isListening = false,
-                        messages = it.messages + ChatMessage.AI("⚠️ Error de voz: ${e.message}")
+                        messages = it.messages + ChatMessage.AI(context.getString(R.string.chatbot_voice_error_generic, e.message ?: ""))
                     )
                 }
             }
@@ -1185,7 +1268,7 @@ class ChatbotViewModel @Inject constructor(
     fun processImage(uri: Uri) {
         if (_uiState.value.isProcessing) return
         _uiState.update {
-            it.copy(messages = it.messages + ChatMessage.User("📷 Escaneando imagen..."), isProcessing = true)
+            it.copy(messages = it.messages + ChatMessage.User(context.getString(R.string.chatbot_scanning_image)), isProcessing = true)
         }
 
         viewModelScope.launch {
@@ -1203,7 +1286,7 @@ class ChatbotViewModel @Inject constructor(
                 invoiceImageStorage.delete(persistedUri?.toString())
                 _uiState.update {
                     it.copy(
-                        messages = it.messages + ChatMessage.AI("❌ Error al escanear: ${e.message}"),
+                        messages = it.messages + ChatMessage.AI(context.getString(R.string.chatbot_scan_error, e.message ?: "")),
                         isProcessing = false
                     )
                 }
@@ -1224,10 +1307,4 @@ class ChatbotViewModel @Inject constructor(
         voiceRecognitionService.destroy()
     }
 
-    private companion object {
-        private val MONTHS = listOf(
-            "enero", "febrero", "marzo", "abril", "mayo", "junio",
-            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
-        )
-    }
 }

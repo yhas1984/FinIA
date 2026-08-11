@@ -25,6 +25,9 @@ class BackupPayloadTest {
                     categoria = "Alimentación",
                     moneda = "EUR",
                     total = 42.5,
+                    numeroFactura = "F-7",
+                    baseImponible = 38.64,
+                    cuotaIva = 3.86,
                     ivaPercent = 10.0,
                     irpfPercent = 0.0,
                     paisCodigo = "ES",
@@ -82,6 +85,9 @@ class BackupPayloadTest {
         val dataset = decoded.toDataset(mapOf("invoice_7.jpg" to "content://restored/invoice_7.jpg"))
 
         assertEquals(7L, dataset.invoices.single().id)
+        assertEquals("F-7", dataset.invoices.single().numeroFactura)
+        assertEquals(38.64, dataset.invoices.single().baseImponible!!, 0.001)
+        assertEquals(3.86, dataset.invoices.single().cuotaIva!!, 0.001)
         assertEquals("content://restored/invoice_7.jpg", dataset.invoices.single().imagenUri)
         assertEquals(7L, dataset.products.single().invoiceId)
         assertEquals(4L, dataset.incomes.single().id)

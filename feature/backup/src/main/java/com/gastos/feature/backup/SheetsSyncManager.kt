@@ -20,6 +20,7 @@ import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
+import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest
@@ -32,6 +33,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
@@ -79,16 +81,13 @@ class SheetsSyncManager @Inject constructor(
     private val exchangeRateProvider: ExchangeRateProvider,
     private val currencyPreference: CurrencyPreference,
     private val sheetsLinkStore: SheetsLinkStore,
-    private val operationCoordinator: SheetsOperationCoordinator
+    private val operationCoordinator: SheetsOperationCoordinator,
+    private val remoteSyncOutboxRepository: RemoteSyncOutboxRepository,
+    private val remoteSyncScheduler: RemoteSyncScheduler
 ) {
     companion object {
         private const val TAG = "SheetsSyncManager"
         private const val KEY_SCHEMA_PREFIX = "schema_v${SheetsSchema.SCHEMA_VERSION}_"
-        // Hojas AEAT (España, Orden HAC/773/2019).
-        private const val SHEET_RECIBIDAS = SheetsSchema.RECIBIDAS
-        private const val SHEET_INGRESOS = SheetsSchema.INGRESOS
-        private const val SHEET_PRODUCTOS = SheetsSchema.PRODUCTOS
-
         // Columnas clave para localizar filas. No tienen por qué ser la
         // última columna escrita: Recibidas añade el enlace Drive en O y
         // Productos el ProductID en I.
@@ -106,7 +105,7 @@ class SheetsSyncManager @Inject constructor(
 
     fun setSpreadsheetId(account: GoogleSignInAccount, id: String) {
         sheetsLinkStore.setSpreadsheetId(account, id)
-        prefs.edit().putBoolean(schemaPreferenceKey(id), true).apply()
+        remoteSyncScheduler.schedule()
     }
 
     fun getStoredId(account: GoogleSignInAccount): String = sheetsLinkStore.getSpreadsheetId(account)
@@ -124,27 +123,15 @@ class SheetsSyncManager @Inject constructor(
      */
     fun upsertExpense(invoice: Invoice) {
         if (invoice.tipo != InvoiceType.GASTO) return
-        upsertRow(
-            SHEET_RECIBIDAS,
-            COL_ID_RECIBIDAS,
-            SheetsSchema.RECIBIDAS_LAST_COLUMN,
-            invoice.id,
-            expenseValues(invoice)
-        )
+        scope.launch { remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT) }
     }
 
-    private fun expenseValues(invoice: Invoice): List<Any> =
-        SheetsSchema.expenseRow(invoice, conversionSnapshot())
+    private fun expenseValues(invoice: Invoice, locale: SheetsSchema.LocaleCode): List<Any> =
+        SheetsSchema.expenseRow(invoice, conversionSnapshot(locale))
 
     /** Alta o edición de cualquier ingreso en la hoja unificada. */
     fun upsertIncome(income: Income) {
-        upsertRow(
-            SHEET_INGRESOS,
-            COL_ID_INGRESOS,
-            SheetsSchema.INGRESOS_LAST_COLUMN,
-            income.id,
-            SheetsSchema.incomeRow(income, conversionSnapshot())
-        )
+        scope.launch { remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INCOME_SHEETS, income.id, RemoteSyncAction.UPSERT) }
     }
 
     /**
@@ -153,59 +140,8 @@ class SheetsSyncManager @Inject constructor(
      * ni compite con otros upserts lanzados al mismo tiempo.
      */
     fun syncExpense(invoice: Invoice, products: List<Product>) {
-        if (
-            invoice.tipo != InvoiceType.GASTO ||
-            !premiumStatus.isPremium.value
-        ) return
-        val link = getActiveLink() ?: return
-        scope.launch {
-            try {
-                if (!isCurrentAccount(link.account)) return@launch
-                if (ensureSchemaCurrent(link)) return@launch
-                syncMutex.withLock {
-                    if (!isCurrentAccount(link.account)) return@withLock
-                    val sheets = getSheetsService(link.account)
-                    upsertRowNow(
-                        sheets,
-                        link.spreadsheetId,
-                        SHEET_RECIBIDAS,
-                        COL_ID_RECIBIDAS,
-                        SheetsSchema.RECIBIDAS_LAST_COLUMN,
-                        invoice.id,
-                        expenseValues(invoice)
-                    )
-                    val previousProductRows = findRowsByKey(
-                        sheets,
-                        link.spreadsheetId,
-                        SHEET_PRODUCTOS,
-                        COL_ID_PRODUCTOS,
-                        invoice.id
-                    )
-                    val productRows = products.map { product ->
-                        SheetsSchema.productRow(
-                            product = product,
-                            provider = invoice.proveedor,
-                            originalCurrency = invoice.moneda,
-                            conversion = conversionSnapshot()
-                        )
-                    }
-                    appendRowsNow(sheets, link.spreadsheetId, SHEET_PRODUCTOS, productRows)
-                    // Añadir primero las nuevas líneas evita borrar las antiguas
-                    // si la red falla a mitad de la escritura. Las filas previas
-                    // se eliminan por su posición original, sin tocar las nuevas.
-                    deleteKnownRowsNow(
-                        sheets,
-                        link.spreadsheetId,
-                        mapOf(SHEET_PRODUCTOS to previousProductRows)
-                    )
-                    refreshSummaryNow(sheets, link.spreadsheetId)
-                }
-            } catch (e: Exception) {
-                if (!recoverStaleLink(link, e)) {
-                    SafeLog.e(TAG, "syncExpense FALLO id=${invoice.id}", e)
-                }
-            }
-        }
+        if (invoice.tipo != InvoiceType.GASTO) return
+        scope.launch { remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT) }
     }
 
     /**
@@ -213,22 +149,63 @@ class SheetsSyncManager @Inject constructor(
      * todas las filas de "Productos" con el mismo InvoiceID.
      */
     fun deleteExpense(invoiceId: Long) {
-        deleteRows(
-            mapOf(
-                SHEET_RECIBIDAS to COL_ID_RECIBIDAS,
-                SHEET_PRODUCTOS to COL_ID_PRODUCTOS
-            ),
-            invoiceId
-        )
+        scope.launch { remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoiceId, RemoteSyncAction.DELETE) }
     }
 
     /** Borrado de un ingreso en la hoja unificada. */
     fun deleteIncome(incomeId: Long) {
-        deleteRows(
-            mapOf(SHEET_INGRESOS to COL_ID_INGRESOS),
-            incomeId
-        )
+        scope.launch { remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INCOME_SHEETS, incomeId, RemoteSyncAction.DELETE) }
     }
+
+    suspend fun performExpenseSync(invoiceId: Long): Boolean {
+        val invoice = invoiceRepository.getInvoiceById(invoiceId) ?: return true
+        if (invoice.tipo != InvoiceType.GASTO) return true
+        val products = productRepository.getProductsByInvoiceId(invoiceId).firstOrNull().orEmpty()
+        val link = getActiveLink() ?: return false
+        if (!isCurrentAccount(link.account) || ensureSchemaCurrent(link)) return false
+        syncMutex.withLock {
+            val locale = resolveLocale(link)
+            val descriptor = SheetsSchema.descriptor(locale)
+            val sheets = getSheetsService(link.account)
+            upsertRowNow(sheets, link.spreadsheetId, descriptor.recibidasTitle, COL_ID_RECIBIDAS, SheetsSchema.RECIBIDAS_LAST_COLUMN, invoice.id, expenseValues(invoice, locale))
+            val previousProductRows = findRowsByKey(sheets, link.spreadsheetId, descriptor.productosTitle, COL_ID_PRODUCTOS, invoice.id)
+            val productRows = products.map { product -> SheetsSchema.productRow(product, invoice.proveedor, invoice.moneda, conversionSnapshot(locale)) }
+            appendRowsNow(sheets, link.spreadsheetId, descriptor.productosTitle, productRows)
+            deleteKnownRowsNow(sheets, link.spreadsheetId, mapOf(descriptor.productosTitle to previousProductRows))
+            refreshSummaryNow(sheets, link.spreadsheetId)
+        }
+        return true
+    }
+
+    suspend fun performExpenseDelete(invoiceId: Long): Boolean = deleteRowsDirect(invoiceId, expense = true)
+
+    suspend fun performIncomeUpsert(incomeId: Long): Boolean {
+        val income = incomeRepository.getIncomeById(incomeId) ?: return true
+        val link = getActiveLink() ?: return false
+        if (!isCurrentAccount(link.account) || ensureSchemaCurrent(link)) return false
+        syncMutex.withLock {
+            val locale = resolveLocale(link)
+            val descriptor = SheetsSchema.descriptor(locale)
+            val sheets = getSheetsService(link.account)
+            upsertRowNow(
+                sheets,
+                link.spreadsheetId,
+                descriptor.ingresosTitle,
+                COL_ID_INGRESOS,
+                SheetsSchema.INGRESOS_LAST_COLUMN,
+                income.id,
+                SheetsSchema.incomeRow(income, conversionSnapshot(locale))
+            )
+            refreshSummaryNow(sheets, link.spreadsheetId)
+        }
+        return true
+    }
+
+    suspend fun performIncomeDelete(incomeId: Long): Boolean = deleteRowsDirect(incomeId, expense = false)
+
+    suspend fun performExpenseDeleteRemote(invoiceId: Long): Boolean = performExpenseDelete(invoiceId)
+
+    suspend fun performIncomeDeleteRemote(incomeId: Long): Boolean = performIncomeDelete(incomeId)
 
     // ------------------------------------------------------------------
     // Mecánica de sync (upsert / append / delete)
@@ -322,10 +299,12 @@ class SheetsSyncManager @Inject constructor(
 
     /** Re-exporta el sheet una vez al detectar un esquema anterior. */
     private suspend fun ensureSchemaCurrent(link: ActiveSheetLink): Boolean {
-        val preferenceKey = schemaPreferenceKey(link.spreadsheetId)
-        if (prefs.getBoolean(preferenceKey, false)) return false
         return operationCoordinator.migrationMutex.withLock {
-            if (prefs.getBoolean(preferenceKey, false)) return@withLock false
+            val remote = readRemoteSchemaState(link.account, link.spreadsheetId)
+            if (remote?.isCurrent == true) {
+                remote.locale?.let { prefs.edit().putString(schemaLocaleKey(link.spreadsheetId), it.code).apply() }
+                return@withLock false
+            }
             if (!isCurrentAccount(link.account) || !sheetsExportService.isSignedIn()) {
                 SafeLog.w(TAG, "sync OMITIDO — falta sesión Google para migrar schema v${SheetsSchema.SCHEMA_VERSION}")
                 return@withLock true
@@ -340,9 +319,8 @@ class SheetsSyncManager @Inject constructor(
                 products = products,
                 existingSpreadsheetId = link.spreadsheetId
             )
-            prefs.edit().putBoolean(preferenceKey, true).apply()
             SafeLog.d(TAG, "schema v${SheetsSchema.SCHEMA_VERSION} aplicado mediante reexportación completa")
-            true
+            false
         }
     }
 
@@ -353,33 +331,27 @@ class SheetsSyncManager @Inject constructor(
      * orden descendente de fila para que los índices sigan siendo
      * válidos mientras se aplican.
      */
-    private fun deleteRows(sheetKeyCols: Map<String, String>, key: Long) {
+    private suspend fun deleteRowsDirect(key: Long, expense: Boolean): Boolean {
         if (!premiumStatus.isPremium.value) {
             SafeLog.d(TAG, "sync OMITIDO — Sheets es función Premium")
-            return
+            return false
         }
         val link = getActiveLink()
         if (link == null) {
             SafeLog.w(TAG, "delete OMITIDO — sheetId vacío")
-            return
+            return false
         }
-        SafeLog.d(TAG, "delete → hojas=${sheetKeyCols.keys} id=$key sheetId=${link.spreadsheetId.take(8)}…")
-        scope.launch {
-            try {
-                if (!isCurrentAccount(link.account)) return@launch
-                if (ensureSchemaCurrent(link)) return@launch
-                syncMutex.withLock {
-                    if (!isCurrentAccount(link.account)) return@withLock
-                    val sheets = getSheetsService(link.account)
-                    deleteRowsNow(sheets, link.spreadsheetId, sheetKeyCols, key)
-                    refreshSummaryNow(sheets, link.spreadsheetId)
-                }
-            } catch (e: Exception) {
-                if (!recoverStaleLink(link, e)) {
-                    SafeLog.e(TAG, "delete FALLO id=$key", e)
-                }
-            }
+        SafeLog.d(TAG, "delete → id=$key sheetId=${link.spreadsheetId.take(8)}…")
+        if (!isCurrentAccount(link.account)) return false
+        if (ensureSchemaCurrent(link)) return false
+        syncMutex.withLock {
+            if (!isCurrentAccount(link.account)) return false
+            val sheetKeyCols = resolveSheetKeyCols(resolveLocale(link), expense)
+            val sheets = getSheetsService(link.account)
+            deleteRowsNow(sheets, link.spreadsheetId, sheetKeyCols, key)
+            refreshSummaryNow(sheets, link.spreadsheetId)
         }
+        return true
     }
 
     private fun deleteRowsNow(
@@ -504,7 +476,7 @@ class SheetsSyncManager @Inject constructor(
                     products = products
                 )
                 setSpreadsheetId(link.account, spreadsheetId)
-                true
+            false
             }
         } catch (recoveryError: Exception) {
             SafeLog.e(TAG, "No se pudo recuperar el vínculo de Sheets", recoveryError)
@@ -515,8 +487,12 @@ class SheetsSyncManager @Inject constructor(
     private suspend fun refreshSummaryNow(sheets: Sheets, spreadsheetId: String) {
         val invoices = invoiceRepository.getAllInvoices().first()
         val incomes = incomeRepository.getAllIncomes().first()
-        val conversion = conversionSnapshot()
+        val account = sheetsExportService.getLastSignedInAccount() ?: return
+        val locale = readRemoteSchemaState(account, spreadsheetId)?.locale ?: SheetsSchema.LocaleCode.ES
+        val conversion = conversionSnapshot(locale)
+        val descriptor = SheetsSchema.descriptor(locale)
         val values = SheetsSchema.summaryRows(
+            descriptor = descriptor,
             exportDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date()),
             reportCurrency = conversion.targetCurrency,
             totals = SheetsSchema.summaryTotals(invoices, incomes, conversion)
@@ -524,20 +500,55 @@ class SheetsSyncManager @Inject constructor(
         sheets.spreadsheets().values()
             .update(
                 spreadsheetId,
-                "'${SheetsSchema.RESUMEN}'!A1",
+                "'${descriptor.resumenTitle}'!A1",
                 ValueRange().setValues(values)
             )
             .setValueInputOption("RAW")
             .execute()
     }
 
-    private fun conversionSnapshot(): SheetsSchema.ConversionSnapshot =
+    private fun conversionSnapshot(locale: SheetsSchema.LocaleCode): SheetsSchema.ConversionSnapshot =
         SheetsSchema.ConversionSnapshot(
             targetCurrency = currencyPreference.defaultCurrency.value,
+            locale = locale,
             exchangeRateProvider = exchangeRateProvider
         )
 
-    private fun schemaPreferenceKey(spreadsheetId: String): String = "$KEY_SCHEMA_PREFIX$spreadsheetId"
+    private fun resolveLocale(link: ActiveSheetLink): SheetsSchema.LocaleCode =
+        readRemoteSchemaState(link.account, link.spreadsheetId)?.locale ?: SheetsSchema.LocaleCode.ES
+
+    private fun resolveSheetKeyCols(locale: SheetsSchema.LocaleCode, expense: Boolean): Map<String, String> {
+        val descriptor = SheetsSchema.descriptor(locale)
+        return if (expense) {
+            mapOf(descriptor.recibidasTitle to COL_ID_RECIBIDAS, descriptor.productosTitle to COL_ID_PRODUCTOS)
+        } else {
+            mapOf(descriptor.ingresosTitle to COL_ID_INGRESOS)
+        }
+    }
+
+    private fun schemaLocaleKey(spreadsheetId: String): String = "$KEY_SCHEMA_PREFIX${spreadsheetId}_locale"
+
+    private data class RemoteSchemaState(val isCurrent: Boolean, val locale: SheetsSchema.LocaleCode?)
+
+    private fun readRemoteSchemaState(account: GoogleSignInAccount, spreadsheetId: String): RemoteSchemaState? {
+        return try {
+            val credential = GoogleAccountCredential.usingOAuth2(context, listOf(DriveScopes.DRIVE_FILE)).setSelectedAccount(account.account)
+            val drive = Drive.Builder(NetHttpTransport(), GsonFactory.getDefaultInstance(), credential).setApplicationName("FinAI Sync").build()
+            val file = drive.files().get(spreadsheetId).setFields("appProperties").execute()
+            val appProps = file.appProperties.orEmpty()
+            val rawLocale = appProps["finaiSchemaLocale"]
+            val locale = rawLocale
+                ?.takeIf { it == SheetsSchema.SCHEMA_LOCALE_ES || it == SheetsSchema.SCHEMA_LOCALE_EN }
+                ?.let(SheetsSchema::localeFromCode)
+            val version = appProps["finaiSchemaVersion"]?.toIntOrNull()
+            val isCurrent = appProps["finaiSpreadsheet"] == "true" &&
+                version == SheetsSchema.SCHEMA_VERSION &&
+                locale != null
+            RemoteSchemaState(isCurrent = isCurrent, locale = locale)
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     private data class ActiveSheetLink(
         val account: GoogleSignInAccount,

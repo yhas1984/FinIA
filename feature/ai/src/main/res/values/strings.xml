@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_api_key_empty">API key vacía</string>
+    <string name="ai_image_load_error">Error al cargar la imagen</string>
+    <string name="ai_query_processed">Consulta procesada</string>
+    <string name="ai_friendly_api_key_invalid">Tu API key de Gemini no es válida. Revísala en %1$s.</string>
+    <string name="ai_friendly_api_rate_limit">Se ha alcanzado el límite de uso de la API gratuita de Gemini. Inténtalo de nuevo más tarde.</string>
+    <string name="ai_friendly_api_temporary_unavailable">Gemini no responde temporalmente. Inténtalo de nuevo más tarde.</string>
+    <string name="ai_friendly_api_generic">Error al contactar con Gemini. Inténtalo de nuevo más tarde.</string>
+    <string name="ai_expense_added">Gasto agregado: %1$s - %2$s %3$s</string>
+    <string name="ai_income_amount_format">%1$s %2$s</string>
+    <string name="ai_income_amounts_format">Devengado: %1$s %2$s / Neto: %3$s %4$s</string>
+    <string name="ai_income_added">Ingreso agregado: %1$s - %2$s</string>
+    <string name="ai_parse_response_error">No se pudo interpretar la respuesta: %1$s</string>
+    <string name="ai_no_api_key">Aún no has configurado tu API key de Gemini. Ve a Configuración &gt; IA para añadir la tuya (es gratis en Google AI Studio).</string>
+    <string name="ai_manual_review_payroll">Revisión manual: importe de nómina ausente, inválido o no positivo</string>
+    <string name="ai_payroll_processed">Nómina procesada: %1$s — líquido %2$s %3$s%4$s</string>
+    <string name="ai_manual_review_invoice_missing">Revisión manual: total de factura ausente o inválido</string>
+    <string name="ai_manual_review_invoice_non_positive">Revisión manual: total de factura no positivo</string>
+    <string name="ai_invoice_processed">Factura procesada correctamente</string>
+    <string name="ai_expense_processed">Gasto procesado correctamente</string>
+    <string name="ai_income_processed">Ingreso procesado correctamente</string>
+    <string name="ai_parse_document_error">Error al parsear documento: %1$s</string>
+    <string name="ai_system_prompt_es">Eres FinAI, un asistente financiero personal inteligente, cercano y conversacional. Respondes siempre en español, con tono amable y profesional.</string>
+    <string name="ai_system_prompt_en">You are FinAI, a smart personal finance assistant. Reply in English only, with a friendly and professional tone.</string>
+</resources>

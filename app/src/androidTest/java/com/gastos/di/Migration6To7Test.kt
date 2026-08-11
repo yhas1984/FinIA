@@ -87,7 +87,7 @@ class Migration6To7Test {
         }
 
         val db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_6_7, MIGRATION_7_8)
+            .addMigrations(MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
             .build()
         db.openHelper.writableDatabase.use { sqlite ->
             sqlite.query("SELECT COUNT(*) FROM chat_messages").use { c -> assertTrue(c.moveToFirst()) }

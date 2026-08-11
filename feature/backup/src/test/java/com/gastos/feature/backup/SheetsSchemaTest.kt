@@ -32,12 +32,18 @@ class SheetsSchemaTest {
                 tipo = InvoiceType.GASTO,
                 categoria = "Alimentación",
                 total = 121.0,
+                numeroFactura = "F-9",
+                baseImponible = 100.0,
+                cuotaIva = 21.0,
                 driveWebViewLink = "https://drive.test/9"
             ),
             snapshot()
         )
 
         assertEquals(SheetsSchema.recibidasHeaders.size, row.size)
+        assertEquals("F-9", row[0])
+        assertEquals(100.0, row[5])
+        assertEquals(21.0, row[7])
         assertEquals("Alimentación", row[12])
         assertEquals(9L, row[14])
         assertEquals("https://drive.test/9", row[15])
@@ -175,7 +181,7 @@ class SheetsSchemaTest {
         assertEquals(7_500.0, totals.totalIncomes, 0.001)
         assertEquals(6_600.0, totals.balance, 0.001)
         assertEquals(0, totals.pendingConversions)
-        val rows = SheetsSchema.summaryRows("2026-07-24", "EUR", totals)
+        val rows = SheetsSchema.summaryRows(SheetsSchema.es, "2026-07-24", "EUR", totals)
         assertEquals("Total Ingresos", rows[4][0])
         assertEquals(7_500.0, rows[4][1])
     }
@@ -198,5 +204,42 @@ class SheetsSchemaTest {
 
         assertEquals(0.0, totals.totalIncomes, 0.001)
         assertEquals(1, totals.pendingConversions)
+    }
+
+    @Test
+    fun `descriptor changes titles and labels by locale`() {
+        val es = SheetsSchema.descriptor(SheetsSchema.LocaleCode.ES)
+        val en = SheetsSchema.descriptor(SheetsSchema.LocaleCode.EN)
+
+        assertEquals("Facturas Recibidas", es.recibidasTitle)
+        assertEquals("Received Invoices", en.recibidasTitle)
+        assertEquals("Resumen Financiero (AEAT)", es.summaryTitle)
+        assertEquals("Financial Summary (AEAT)", en.summaryTitle)
+        assertEquals("Tasa pendiente", es.conversionPendingLabel)
+        assertEquals("pending rate", en.conversionPendingLabel)
+    }
+
+    @Test
+    fun `detect locale prefers metadata then sheet content then fallback es`() {
+        assertEquals(
+            SheetsSchema.LocaleCode.EN,
+            SheetsSchema.detectLocale(mapOf("finaiSchemaLocale" to "en"), listOf("Facturas Recibidas"), listOf("Nº Factura"))
+        )
+        assertEquals(
+            SheetsSchema.LocaleCode.EN,
+            SheetsSchema.detectLocale(null, listOf("Received Invoices", "Summary"), listOf("Invoice No."))
+        )
+        assertEquals(
+            SheetsSchema.LocaleCode.ES,
+            SheetsSchema.detectLocale(null, emptyList(), emptyList())
+        )
+    }
+
+    @Test
+    fun `summary rows follow descriptor locale`() {
+        val totals = SheetsSchema.SummaryTotals(1.0, 2.0, 1.0, 0)
+        val rows = SheetsSchema.summaryRows(SheetsSchema.en, "2026-07-24", "EUR", totals)
+        assertEquals("Financial Summary (AEAT)", rows[0][0])
+        assertEquals("Total income", rows[4][0])
     }
 }

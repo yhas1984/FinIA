@@ -1,5 +1,6 @@
 package com.gastos.feature.invoices
 
+import android.content.Context
 import app.cash.turbine.test
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
@@ -61,7 +62,8 @@ class InvoicesViewModelTest {
         val imageStorage = mockk<InvoiceImageStorage>(relaxed = true)
         val premium = mockk<PremiumStatusProvider>()
         every { premium.isPremium } returns MutableStateFlow(false)
-        return InvoicesViewModel(repo, sync, exchange, currency, drive, imageStorage, premium)
+        val context = mockk<Context>()
+        return InvoicesViewModel(context, repo, sync, exchange, currency, drive, imageStorage, premium)
     }
 
     @Test

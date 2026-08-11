@@ -2,6 +2,9 @@ package com.gastos.feature.invoices
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Context
+import androidx.annotation.StringRes
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.TransactionCategories
@@ -12,6 +15,7 @@ import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.PremiumStatusProvider
 import com.gastos.storage.InvoiceImageStorage
+import com.gastos.feature.invoices.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,6 +53,7 @@ private const val UNCATEGORIZED_FILTER = "__uncategorized__"
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class InvoicesViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val invoiceRepository: InvoiceRepository,
     private val sheetsSyncManager: SheetsSyncManager,
     private val exchangeRateProvider: ExchangeRateProvider,
@@ -137,7 +142,7 @@ class InvoicesViewModel @Inject constructor(
                 }
                 .catch { e ->
                     _uiState.update {
-                        it.copy(error = e.message ?: "Error al cargar facturas", isLoading = false)
+                        it.copy(error = e.message ?: context.getString(R.string.load_invoice_error), isLoading = false)
                     }
                 }
                 .collect { data ->
@@ -215,7 +220,7 @@ class InvoicesViewModel @Inject constructor(
                 sheetsSyncManager.deleteExpense(invoice.id)
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(error = e.message ?: "Error al eliminar")
+                        it.copy(error = e.message ?: context.getString(R.string.delete))
                 }
             }
         }

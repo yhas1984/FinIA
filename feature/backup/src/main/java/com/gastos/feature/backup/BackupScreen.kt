@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -85,10 +86,10 @@ fun BackupScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Backup") },
+                title = { Text(stringResource(R.string.backup_screen_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack, enabled = !uiState.isRestoring) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -122,13 +123,13 @@ fun BackupScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Backup cifrado",
+                        text = stringResource(R.string.backup_encrypted_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Exporta datos, fotos, historial y ajustes en un archivo .finai protegido con tu contraseña.",
+                        text = stringResource(R.string.backup_encrypted_description),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 12.dp)
@@ -137,13 +138,13 @@ fun BackupScreen(
                         Button(onClick = { showPasswordSetup = true }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.Password, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Configurar contraseña de recuperación")
+                            Text(stringResource(R.string.configure_recovery_password_action))
                         }
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.VerifiedUser, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Cifrado extremo a extremo configurado")
+                            Text(stringResource(R.string.encryption_configured))
                         }
                     }
                     Spacer(modifier = Modifier.height(12.dp))
@@ -158,7 +159,7 @@ fun BackupScreen(
                         ) {
                             Icon(Icons.Default.Save, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Exportar")
+                            Text(stringResource(R.string.export))
                         }
                         OutlinedButton(
                             onClick = { importBackupLauncher.launch(arrayOf(BACKUP_MIME_TYPE, "application/octet-stream")) },
@@ -167,11 +168,11 @@ fun BackupScreen(
                         ) {
                             Icon(Icons.Default.Restore, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Restaurar")
+                            Text(stringResource(R.string.restore))
                         }
                     }
                     Text(
-                        text = "Guarda la contraseña fuera de FinAI. Si la pierdes, el backup no se puede descifrar.",
+                        text = stringResource(R.string.keep_password_safe_warning),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 10.dp)
@@ -182,25 +183,25 @@ fun BackupScreen(
             // Cuenta Google compartida por Drive y Sheets
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Cuenta Google", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.google_account_section), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     if (uiState.isSignedIn) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
-                                Text("Conectado")
+                                Text(stringResource(R.string.google_connected))
                                 Text(uiState.email.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         TextButton(onClick = viewModel::signOut, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Cerrar sesión de Google")
+                            Text(stringResource(R.string.google_sign_out))
                         }
                     } else {
                         Text(
-                            "Conecta Google para el backup Premium, Sheets y las fotos de facturas.",
+                            stringResource(R.string.google_connect_backup_hint),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -211,7 +212,7 @@ fun BackupScreen(
                         ) {
                             Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Iniciar sesión con Google")
+                            Text(stringResource(R.string.google_sign_in))
                         }
                     }
                 }
@@ -220,9 +221,9 @@ fun BackupScreen(
             // Backup automático Premium
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Backup automático en Drive", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.drive_backup_section), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        "Copia cifrada diaria y cinco versiones recuperables tras reinstalar o cambiar de dispositivo.",
+                        stringResource(R.string.drive_backup_description),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
@@ -231,16 +232,16 @@ fun BackupScreen(
                         !uiState.isPremium -> Button(onClick = onNavigateToPremium, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.Lock, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Desbloquear backup Premium")
+                            Text(stringResource(R.string.unlock_premium_backup_action))
                         }
                         !uiState.isSignedIn -> OutlinedButton(
                             onClick = { signInLauncher.launch(viewModel.getSignInIntent()) },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Conectar Google") }
+                        ) { Text(stringResource(R.string.connect_google_action)) }
                         !uiState.isBackupKeyConfigured -> Button(
                             onClick = { showPasswordSetup = true },
                             modifier = Modifier.fillMaxWidth()
-                        ) { Text("Configurar contraseña") }
+                        ) { Text(stringResource(R.string.configure_recovery_password_action)) }
                         else -> {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -248,8 +249,8 @@ fun BackupScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Copia diaria")
-                                    Text("Solo con red y batería suficiente", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(stringResource(R.string.daily_backup_status))
+                                    Text(stringResource(R.string.daily_backup_status_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                                 Switch(
                                     checked = uiState.cloudBackupStatus.enabled,
@@ -265,7 +266,7 @@ fun BackupScreen(
                                 ) {
                                     Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Crear ahora")
+                                    Text(stringResource(R.string.create_now_action))
                                 }
                                 OutlinedButton(
                                     onClick = viewModel::loadCloudBackups,
@@ -274,12 +275,12 @@ fun BackupScreen(
                                 ) {
                                     Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Actualizar")
+                                    Text(stringResource(R.string.update_action))
                                 }
                             }
                             uiState.cloudBackupStatus.lastSuccessAt?.let { timestamp ->
                                 Text(
-                                    "Última copia: ${SimpleDateFormat("dd/MM/yyyy HH:mm", locale).format(Date(timestamp))}",
+                                    stringResource(R.string.last_backup_prefix, SimpleDateFormat("dd/MM/yyyy HH:mm", locale).format(Date(timestamp))),
                                     style = MaterialTheme.typography.bodySmall,
                                     modifier = Modifier.padding(top = 8.dp)
                                 )
@@ -289,7 +290,7 @@ fun BackupScreen(
                             }
                             if (uiState.cloudBackups.isNotEmpty()) {
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
-                                Text("Copias disponibles", style = MaterialTheme.typography.titleSmall)
+                                Text(stringResource(R.string.available_backups_section), style = MaterialTheme.typography.titleSmall)
                                 uiState.cloudBackups.forEach { backup ->
                                     CloudBackupRow(
                                         backup = backup,
@@ -305,7 +306,7 @@ fun BackupScreen(
                                 ) {
                                     Icon(Icons.Default.DeleteForever, contentDescription = null)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Eliminar copias de Drive", color = MaterialTheme.colorScheme.error)
+                                    Text(stringResource(R.string.delete_drive_backups_action), color = MaterialTheme.colorScheme.error)
                                 }
                             }
                         }
@@ -317,13 +318,13 @@ fun BackupScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Google Sheets",
+                        text = stringResource(R.string.google_sheets_section),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Exporta y sincroniza tus datos a un Google Sheet organizado por hojas: Gastos, Ingresos, Productos y Resumen. Función Premium.",
+                        text = stringResource(R.string.google_sheets_description_localized),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -336,7 +337,7 @@ fun BackupScreen(
                         ) {
                             Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Desbloquear Premium para usar Sheets")
+                            Text(stringResource(R.string.unlock_premium_for_sheets_action))
                         }
                     } else if (!uiState.isSignedIn) {
                         OutlinedButton(
@@ -345,7 +346,7 @@ fun BackupScreen(
                         ) {
                             Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Conectar cuenta Google")
+                            Text(stringResource(R.string.connect_google_account_action))
                         }
                     } else {
                         // Si ya hay sheet vinculado: botón sincronizar + re-exportar
@@ -358,7 +359,7 @@ fun BackupScreen(
                                 ) {
                                     Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Sincronizar")
+                                    Text(stringResource(R.string.sync_action))
                                 }
                                 OutlinedButton(
                                     onClick = { viewModel.syncAllToSheets() },
@@ -367,7 +368,7 @@ fun BackupScreen(
                                 ) {
                                     Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Forzar")
+                                    Text(stringResource(R.string.force_action))
                                 }
                             }
                         } else {
@@ -386,7 +387,7 @@ fun BackupScreen(
                                     Icon(Icons.Default.TableChart, contentDescription = null, modifier = Modifier.size(18.dp))
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(if (uiState.isExportingSheets) "Exportando..." else "Exportar a Google Sheets")
+                                Text(if (uiState.isExportingSheets) stringResource(R.string.exporting) else stringResource(R.string.export_to_google_sheets))
                             }
                         }
                     }
@@ -401,7 +402,7 @@ fun BackupScreen(
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
-                                    "✓ Spreadsheet sincronizado",
+                                    stringResource(R.string.spreadsheet_synced_message),
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -418,7 +419,7 @@ fun BackupScreen(
                                 ) {
                                     Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Abrir en Google Sheets")
+                                    Text(stringResource(R.string.open_in_google_sheets_action))
                                 }
                             }
                         }
@@ -439,7 +440,7 @@ fun BackupScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = if (result.success) "Backup completado" else "Error",
+                            text = if (result.success) stringResource(R.string.backup_completed_message) else stringResource(R.string.error),
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -452,13 +453,13 @@ fun BackupScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Exportar y Compartir",
+                        text = stringResource(R.string.export_share_section),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Exporta tus datos y compártelos por email, Drive, WhatsApp, etc.",
+                        text = stringResource(R.string.export_share_description_localized),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -482,7 +483,7 @@ fun BackupScreen(
                                 Icon(Icons.Default.Description, contentDescription = null)
                             }
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("CSV")
+                            Text(stringResource(R.string.csv))
                         }
 
                         Button(
@@ -503,7 +504,7 @@ fun BackupScreen(
                                 Icon(Icons.Default.PictureAsPdf, contentDescription = null)
                             }
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("PDF")
+                            Text(stringResource(R.string.pdf))
                         }
 
                         Button(
@@ -513,7 +514,7 @@ fun BackupScreen(
                         ) {
                             Icon(Icons.Default.Share, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Compartir")
+                            Text(stringResource(R.string.share_action))
                         }
                     }
                 }
@@ -532,7 +533,7 @@ fun BackupScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = if (result.success) "Exportación completada" else "Error",
+                            text = if (result.success) stringResource(R.string.export_completed_message) else stringResource(R.string.error),
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -551,7 +552,7 @@ fun BackupScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Error",
+                            text = stringResource(R.string.error),
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -569,14 +570,14 @@ fun BackupScreen(
     if (showPasswordSetup) {
         AlertDialog(
             onDismissRequest = { showPasswordSetup = false },
-            title = { Text("Contraseña de recuperación") },
+            title = { Text(stringResource(R.string.recovery_password_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Mínimo 8 caracteres. FinAI no podrá recuperarla si la olvidas.")
+                    Text(stringResource(R.string.recovery_password_help_text))
                     OutlinedTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text("Contraseña") },
+                        label = { Text(stringResource(R.string.password_label)) },
                         visualTransformation = rememberTimedPasswordVisualTransformation(password),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true
@@ -584,7 +585,7 @@ fun BackupScreen(
                     OutlinedTextField(
                         value = passwordConfirmation,
                         onValueChange = { passwordConfirmation = it },
-                        label = { Text("Confirmar contraseña") },
+                        label = { Text(stringResource(R.string.confirm_password_label)) },
                         visualTransformation = rememberTimedPasswordVisualTransformation(passwordConfirmation),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true
@@ -599,10 +600,12 @@ fun BackupScreen(
                 }
             },
             confirmButton = {
+                val tooShortMessage = stringResource(R.string.backup_password_too_short)
+                val mismatchMessage = stringResource(R.string.backup_password_mismatch)
                 TextButton(onClick = {
                     passwordValidationError = when {
-                        password.length < 8 -> "La contraseña debe tener al menos 8 caracteres."
-                        password != passwordConfirmation -> "Las contraseñas no coinciden."
+                        password.length < 8 -> tooShortMessage
+                        password != passwordConfirmation -> mismatchMessage
                         else -> null
                     }
                     if (passwordValidationError != null) return@TextButton
@@ -611,9 +614,9 @@ fun BackupScreen(
                     passwordConfirmation = ""
                     passwordValidationError = null
                     showPasswordSetup = false
-                }) { Text("Guardar") }
+                }) { Text(stringResource(R.string.save_action)) }
             },
-            dismissButton = { TextButton(onClick = { passwordValidationError = null; showPasswordSetup = false }) { Text("Cancelar") } }
+            dismissButton = { TextButton(onClick = { passwordValidationError = null; showPasswordSetup = false }) { Text(stringResource(R.string.cancel_action)) } }
         )
     }
 
@@ -621,22 +624,21 @@ fun BackupScreen(
         val running = uiState.restoreState as? BackupRestoreState.Running
         AlertDialog(
             onDismissRequest = { if (running == null) viewModel.dismissRestore() },
-            title = { Text("Restaurar backup") },
+            title = { Text(stringResource(R.string.restore_backup_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "${pending.preview.invoiceCount} facturas · ${pending.preview.productCount} productos · " +
-                            "${pending.preview.incomeCount} ingresos · ${pending.preview.imageCount} imágenes"
+                        stringResource(R.string.restore_summary_localized, pending.preview.invoiceCount, pending.preview.productCount, pending.preview.incomeCount, pending.preview.imageCount)
                     )
                     Text(
-                        "La restauración reemplazará todos los datos actuales.",
+                        stringResource(R.string.restore_replaces_data_warning),
                         color = MaterialTheme.colorScheme.error,
                         fontWeight = FontWeight.SemiBold
                     )
                     OutlinedTextField(
                         value = restorePassword,
                         onValueChange = { restorePassword = it },
-                        label = { Text("Contraseña de recuperación") },
+                        label = { Text(stringResource(R.string.recovery_password_title)) },
                         visualTransformation = rememberTimedPasswordVisualTransformation(restorePassword),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         enabled = running == null,
@@ -661,7 +663,7 @@ fun BackupScreen(
                             restorePassword = ""
                         },
                         enabled = restorePassword.length >= 8 && !uiState.isLoading
-                    ) { Text("Reemplazar y restaurar") }
+                    ) { Text(stringResource(R.string.replace_and_restore_action)) }
                 }
             },
             dismissButton = {
@@ -669,7 +671,7 @@ fun BackupScreen(
                     TextButton(
                         onClick = if (running == null) viewModel::dismissRestore else viewModel::cancelRestore
                     ) {
-                        Text(if (running == null) "Cancelar" else "Cancelar restauración")
+                        Text(if (running == null) stringResource(R.string.cancel_action) else stringResource(R.string.cancel_restore_action))
                     }
                 }
             },
@@ -679,16 +681,16 @@ fun BackupScreen(
     if (showDeleteCloudConfirmation) {
         AlertDialog(
             onDismissRequest = { showDeleteCloudConfirmation = false },
-            title = { Text("Eliminar copias de Drive") },
-            text = { Text("Se eliminarán permanentemente todas las copias cifradas de FinAI guardadas en Google Drive.") },
+            title = { Text(stringResource(R.string.delete_drive_backups_title)) },
+            text = { Text(stringResource(R.string.delete_drive_backups_confirm)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteCloudConfirmation = false
                     viewModel.deleteCloudBackups()
-                }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.delete_action), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteCloudConfirmation = false }) { Text("Cancelar") }
+                TextButton(onClick = { showDeleteCloudConfirmation = false }) { Text(stringResource(R.string.cancel_action)) }
             }
         )
     }
@@ -702,14 +704,14 @@ private fun openTrustedUrl(
     val uri = Uri.parse(rawUrl)
     val host = uri.host?.lowercase(Locale.ROOT)
     if (uri.scheme != "https" || host !in allowedHosts) {
-        return "El enlace generado no es válido o ya no es seguro abrirlo."
+        return context.getString(R.string.invalid_link_message)
     }
     val intent = Intent(Intent.ACTION_VIEW, uri)
     return try {
         context.startActivity(intent)
         null
     } catch (_: ActivityNotFoundException) {
-        "No se pudo abrir el enlace solicitado."
+        context.getString(R.string.could_not_open_link_message)
     }
 }
 
@@ -741,7 +743,7 @@ private fun CloudBackupRow(
         OutlinedButton(onClick = onRestore, enabled = enabled) {
             Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(6.dp))
-            Text("Restaurar")
+            Text(stringResource(R.string.restore))
         }
     }
 }

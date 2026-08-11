@@ -13,6 +13,8 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.annotation.StringRes
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -70,24 +72,24 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-sealed class Screen(val route: String, val title: String, val selectedIcon: @Composable () -> Unit, val unselectedIcon: @Composable () -> Unit) {
+sealed class Screen(@StringRes val titleRes: Int, val route: String, val selectedIcon: @Composable () -> Unit, val unselectedIcon: @Composable () -> Unit) {
     object Dashboard : Screen(
+        titleRes = R.string.dashboard_title,
         route = "dashboard",
-        title = "Dashboard",
-        selectedIcon = { Icon(Icons.Filled.Dashboard, contentDescription = "Dashboard") },
-        unselectedIcon = { Icon(Icons.Outlined.Dashboard, contentDescription = "Dashboard") }
+        selectedIcon = { Icon(Icons.Filled.Dashboard, contentDescription = null) },
+        unselectedIcon = { Icon(Icons.Outlined.Dashboard, contentDescription = null) }
     )
     object Invoices : Screen(
+        titleRes = R.string.expenses_title,
         route = "invoices",
-        title = "Gastos",
-        selectedIcon = { Icon(Icons.Filled.Description, contentDescription = "Gastos") },
-        unselectedIcon = { Icon(Icons.Outlined.Description, contentDescription = "Gastos") }
+        selectedIcon = { Icon(Icons.Filled.Description, contentDescription = null) },
+        unselectedIcon = { Icon(Icons.Outlined.Description, contentDescription = null) }
     )
     object Incomes : Screen(
+        titleRes = R.string.income_title,
         route = "incomes",
-        title = "Ingresos",
-        selectedIcon = { Icon(Icons.Filled.Payments, contentDescription = "Ingresos") },
-        unselectedIcon = { Icon(Icons.Outlined.Payments, contentDescription = "Ingresos") }
+        selectedIcon = { Icon(Icons.Filled.Payments, contentDescription = null) },
+        unselectedIcon = { Icon(Icons.Outlined.Payments, contentDescription = null) }
     )
 }
 
@@ -119,19 +121,19 @@ fun FinAIApp(
         Screen.Dashboard.route -> FloatingButtonSpec(
             id = FloatingButtonIds.DASHBOARD_AI,
             icon = Icons.Filled.SmartToy,
-            contentDescription = "Abrir asistente de IA",
+            contentDescription = stringResource(R.string.open_ai_assistant),
             onClick = { navController.navigate(Routes.CHATBOT) }
         )
         Screen.Invoices.route -> FloatingButtonSpec(
             id = FloatingButtonIds.EXPENSES_ADD,
             icon = Icons.Filled.Add,
-            contentDescription = "Nueva factura",
+            contentDescription = stringResource(R.string.new_expense),
             onClick = { navController.navigate("edit_invoice/0") }
         )
         Screen.Incomes.route -> FloatingButtonSpec(
             id = FloatingButtonIds.INCOMES_ADD,
             icon = Icons.Filled.Add,
-            contentDescription = "Nuevo ingreso",
+            contentDescription = stringResource(R.string.new_income),
             onClick = { navController.navigate("edit_income/0") }
         )
         else -> null
@@ -146,7 +148,7 @@ fun FinAIApp(
                         val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
                         NavigationBarItem(
                             icon = { if (selected) screen.selectedIcon() else screen.unselectedIcon() },
-                            label = { Text(screen.title) },
+                            label = { Text(stringResource(screen.titleRes)) },
                             selected = selected,
                             onClick = {
                                 navController.navigate(screen.route) {

@@ -754,7 +754,7 @@ class DashboardViewModel @Inject constructor(
     private fun categoryLabel(category: String?): String =
         TransactionCategories.canonicalExpenseCategory(category)
             ?: TransactionCategories.canonicalIncomeCategory(category)
-            ?: TransactionCategories.UNCATEGORIZED_LABEL
+            ?: TransactionCategories.currentUncategorizedLabel()
 
     private fun monthLabel(month: MonthRef): String {
         val cal = Calendar.getInstance()
@@ -828,7 +828,7 @@ class DashboardViewModel @Inject constructor(
         now: Long
     ): List<DayData> {
         val data = mutableListOf<DayData>()
-        val dayFormat = SimpleDateFormat("EEE", Locale.forLanguageTag("es-ES"))
+        val dayFormat = SimpleDateFormat("EEE", Locale.getDefault())
 
         repeat(7) { i ->
             val dayCal = Calendar.getInstance().apply { timeInMillis = now }

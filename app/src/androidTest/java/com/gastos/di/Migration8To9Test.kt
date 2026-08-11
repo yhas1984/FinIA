@@ -84,14 +84,17 @@ class Migration8To9Test {
         }
 
         val db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_8_9)
+            .addMigrations(MIGRATION_8_9, MIGRATION_9_10)
             .build()
         db.openHelper.writableDatabase.use { sqlite ->
-            sqlite.query("SELECT proveedor, categoria, subcategoria FROM invoices WHERE id=1").use { c ->
+            sqlite.query("SELECT proveedor, categoria, subcategoria, numeroFactura, baseImponible, cuotaIva FROM invoices WHERE id=1").use { c ->
                 assertTrue(c.moveToFirst())
                 assertEquals("Proveedor X", c.getString(0))
                 assertEquals("Alimentación", c.getString(1))
                 assertNull(c.getString(2))
+                assertNull(c.getString(3))
+                assertTrue(c.isNull(4))
+                assertTrue(c.isNull(5))
             }
             sqlite.query("SELECT concepto, categoria, subcategoria FROM incomes WHERE id=1").use { c ->
                 assertTrue(c.moveToFirst())
@@ -100,10 +103,17 @@ class Migration8To9Test {
                 assertNull(c.getString(2))
             }
             sqlite.execSQL("UPDATE invoices SET subcategoria='Supermercado' WHERE id=1")
+            sqlite.execSQL("UPDATE invoices SET numeroFactura='F-1', baseImponible=100.0, cuotaIva=21.0 WHERE id=1")
             sqlite.execSQL("UPDATE incomes SET subcategoria='Salario base' WHERE id=1")
             sqlite.query("SELECT subcategoria FROM invoices WHERE id=1").use { c ->
                 assertTrue(c.moveToFirst())
                 assertEquals("Supermercado", c.getString(0))
+            }
+            sqlite.query("SELECT numeroFactura, baseImponible, cuotaIva FROM invoices WHERE id=1").use { c ->
+                assertTrue(c.moveToFirst())
+                assertEquals("F-1", c.getString(0))
+                assertEquals(100.0, c.getDouble(1), 0.0)
+                assertEquals(21.0, c.getDouble(2), 0.0)
             }
         }
         db.close()

@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -32,10 +33,10 @@ fun PremiumScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("FinAI Premium") },
+                title = { Text(stringResource(R.string.settings_premium_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -62,7 +63,7 @@ fun PremiumScreen(
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "Desbloquea todo el potencial de FinAI",
+                text = stringResource(R.string.settings_premium_pitch),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -88,13 +89,13 @@ fun PremiumScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            "Premium está activo ✓",
+                            stringResource(R.string.settings_premium_enabled),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            "Gracias por apoyar FinAI. Todas las funciones avanzadas están desbloqueadas.",
+                            stringResource(R.string.premium_pitch),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
@@ -136,8 +137,9 @@ fun PremiumScreen(
                 }
 
                 // Precio y botón de compra
+                val validatingPrice = stringResource(R.string.settings_api_key_validating_short)
                 val price = uiState.productDetails?.oneTimePurchaseOfferDetails?.formattedPrice
-                    ?: "Cargando precio..."
+                    ?: validatingPrice
 
                 Button(
                     onClick = {
@@ -153,9 +155,9 @@ fun PremiumScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         when {
-                            uiState.hasPendingPurchase -> "Compra pendiente en Google Play"
-                            price == "Cargando precio..." -> "Cargando..."
-                            else -> "Desbloquear Premium · $price"
+                            uiState.hasPendingPurchase -> stringResource(R.string.settings_purchase_pending)
+                            price == validatingPrice -> stringResource(R.string.settings_loading)
+                            else -> stringResource(R.string.settings_unlock_premium, price)
                         }
                     )
                 }
@@ -163,7 +165,7 @@ fun PremiumScreen(
                 if (uiState.isBillingConnecting) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Conectando con Google Play...",
+                        stringResource(R.string.settings_connecting_google_play),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -198,12 +200,12 @@ private fun PremiumFeatureRow(feature: PremiumFeature) {
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(
-                    text = feature.title,
+                    text = stringResource(feature.titleRes),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    text = feature.description,
+                    text = stringResource(feature.descriptionRes),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -215,22 +217,22 @@ private fun PremiumFeatureRow(feature: PremiumFeature) {
 /** Catálogo de funciones premium mostradas en la pantalla de compra. */
 enum class PremiumFeature(
     val icon: ImageVector,
-    val title: String,
-    val description: String
+    val titleRes: Int,
+    val descriptionRes: Int
 ) {
     SHEETS(
         Icons.Outlined.TableChart,
-        "Exportación a Google Sheets",
-        "Exporta y sincroniza tus datos con un Google Sheet organizado por hojas."
+        R.string.premium_features_sheets_title,
+        R.string.premium_features_sheets_desc
     ),
     DRIVE_PHOTOS(
         Icons.Outlined.CloudUpload,
-        "Fotos de facturas en Drive",
-        "Guarda automáticamente cada justificante nuevo en tu carpeta FinAI."
+        R.string.premium_features_drive_title,
+        R.string.premium_features_drive_desc
     ),
     CHAT(
         Icons.Outlined.SmartToy,
-        "Chat IA avanzado",
-        "Memoria de 10 turnos y respuestas en streaming."
+        R.string.premium_features_chat_title,
+        R.string.premium_features_chat_desc
     )
 }

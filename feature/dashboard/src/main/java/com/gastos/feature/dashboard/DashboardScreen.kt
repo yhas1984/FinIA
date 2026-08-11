@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -27,14 +28,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.formatMoney
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.max
 import androidx.compose.ui.unit.Dp
+import com.gastos.feature.dashboard.R
 
 @Composable
 fun DashboardScreen(
@@ -47,6 +51,19 @@ fun DashboardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val fmt = { amt: Double -> com.gastos.domain.model.formatMoney(amt, defaultCurrency) }
+    val appLocale = LocalLocale.current.platformLocale
+    val selectedMonthLabel = remember(uiState.selectedMonth, appLocale) {
+        Calendar.getInstance(appLocale).apply {
+            clear()
+            set(Calendar.YEAR, uiState.selectedMonth.year)
+            set(Calendar.MONTH, uiState.selectedMonth.month - 1)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }.let { calendar ->
+            SimpleDateFormat("MMMM yyyy", appLocale)
+                .format(calendar.time)
+                .replaceFirstChar { it.uppercase(appLocale) }
+        }
+    }
     var showMonthPicker by rememberSaveable { mutableStateOf(false) }
 
     val listState = rememberLazyListState()
@@ -106,7 +123,7 @@ fun DashboardScreen(
         ) {
             stickyHeader {
                 MonthSelectorRow(
-                    label = uiState.selectedMonthLabel,
+                    label = selectedMonthLabel,
                     isCurrentMonth = uiState.isCurrentMonth,
                     onPrevious = viewModel::previousMonth,
                     onNext = viewModel::nextMonth,
@@ -123,7 +140,7 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "FinAI",
+                        text = stringResource(R.string.dashboard_header),
                         style = MaterialTheme.typography.headlineLarge.copy(
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
@@ -133,14 +150,14 @@ fun DashboardScreen(
                         IconButton(onClick = onNavigateToBackup) {
                             Icon(
                                 Icons.Filled.CloudUpload,
-                                contentDescription = "Backup",
+                                contentDescription = stringResource(R.string.backup),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         IconButton(onClick = onNavigateToSettings) {
                             Icon(
                                 Icons.Filled.Settings,
-                                contentDescription = "Configuración",
+                                contentDescription = stringResource(R.string.settings),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -150,9 +167,9 @@ fun DashboardScreen(
                             Icon(
                                 Icons.Filled.Tune,
                                 contentDescription = if (uiState.isEditMode) {
-                                    "Terminar personalización"
+                                    stringResource(R.string.finish_customization)
                                 } else {
-                                    "Personalizar Dashboard"
+                                    stringResource(R.string.customize_dashboard)
                                 },
                                 tint = if (uiState.isEditMode) {
                                     MaterialTheme.colorScheme.primary
@@ -205,6 +222,8 @@ fun DashboardScreen(
                         widgetId = widgetId,
                         uiState = uiState,
                         fmt = fmt,
+                        monthLabel = selectedMonthLabel,
+                        appLocale = appLocale,
                         isEditMode = uiState.isEditMode,
                         onNavigateToChat = onNavigateToChat,
                         onTypeChange = viewModel::setAnalyticsType,
@@ -245,11 +264,13 @@ fun DashboardScreen(
     }
 
     // Snackbar de "Distribución restablecida" con Deshacer.
-    LaunchedEffect(uiState.showResetUndo) {
+    val distributionRestoredMessage = stringResource(R.string.distribution_restored)
+    val undoLabel = stringResource(R.string.undo)
+    LaunchedEffect(uiState.showResetUndo, distributionRestoredMessage, undoLabel) {
         if (uiState.showResetUndo) {
             val result = snackbarHostState.showSnackbar(
-                message = "Distribución restablecida",
-                actionLabel = "Deshacer",
+                message = distributionRestoredMessage,
+                actionLabel = undoLabel,
                 duration = SnackbarDuration.Short
             )
             if (result == SnackbarResult.ActionPerformed) {
@@ -272,14 +293,15 @@ fun DashboardScreen(
 
     // Drill-down de estadísticas (categoría → subcategoría → movimientos).
     val detail = uiState.categoryDetail
+    val noSubcategoryLabel = stringResource(R.string.no_subcategory_label)
     if (uiState.selectedCategory != null && detail != null) {
         AnalyticsDrillDownSheet(
             type = uiState.analyticsType,
-            monthLabel = uiState.selectedMonthLabel,
+            monthLabel = selectedMonthLabel,
             detail = detail,
             selectedSubcategory = uiState.selectedSubcategory,
             subcategoryValueToLabel = { value ->
-                value ?: DashboardViewModel.NO_SUBCATEGORY_LABEL
+                value ?: noSubcategoryLabel
             },
             movements = uiState.movements,
             fmt = fmt,
@@ -299,7 +321,7 @@ fun DashboardScreen(
     // Detalle de movimientos del día seleccionado en el calendario.
     uiState.selectedDay?.let { day ->
         CalendarDayDetailSheet(
-            monthLabel = uiState.selectedMonthLabel,
+            monthLabel = selectedMonthLabel,
             day = day,
             dayData = uiState.calendarDays.firstOrNull { it.day == day },
             movements = uiState.dayMovements,
@@ -317,6 +339,8 @@ private fun DashboardWidgetContent(
     widgetId: String,
     uiState: DashboardUiState,
     fmt: (Double) -> String,
+    monthLabel: String,
+    appLocale: Locale,
     isEditMode: Boolean,
     onNavigateToChat: () -> Unit,
     onTypeChange: (AnalyticsType) -> Unit,
@@ -326,20 +350,20 @@ private fun DashboardWidgetContent(
     onNextMonth: () -> Unit
 ) {
     when (widgetId) {
-        DashboardWidget.BALANCE.id -> BalanceWidget(uiState = uiState, fmt = fmt)
+        DashboardWidget.BALANCE.id -> BalanceWidget(uiState = uiState, fmt = fmt, monthLabel = monthLabel)
         DashboardWidget.CASHFLOW.id -> CashflowCard(
             totalGastos = fmt(uiState.totalGastosMes),
             totalIngresos = fmt(uiState.totalIngresosMes)
         )
         DashboardWidget.ANALYTICS.id -> InteractiveAnalyticsCard(
             type = uiState.analyticsType,
-            monthLabel = uiState.selectedMonthLabel,
+            monthLabel = monthLabel,
             total = fmt(uiState.analyticsTotal),
             slices = uiState.analyticsSlices,
-            emptyMessage = if (uiState.analyticsType == AnalyticsType.GASTOS) {
-                "Sin gastos en ${uiState.selectedMonthLabel.lowercase()}. Prueba a cambiar de mes."
+                emptyMessage = if (uiState.analyticsType == AnalyticsType.GASTOS) {
+                 stringResource(R.string.no_expense_in_month, monthLabel.lowercase(appLocale))
             } else {
-                "Sin ingresos en ${uiState.selectedMonthLabel.lowercase()}. Prueba a cambiar de mes."
+                 stringResource(R.string.no_income_in_month, monthLabel.lowercase(appLocale))
             },
             fmt = fmt,
             onTypeChange = onTypeChange,
@@ -347,7 +371,7 @@ private fun DashboardWidgetContent(
         )
         DashboardWidget.CALENDAR.id -> FinancialCalendarCard(
             month = uiState.selectedMonth,
-            monthLabel = uiState.selectedMonthLabel,
+             monthLabel = monthLabel,
             isCurrentMonth = uiState.isCurrentMonth,
             days = uiState.calendarDays,
             selectedDay = uiState.selectedDay,
@@ -365,7 +389,7 @@ private fun DashboardWidgetContent(
         DashboardWidget.TODAY.id -> TodayWidget(uiState = uiState, fmt = fmt)
         DashboardWidget.CONVERSION.id -> {
             if (isEditMode || uiState.convertedRecords.isNotEmpty()) {
-                ConversionWidget(uiState = uiState, fmt = fmt)
+                ConversionWidget(uiState = uiState, fmt = fmt, monthLabel = monthLabel, appLocale = appLocale)
             }
         }
         DashboardWidget.CHAT_CTA.id -> ChatCtaWidget(onNavigateToChat = onNavigateToChat)
@@ -375,11 +399,12 @@ private fun DashboardWidgetContent(
 @Composable
 private fun BalanceWidget(
     uiState: DashboardUiState,
-    fmt: (Double) -> String
+    fmt: (Double) -> String,
+    monthLabel: String
 ) {
     Column {
         Text(
-            text = "Balance · ${uiState.selectedMonthLabel}",
+            text = stringResource(R.string.balance_for_month, monthLabel),
             style = MaterialTheme.typography.labelMedium.copy(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -406,7 +431,7 @@ private fun BalanceWidget(
 private fun WeeklyChartWidget(uiState: DashboardUiState) {
     GlassCard {
         Text(
-            text = "Últimos 7 Días",
+            text = stringResource(R.string.last_7_days),
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface
@@ -417,7 +442,7 @@ private fun WeeklyChartWidget(uiState: DashboardUiState) {
             WeeklyBarChart(dailyData = uiState.dailyData)
         } else {
             Text(
-                text = "Sin datos esta semana",
+            text = stringResource(R.string.no_data_this_week),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -432,7 +457,7 @@ private fun WeeklyTotalsWidget(
 ) {
     GlassCard {
         Text(
-            text = "Esta Semana",
+            text = stringResource(R.string.this_week),
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface
@@ -440,13 +465,13 @@ private fun WeeklyTotalsWidget(
             modifier = Modifier.padding(bottom = 12.dp)
         )
         TotalsRow(
-            label = "Gastos",
+            label = stringResource(R.string.expenses),
             amount = fmt(uiState.totalGastosSemana),
             color = MaterialTheme.colorScheme.error
         )
         Spacer(modifier = Modifier.height(8.dp))
         TotalsRow(
-            label = "Ingresos",
+            label = stringResource(R.string.income),
             amount = fmt(uiState.totalIngresosSemana),
             color = MaterialTheme.colorScheme.secondary
         )
@@ -460,7 +485,7 @@ private fun TodayWidget(
 ) {
     GlassCard {
         Text(
-            text = "Hoy",
+            text = stringResource(R.string.today),
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface
@@ -468,13 +493,13 @@ private fun TodayWidget(
             modifier = Modifier.padding(bottom = 12.dp)
         )
         TotalsRow(
-            label = "Gastos",
+            label = stringResource(R.string.expenses),
             amount = fmt(uiState.totalGastosHoy),
             color = MaterialTheme.colorScheme.error
         )
         Spacer(modifier = Modifier.height(8.dp))
         TotalsRow(
-            label = "Ingresos",
+            label = stringResource(R.string.income),
             amount = fmt(uiState.totalIngresosHoy),
             color = MaterialTheme.colorScheme.secondary
         )
@@ -511,12 +536,14 @@ private fun TotalsRow(
 @Composable
 private fun ConversionWidget(
     uiState: DashboardUiState,
-    fmt: (Double) -> String
+    fmt: (Double) -> String,
+    monthLabel: String,
+    appLocale: Locale
 ) {
     if (uiState.convertedRecords.isEmpty()) {
         GlassCard {
             Text(
-                text = "Conversión de moneda",
+                text = stringResource(R.string.conversion_currency),
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface
@@ -524,7 +551,7 @@ private fun ConversionWidget(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             Text(
-                text = "Sin conversiones en ${uiState.selectedMonthLabel.lowercase()}.",
+                text = stringResource(R.string.conversion_no_records, monthLabel.lowercase(appLocale)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -532,8 +559,9 @@ private fun ConversionWidget(
         return
     }
     GlassCard {
+        val defaultToUsdRate = uiState.defaultToUsdRate
         Text(
-            text = "Conversión de moneda",
+            text = stringResource(R.string.conversion_currency),
             style = MaterialTheme.typography.titleMedium.copy(
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface
@@ -543,10 +571,10 @@ private fun ConversionWidget(
         Text(
             text = when {
                 uiState.defaultCurrency.equals("USD", ignoreCase = true) ->
-                    "1 USD = 1 USD"
-                uiState.defaultToUsdRate != null ->
-                    "1 ${uiState.defaultCurrency} ≈ ${"%.6f".format(uiState.defaultToUsdRate)} USD"
-                else -> "Tasa ${uiState.defaultCurrency} → USD no disponible"
+                    stringResource(R.string.conversion_rate_usd)
+                defaultToUsdRate != null ->
+                    stringResource(R.string.conversion_rate, uiState.defaultCurrency, defaultToUsdRate)
+                else -> stringResource(R.string.conversion_rate_unavailable, uiState.defaultCurrency)
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -576,14 +604,14 @@ private fun ChatCtaWidget(onNavigateToChat: () -> Unit) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "💬 Habla con FinAI",
+                    text = stringResource(R.string.chat_with_finai),
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold
                     )
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Registra gastos, ingresos o consulta tus finanzas",
+                    text = stringResource(R.string.chat_with_finai_subtitle),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -615,7 +643,7 @@ fun CashflowCard(totalGastos: String, totalIngresos: String) {
                 // Gastos column
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Gastos",
+                        text = stringResource(R.string.expenses),
                         style = MaterialTheme.typography.labelMedium.copy(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -636,7 +664,7 @@ fun CashflowCard(totalGastos: String, totalIngresos: String) {
                 // Ingresos column
                 Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "Ingresos",
+                        text = stringResource(R.string.income),
                         style = MaterialTheme.typography.labelMedium.copy(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -792,7 +820,7 @@ fun NeonFab(onClick: () -> Unit) {
         IconButton(onClick = onClick, modifier = Modifier.fillMaxSize()) {
             Icon(
                 imageVector = Icons.Filled.Add,
-                contentDescription = "Agregar",
+                contentDescription = stringResource(R.string.new_expense),
                 tint = Color.Black,
                 modifier = Modifier.size(32.dp)
             )
@@ -818,7 +846,7 @@ fun WeeklyBarChart(dailyData: List<DayData>) {
                         .background(MaterialTheme.colorScheme.error, RoundedCornerShape(2.dp))
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Gastos", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.expenses), style = MaterialTheme.typography.labelSmall)
             }
             Spacer(modifier = Modifier.width(16.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -828,7 +856,7 @@ fun WeeklyBarChart(dailyData: List<DayData>) {
                         .background(MaterialTheme.colorScheme.secondary, RoundedCornerShape(2.dp))
                 )
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Ingresos", style = MaterialTheme.typography.labelSmall)
+                Text(stringResource(R.string.income), style = MaterialTheme.typography.labelSmall)
             }
         }
 

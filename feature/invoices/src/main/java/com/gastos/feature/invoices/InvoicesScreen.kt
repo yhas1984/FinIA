@@ -3,7 +3,6 @@ package com.gastos.feature.invoices
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -15,13 +14,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.TransactionCategories
+import com.gastos.feature.invoices.R
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
@@ -38,6 +41,7 @@ fun InvoicesScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showFilterMenu by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val language = LocalLocale.current.platformLocale.language
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
@@ -54,28 +58,28 @@ fun InvoicesScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Gastos") },
+                title = { Text(stringResource(R.string.invoices_title)) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ),
                 actions = {
                     IconButton(onClick = { showFilterMenu = !showFilterMenu }) {
-                        Icon(Icons.Default.FilterList, contentDescription = "Filtrar")
+                        Icon(Icons.Default.FilterList, contentDescription = stringResource(R.string.filter))
                     }
                     DropdownMenu(
                         expanded = showFilterMenu,
                         onDismissRequest = { showFilterMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Todas") },
+                            text = { Text(stringResource(R.string.all_items)) },
                             onClick = {
                                 viewModel.filterByType(null)
                                 showFilterMenu = false
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Solo Gastos") },
+                            text = { Text(stringResource(R.string.only_expenses)) },
                             onClick = {
                                 viewModel.filterByType(InvoiceType.GASTO)
                                 showFilterMenu = false
@@ -100,12 +104,12 @@ fun InvoicesScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "No hay facturas",
+                        text = stringResource(R.string.no_invoices),
                         style = MaterialTheme.typography.headlineSmall
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Agrega tu primera factura con el botón +",
+                        text = stringResource(R.string.add_first_invoice),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -130,14 +134,14 @@ fun InvoicesScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Total Gastos",
+                            text = stringResource(R.string.total_expenses),
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
                             text = if (total != null) {
                                 com.gastos.domain.model.formatMoney(total, target)
                             } else {
-                                "— ($target)"
+                                stringResource(R.string.no_conversion_total, target)
                             },
                             style = MaterialTheme.typography.headlineMedium.copy(
                                 fontWeight = FontWeight.Bold
@@ -156,18 +160,18 @@ fun InvoicesScreen(
                     FilterChip(
                         selected = uiState.selectedCategoryFilter == null,
                         onClick = { viewModel.filterByCategory(null) },
-                        label = { Text("Todas") }
+                        label = { Text(stringResource(R.string.all_items)) }
                     )
                     FilterChip(
                         selected = uiState.selectedCategoryFilter == UNCATEGORIZED_FILTER,
                         onClick = { viewModel.filterByCategory(UNCATEGORIZED_FILTER) },
-                        label = { Text(TransactionCategories.UNCATEGORIZED_LABEL) }
+                         label = { Text(TransactionCategories.currentUncategorizedLabel(language)) }
                     )
                     uiState.availableCategories.forEach { category ->
                         FilterChip(
                             selected = uiState.selectedCategoryFilter == category,
                             onClick = { viewModel.filterByCategory(category) },
-                            label = { Text(category) }
+                             label = { Text(TransactionCategories.displayCategory(category, language)) }
                         )
                     }
                 }
@@ -186,13 +190,13 @@ fun InvoicesScreen(
                         FilterChip(
                             selected = uiState.selectedSubcategoryFilter == null,
                             onClick = { viewModel.filterBySubcategory(null) },
-                            label = { Text("Todas") }
+                            label = { Text(stringResource(R.string.all_items)) }
                         )
                         uiState.availableSubcategories.forEach { subcategory ->
                             FilterChip(
                                 selected = uiState.selectedSubcategoryFilter == subcategory,
                                 onClick = { viewModel.filterBySubcategory(subcategory) },
-                                label = { Text(subcategory) }
+                                 label = { Text(TransactionCategories.displayCategory(subcategory, language)) }
                             )
                         }
                     }
@@ -207,6 +211,7 @@ fun InvoicesScreen(
                         item {
                             FilteredEmptyState(
                                 category = uiState.selectedCategoryFilter,
+                                language = language,
                                 onClearFilter = { viewModel.filterByCategory(null) }
                             )
                         }
@@ -246,10 +251,11 @@ fun InvoicesScreen(
 @Composable
 private fun FilteredEmptyState(
     category: String?,
+    language: String,
     onClearFilter: () -> Unit
 ) {
     val categoryLabel = if (category == UNCATEGORIZED_FILTER) {
-        TransactionCategories.UNCATEGORIZED_LABEL
+        TransactionCategories.currentUncategorizedLabel(language)
     } else {
         category.orEmpty()
     }
@@ -266,16 +272,16 @@ private fun FilteredEmptyState(
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            text = "No hay movimientos en $categoryLabel",
+            text = stringResource(R.string.filtered_no_movements, categoryLabel),
             style = MaterialTheme.typography.titleMedium
         )
         Text(
-            text = "Prueba otra categoría o vuelve a ver todas las facturas.",
+            text = stringResource(R.string.try_other_category_invoices),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         OutlinedButton(onClick = onClearFilter) {
-            Text("Ver todas")
+            Text(stringResource(R.string.view_all))
         }
     }
 }
@@ -293,6 +299,7 @@ private fun InvoiceCard(
     isUploadingToDrive: Boolean
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val language = LocalLocale.current.platformLocale.language
 
     Card(
         modifier = Modifier.fillMaxWidth()
@@ -318,8 +325,8 @@ private fun InvoiceCard(
                     Spacer(modifier = Modifier.height(6.dp))
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant) {
                         Text(
-                            text = TransactionCategories.displayCategory(invoice.categoria) +
-                                invoice.subcategoria?.takeIf { it.isNotBlank() }?.let { " / $it" }.orEmpty(),
+                             text = TransactionCategories.displayCategory(invoice.categoria, language) +
+                                 invoice.subcategoria?.takeIf { it.isNotBlank() }?.let { " / ${TransactionCategories.displayCategory(it, language)}" }.orEmpty(),
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             style = MaterialTheme.typography.labelLarge
                         )
@@ -337,7 +344,7 @@ private fun InvoiceCard(
                             MaterialTheme.colorScheme.tertiary
                     )
                     Text(
-                        text = if (invoice.tipo == InvoiceType.GASTO) "Gasto" else "Ingreso",
+                        text = if (invoice.tipo == InvoiceType.GASTO) stringResource(R.string.invoice_type_expense) else stringResource(R.string.invoice_type_income),
                         style = MaterialTheme.typography.bodySmall,
                         color = if (invoice.tipo == InvoiceType.GASTO)
                             MaterialTheme.colorScheme.error
@@ -355,13 +362,36 @@ private fun InvoiceCard(
                 ) {
                     invoice.nifEmisor?.let {
                         Text(
-                            text = "NIF Emisor: $it",
+                            text = stringResource(R.string.invoice_nif_issuer, it),
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                     invoice.nifReceptor?.let {
                         Text(
-                            text = "NIF Receptor: $it",
+                            text = stringResource(R.string.invoice_nif_receiver, it),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+
+            if (invoice.numeroFactura != null || invoice.baseImponible != null || invoice.cuotaIva != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    invoice.numeroFactura?.let {
+                        Text(stringResource(R.string.invoice_number_label, it), style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (invoice.baseImponible != null || invoice.cuotaIva != null) {
+                        Text(
+                            text = buildString {
+                                invoice.baseImponible?.let {
+                                    append(stringResource(R.string.base_vat, com.gastos.domain.model.formatMoney(it, invoice.moneda)))
+                                }
+                                invoice.cuotaIva?.let {
+                                    if (isNotEmpty()) append(" · ")
+                                    append(stringResource(R.string.vat_line, com.gastos.domain.model.formatMoney(it, invoice.moneda)))
+                                }
+                            },
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -374,7 +404,7 @@ private fun InvoiceCard(
                     invoice.driveWebViewLink != null -> TextButton(onClick = onOpenDrive) {
                         Icon(Icons.Default.CloudDone, contentDescription = null)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Abrir foto en Drive")
+                        Text(stringResource(R.string.open_drive_photo))
                     }
                     else -> OutlinedButton(
                         onClick = onRetryDrive,
@@ -391,10 +421,10 @@ private fun InvoiceCard(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             when {
-                                isUploadingToDrive -> "Subiendo..."
-                                !isPremium -> "Drive requiere Premium"
-                                invoice.driveUploadPending -> "Reintentar Drive"
-                                else -> "Subir a Drive"
+                                 isUploadingToDrive -> stringResource(R.string.drive_uploading)
+                                 !isPremium -> stringResource(R.string.drive_requires_premium)
+                                 invoice.driveUploadPending -> stringResource(R.string.retry_drive)
+                                 else -> stringResource(R.string.upload_to_drive)
                             }
                         )
                     }
@@ -408,14 +438,14 @@ private fun InvoiceCard(
                 IconButton(onClick = onEdit) {
                     Icon(
                         Icons.Default.Edit,
-                        contentDescription = "Editar",
+                        contentDescription = stringResource(R.string.edit),
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
                 IconButton(onClick = { showDeleteDialog = true }) {
                     Icon(
                         Icons.Default.Delete,
-                        contentDescription = "Eliminar",
+                        contentDescription = stringResource(R.string.delete),
                         tint = MaterialTheme.colorScheme.error
                     )
                 }
@@ -426,8 +456,8 @@ private fun InvoiceCard(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("Eliminar factura") },
-            text = { Text("¿Estás seguro de eliminar esta factura?") },
+            title = { Text(stringResource(R.string.delete_invoice_title)) },
+            text = { Text(stringResource(R.string.delete_invoice_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -435,12 +465,12 @@ private fun InvoiceCard(
                         showDeleteDialog = false
                     }
                 ) {
-                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancelar")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -453,18 +483,18 @@ private fun openTrustedUrl(
     allowedHosts: Set<String>,
     onError: (String) -> Unit
 ) {
-    val uri = Uri.parse(rawUrl)
+    val uri = rawUrl.toUri()
     val host = uri.host?.lowercase(Locale.ROOT)
     if (uri.scheme != "https" || host !in allowedHosts) {
-        onError("El enlace guardado no es válido o ya no es seguro abrirlo.")
+        onError(context.getString(R.string.open_link_invalid))
         return
     }
     val intent = Intent(Intent.ACTION_VIEW, uri)
     try {
         context.startActivity(intent)
     } catch (_: ActivityNotFoundException) {
-        onError("No hay ninguna aplicación disponible para abrir este enlace.")
+        onError(context.getString(R.string.open_link_no_app))
     } catch (_: SecurityException) {
-        onError("No se pudo abrir el enlace solicitado.")
+        onError(context.getString(R.string.open_link_denied))
     }
 }

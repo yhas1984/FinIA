@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="voice_unavailable">Voice recognition unavailable</string>
+    <string name="voice_listening">Listening...</string>
+    <string name="voice_speak_now">Speak now...</string>
+    <string name="voice_processing">Processing...</string>
+    <string name="voice_error_audio">Audio error</string>
+    <string name="voice_error_client">Client error</string>
+    <string name="voice_error_permissions">Insufficient permissions</string>
+    <string name="voice_error_network">Network error</string>
+    <string name="voice_error_network_timeout">Network timeout</string>
+    <string name="voice_error_no_match">No match found</string>
+    <string name="voice_error_busy">Recognizer busy</string>
+    <string name="voice_error_server">Server error</string>
+    <string name="voice_error_speech_timeout">Speech timeout</string>
+    <string name="voice_error_unknown">Unknown error: %1$d</string>
+    <string name="voice_no_text">No speech detected</string>
+</resources>

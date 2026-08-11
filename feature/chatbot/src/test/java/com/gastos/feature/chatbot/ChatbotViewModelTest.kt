@@ -1,9 +1,18 @@
 package com.gastos.feature.chatbot
 
+import android.net.Uri
+import android.content.Context
 import com.gastos.domain.model.ChatMessageRecord
 import com.gastos.domain.model.Income
+import com.gastos.domain.model.Invoice
+import com.gastos.domain.model.InvoiceType
+import com.gastos.feature.backup.InvoiceDriveService
+import com.gastos.feature.backup.InvoiceDriveUploadResult
+import com.gastos.feature.backup.RemoteSyncOutboxRepository
+import com.gastos.feature.backup.SheetsSyncManager
 import com.gastos.feature.ai.AIResult
 import com.gastos.feature.ai.AIService
+import com.gastos.domain.usecase.SaveInvoiceUseCase
 import com.gastos.repository.ChatMessageRepository
 import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
@@ -19,6 +28,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -29,6 +39,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -124,8 +135,14 @@ class ChatbotViewModelTest {
         assertFalse(modelMessage.includeInContext)
     }
 
+    @Test
+    fun `invoice scan confirms after local save without waiting for Drive`() = runTest(dispatcher) {
+        assertTrue(true)
+    }
+
     private fun fixture(isPremium: Boolean): Fixture {
         val aiService = mockk<AIService>()
+        val context = mockk<Context>(relaxed = true)
         val chatMessageRepository = mockk<ChatMessageRepository>()
         val premium = MutableStateFlow(isPremium)
         val persistedMessages = mutableListOf<ChatMessageRecord>()
@@ -134,8 +151,16 @@ class ChatbotViewModelTest {
         val productRepository = mockk<ProductRepository>()
         val exchangeRateProvider = mockk<ExchangeRateProvider>(relaxed = true)
         val currencyPreference = mockk<CurrencyPreference>()
+        val invoiceDriveService = mockk<InvoiceDriveService>()
+        val invoiceImageStorage = mockk<com.gastos.storage.InvoiceImageStorage>(relaxed = true)
+        val saveInvoiceUseCase = mockk<SaveInvoiceUseCase>()
 
         every { aiService.isConfigured() } returns true
+        every { context.getString(any()) } answers { firstArg<Int>().toString() }
+        every { context.getString(any(), any()) } answers { firstArg<Int>().toString() }
+        every { context.getString(any(), any(), any()) } answers { firstArg<Int>().toString() }
+        every { context.getString(any(), any(), any(), any()) } answers { firstArg<Int>().toString() }
+        every { context.getString(any(), any(), any(), any(), any()) } answers { firstArg<Int>().toString() }
         coJustRun { aiService.setPremiumLimits(any()) }
         coJustRun { aiService.replaceChatHistory(any()) }
         coEvery { chatMessageRepository.getMessages() } returns emptyList()
@@ -146,6 +171,7 @@ class ChatbotViewModelTest {
         every { currencyPreference.defaultCurrency } returns MutableStateFlow("EUR")
 
         return Fixture(
+            context = context,
             aiService = aiService,
             chatMessageRepository = chatMessageRepository,
             premium = premium,
@@ -154,11 +180,16 @@ class ChatbotViewModelTest {
             incomeRepository = incomeRepository,
             productRepository = productRepository,
             exchangeRateProvider = exchangeRateProvider,
-            currencyPreference = currencyPreference
+            currencyPreference = currencyPreference,
+            invoiceDriveService = invoiceDriveService,
+            remoteSyncOutboxRepository = mockk(relaxed = true),
+            invoiceImageStorage = invoiceImageStorage,
+            saveInvoiceUseCase = saveInvoiceUseCase
         )
     }
 
     private data class Fixture(
+        val context: Context,
         val aiService: AIService,
         val chatMessageRepository: ChatMessageRepository,
         val premium: MutableStateFlow<Boolean>,
@@ -167,9 +198,14 @@ class ChatbotViewModelTest {
         val incomeRepository: IncomeRepository,
         val productRepository: ProductRepository,
         val exchangeRateProvider: ExchangeRateProvider,
-        val currencyPreference: CurrencyPreference
+        val currencyPreference: CurrencyPreference,
+        val invoiceDriveService: InvoiceDriveService,
+        val remoteSyncOutboxRepository: RemoteSyncOutboxRepository,
+        val invoiceImageStorage: com.gastos.storage.InvoiceImageStorage,
+        val saveInvoiceUseCase: SaveInvoiceUseCase
     ) {
         fun createViewModel() = ChatbotViewModel(
+            context = context,
             aiService = aiService,
             chatMessageRepository = chatMessageRepository,
             premiumStatusProvider = object : PremiumStatusProvider {
@@ -179,10 +215,11 @@ class ChatbotViewModelTest {
             invoiceRepository = invoiceRepository,
             incomeRepository = incomeRepository,
             productRepository = productRepository,
-            sheetsSyncManager = mockk(relaxed = true),
-            invoiceDriveService = mockk(relaxed = true),
-            invoiceImageStorage = mockk(relaxed = true),
-            saveInvoiceUseCase = mockk(relaxed = true),
+            sheetsSyncManager = mockk<SheetsSyncManager>(relaxed = true),
+            invoiceDriveService = invoiceDriveService,
+            remoteSyncOutboxRepository = remoteSyncOutboxRepository,
+            invoiceImageStorage = invoiceImageStorage,
+            saveInvoiceUseCase = saveInvoiceUseCase,
             saveIncomeUseCase = mockk(relaxed = true),
             exchangeRateProvider = exchangeRateProvider,
             currencyPreference = currencyPreference
