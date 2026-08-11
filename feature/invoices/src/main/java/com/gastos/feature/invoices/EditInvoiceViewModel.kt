@@ -24,6 +24,7 @@ data class EditInvoiceUiState(
     val saveResult: String? = null,
     val invoice: Invoice? = null,
     val availableCategories: List<String> = TransactionCategories.defaultExpenseCategories,
+    val availableSubcategories: List<String> = emptyList(),
     val error: String? = null
 )
 
@@ -46,6 +47,8 @@ data class EditInvoiceForm(
     val nifReceptor: String = "",
     val categoria: String = "",
     val isCustomCategory: Boolean = false,
+    val isCustomSubcategory: Boolean = false,
+    val subcategoria: String = "",
     val notas: String = ""
 ) {
 
@@ -112,6 +115,7 @@ class EditInvoiceViewModel @Inject constructor(
     val form: StateFlow<EditInvoiceForm> = _form.asStateFlow()
 
     private var originalInvoice: Invoice? = null
+    private var existingSubcategories: List<String?> = emptyList()
 
     init {
         loadAvailableCategories()
@@ -119,7 +123,9 @@ class EditInvoiceViewModel @Inject constructor(
 
     private fun loadAvailableCategories() {
         viewModelScope.launch {
-            val existing = invoiceRepository.getAllInvoices().first().map { it.categoria }
+            val invoices = invoiceRepository.getAllInvoices().first()
+            val existing = invoices.map { it.categoria }
+            existingSubcategories = invoices.mapNotNull { it.subcategoria }
             _uiState.update {
                 it.copy(
                     availableCategories = TransactionCategories.availableCategories(
@@ -154,7 +160,17 @@ class EditInvoiceViewModel @Inject constructor(
                             isCustomCategory = invoice.categoria?.let {
                                 TransactionCategories.canonicalExpenseCategory(it) !in TransactionCategories.defaultExpenseCategories
                             } ?: false,
+                            isCustomSubcategory = invoice.subcategoria?.let { sub -> sub !in TransactionCategories.suggestedSubcategories(invoice.categoria, isIncome = false) } ?: false,
+                            subcategoria = invoice.subcategoria.orEmpty(),
                             notas = invoice.notas ?: ""
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(
+                            availableSubcategories = TransactionCategories.availableSubcategories(
+                                defaults = TransactionCategories.suggestedSubcategories(invoice.categoria, isIncome = false),
+                                existing = existingSubcategories
+                            )
                         )
                     }
                     _uiState.update { it.copy(isLoading = false, invoice = invoice) }
@@ -181,11 +197,28 @@ class EditInvoiceViewModel @Inject constructor(
     fun updateNifEmisor(value: String) { _form.update { it.copy(nifEmisor = value) } }
     fun updateNifReceptor(value: String) { _form.update { it.copy(nifReceptor = value) } }
     fun updateCategoria(value: String) { _form.update { it.copy(categoria = value) } }
+    fun updateSubcategoria(value: String) { _form.update { it.copy(subcategoria = value) } }
     fun selectCategory(value: String?, isCustomCategory: Boolean) {
         _form.update {
             it.copy(
                 categoria = value.orEmpty(),
                 isCustomCategory = isCustomCategory
+            )
+        }
+        _uiState.update {
+            it.copy(
+                availableSubcategories = TransactionCategories.availableSubcategories(
+                    defaults = TransactionCategories.suggestedSubcategories(value, isIncome = false),
+                    existing = existingSubcategories
+                )
+            )
+        }
+    }
+    fun selectSubcategory(value: String?, isCustom: Boolean) {
+        _form.update {
+            it.copy(
+                subcategoria = value.orEmpty(),
+                isCustomSubcategory = isCustom
             )
         }
     }
@@ -227,6 +260,7 @@ class EditInvoiceViewModel @Inject constructor(
                     proveedor = form.proveedor.trim(),
                     tipo = InvoiceType.GASTO,
                     categoria = TransactionCategories.canonicalExpenseCategory(form.categoria),
+                    subcategoria = TransactionCategories.normalizeCategory(form.subcategoria),
                     moneda = currency,
                     total = fiscal.total,
                     ivaPercent = fiscal.ivaPercent,

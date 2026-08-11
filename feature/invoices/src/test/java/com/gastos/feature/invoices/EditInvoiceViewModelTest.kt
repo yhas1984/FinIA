@@ -2,6 +2,7 @@ package com.gastos.feature.invoices
 
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
+import com.gastos.domain.model.TransactionCategories
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -80,4 +81,73 @@ class EditInvoiceViewModelTest {
                 })
             }
         }
+
+    @Test
+    fun `saveInvoice persiste subcategoria normalizada`() = runTest(dispatcher) {
+        val repo = mockk<com.gastos.repository.InvoiceRepository>()
+        val productRepo = mockk<com.gastos.repository.ProductRepository>()
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+        every { repo.getAllInvoices() } returns flowOf(emptyList())
+        coEvery { repo.insertInvoice(any()) } returns 10L
+
+        val vm = EditInvoiceViewModel(repo, productRepo, sync)
+        vm.updateProveedor("Acme")
+        vm.updateTotal("121")
+        vm.selectCategory("Alimentación", isCustomCategory = false)
+        vm.selectSubcategory("  supermercado  ", isCustom = true)
+        vm.saveInvoice()
+        advanceUntilIdle()
+
+        coVerify {
+            repo.insertInvoice(match {
+                it.subcategoria == "supermercado" &&
+                    it.categoria == "Alimentación" &&
+                    it.tipo == InvoiceType.GASTO
+            })
+        }
+    }
+
+    @Test
+    fun `loadInvoice restaura subcategoria`() = runTest(dispatcher) {
+        val repo = mockk<com.gastos.repository.InvoiceRepository>()
+        val productRepo = mockk<com.gastos.repository.ProductRepository>()
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+        val original = Invoice(
+            id = 7L,
+            fecha = 1L,
+            proveedor = "Acme",
+            tipo = InvoiceType.GASTO,
+            categoria = "Alimentación",
+            subcategoria = "Supermercado",
+            total = 121.0,
+            ivaPercent = 21.0,
+            irpfPercent = 0.0
+        )
+        coEvery { repo.getInvoiceById(7L) } returns original
+        every { repo.getAllInvoices() } returns flowOf(listOf(original))
+
+        val vm = EditInvoiceViewModel(repo, productRepo, sync)
+        vm.loadInvoice(7L)
+        advanceUntilIdle()
+
+        assert(vm.form.value.subcategoria == "Supermercado")
+        assert(vm.form.value.isCustomSubcategory.not())
+    }
+
+    @Test
+    fun `selectCategory actualiza availableSubcategories`() = runTest(dispatcher) {
+        val repo = mockk<com.gastos.repository.InvoiceRepository>()
+        val productRepo = mockk<com.gastos.repository.ProductRepository>()
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+        every { repo.getAllInvoices() } returns flowOf(listOf(Invoice(id = 1L, fecha = 1L, proveedor = "A", tipo = InvoiceType.GASTO, total = 1.0, ivaPercent = 0.0, irpfPercent = 0.0, subcategoria = "Supermercado")))
+
+        val vm = EditInvoiceViewModel(repo, productRepo, sync)
+        vm.selectCategory("Alimentación", isCustomCategory = false)
+        advanceUntilIdle()
+
+        assert(vm.uiState.value.availableSubcategories.containsAll(
+            TransactionCategories.suggestedSubcategories("Alimentación", isIncome = false)
+        ))
+        assert(vm.uiState.value.availableSubcategories.contains("Supermercado"))
+    }
 }

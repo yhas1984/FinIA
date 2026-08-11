@@ -36,6 +36,7 @@ fun EditIncomeScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var showCurrencyPicker by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
+    var showSubcategoryPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(incomeId) {
         if (incomeId > 0) {
@@ -207,6 +208,70 @@ fun EditIncomeScreen(
                     singleLine = true,
                     supportingText = { Text("Déjala vacía para guardar sin categoría.") }
                 )
+            }
+
+            if (form.categoria.isNotBlank()) {
+                ExposedDropdownMenuBox(
+                    expanded = showSubcategoryPicker,
+                    onExpandedChange = { showSubcategoryPicker = it }
+                ) {
+                    OutlinedTextField(
+                        value = when {
+                            form.isCustomSubcategory && form.subcategoria.isNotBlank() -> form.subcategoria
+                            form.isCustomSubcategory -> TransactionCategories.CUSTOM_OPTION_LABEL
+                            else -> TransactionCategories.displayCategory(form.subcategoria)
+                        },
+                        onValueChange = {},
+                        label = { Text("Subcategoría") },
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showSubcategoryPicker) },
+                        modifier = Modifier
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = showSubcategoryPicker,
+                        onDismissRequest = { showSubcategoryPicker = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(TransactionCategories.UNCATEGORIZED_LABEL) },
+                            onClick = {
+                                viewModel.selectSubcategory(value = null, isCustom = false)
+                                showSubcategoryPicker = false
+                            }
+                        )
+                        uiState.availableSubcategories.forEach { subcategory ->
+                            DropdownMenuItem(
+                                text = { Text(subcategory) },
+                                onClick = {
+                                    viewModel.selectSubcategory(value = subcategory, isCustom = false)
+                                    showSubcategoryPicker = false
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(TransactionCategories.CUSTOM_OPTION_LABEL) },
+                            onClick = {
+                                viewModel.selectSubcategory(
+                                    value = if (form.isCustomSubcategory) form.subcategoria else null,
+                                    isCustom = true
+                                )
+                                showSubcategoryPicker = false
+                            }
+                        )
+                    }
+                }
+
+                if (form.isCustomSubcategory) {
+                    OutlinedTextField(
+                        value = form.subcategoria,
+                        onValueChange = { viewModel.updateSubcategoria(it) },
+                        label = { Text("Subcategoría personalizada") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = { Text("Déjala vacía para guardar sin subcategoría.") }
+                    )
+                }
             }
 
             // Devengado (bruto) y Líquido (neto)

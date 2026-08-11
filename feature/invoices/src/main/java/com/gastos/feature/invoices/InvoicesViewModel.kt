@@ -33,6 +33,8 @@ data class InvoicesUiState(
     val selectedType: InvoiceType? = null,
     val selectedCategoryFilter: String? = null,
     val availableCategories: List<String> = emptyList(),
+    val selectedSubcategoryFilter: String? = null,
+    val availableSubcategories: List<String> = emptyList(),
     /** Total convertido a la moneda por defecto (solo gastos). null = sin tasas. */
     val totalGastosConvertido: Double? = null,
     val defaultCurrency: String = "EUR",
@@ -58,6 +60,7 @@ class InvoicesViewModel @Inject constructor(
 
     private val selectedType = MutableStateFlow<InvoiceType?>(null)
     private val selectedCategoryFilter = MutableStateFlow<String?>(null)
+    private val selectedSubcategoryFilter = MutableStateFlow<String?>(null)
 
     private val _uiState = MutableStateFlow(InvoicesUiState())
     val uiState: StateFlow<InvoicesUiState> = _uiState.asStateFlow()
@@ -90,21 +93,45 @@ class InvoicesViewModel @Inject constructor(
                 .combine(selectedCategoryFilter) { invoices, categoryFilter ->
                     invoices to categoryFilter
                 }
-                .combine(currencyPreference.defaultCurrency) { (allInvoices, categoryFilter), target ->
-                    Triple(allInvoices, categoryFilter, target)
+                .combine(selectedSubcategoryFilter) { (invoices, categoryFilter), subcategoryFilter ->
+                    Triple(invoices, categoryFilter, subcategoryFilter)
                 }
-                .combine(exchangeRateProvider.rates) { (allInvoices, categoryFilter, target), _ ->
-                    val visibleInvoices = filterInvoicesByCategory(allInvoices, categoryFilter)
+                .combine(currencyPreference.defaultCurrency) { (allInvoices, categoryFilter, subcategoryFilter), target ->
+                    (allInvoices to categoryFilter) to (subcategoryFilter to target)
+                }
+                .combine(exchangeRateProvider.rates) { (outer, inner), _ ->
+                    val (allInvoices, categoryFilter) = outer
+                    val (subcategoryFilter, target) = inner
+                    val visibleInvoices = filterInvoicesByCategory(
+                        allInvoices,
+                        categoryFilter,
+                        subcategoryFilter
+                    )
                     val availableCategories = TransactionCategories.availableCategories(
                         defaults = TransactionCategories.defaultExpenseCategories,
                         existing = allInvoices.map { it.categoria }
                     )
+                    val availableSubcategories = if (categoryFilter == null || categoryFilter == UNCATEGORIZED_FILTER) {
+                        emptyList()
+                    } else {
+                        TransactionCategories.availableSubcategories(
+                            defaults = TransactionCategories.suggestedSubcategories(
+                                categoryFilter,
+                                isIncome = false
+                            ),
+                            existing = allInvoices
+                                .filter { TransactionCategories.matchesCategory(it.categoria, categoryFilter) }
+                                .map { it.subcategoria }
+                        )
+                    }
                     InvoicesDisplayData(
                         invoices = visibleInvoices,
                         targetCurrency = target,
                         total = recomputeTotal(visibleInvoices, target),
                         categoryFilter = categoryFilter,
+                        subcategoryFilter = subcategoryFilter,
                         availableCategories = availableCategories,
+                        availableSubcategories = availableSubcategories,
                         hasAnyInvoices = allInvoices.isNotEmpty()
                     )
                 }
@@ -123,7 +150,9 @@ class InvoicesViewModel @Inject constructor(
                             totalGastosConvertido = data.total,
                             defaultCurrency = data.targetCurrency,
                             selectedCategoryFilter = data.categoryFilter,
-                            availableCategories = data.availableCategories
+                            availableCategories = data.availableCategories,
+                            selectedSubcategoryFilter = data.subcategoryFilter,
+                            availableSubcategories = data.availableSubcategories
                         )
                     }
                 }
@@ -136,8 +165,14 @@ class InvoicesViewModel @Inject constructor(
     }
 
     fun filterByCategory(category: String?) {
-        _uiState.update { it.copy(selectedCategoryFilter = category) }
+        _uiState.update { it.copy(selectedCategoryFilter = category, selectedSubcategoryFilter = null) }
         selectedCategoryFilter.value = category
+        selectedSubcategoryFilter.value = null
+    }
+
+    fun filterBySubcategory(subcategory: String?) {
+        _uiState.update { it.copy(selectedSubcategoryFilter = subcategory) }
+        selectedSubcategoryFilter.value = subcategory
     }
 
     /**
@@ -157,12 +192,19 @@ class InvoicesViewModel @Inject constructor(
         return if (allMissing) null else converted
     }
 
-    private fun filterInvoicesByCategory(invoices: List<Invoice>, categoryFilter: String?): List<Invoice> =
-        when (categoryFilter) {
+    private fun filterInvoicesByCategory(
+        invoices: List<Invoice>,
+        categoryFilter: String?,
+        subcategoryFilter: String? = null
+    ): List<Invoice> {
+        val byCategory = when (categoryFilter) {
             null -> invoices
             UNCATEGORIZED_FILTER -> invoices.filter { TransactionCategories.normalizeCategory(it.categoria) == null }
             else -> invoices.filter { TransactionCategories.matchesCategory(it.categoria, categoryFilter) }
         }
+        if (subcategoryFilter.isNullOrBlank()) return byCategory
+        return byCategory.filter { TransactionCategories.matchesCategory(it.subcategoria, subcategoryFilter) }
+    }
 
     fun deleteInvoice(invoice: Invoice) {
         viewModelScope.launch {
@@ -215,6 +257,8 @@ private data class InvoicesDisplayData(
     val targetCurrency: String,
     val total: Double?,
     val categoryFilter: String?,
+    val subcategoryFilter: String?,
     val availableCategories: List<String>,
+    val availableSubcategories: List<String>,
     val hasAnyInvoices: Boolean
 )

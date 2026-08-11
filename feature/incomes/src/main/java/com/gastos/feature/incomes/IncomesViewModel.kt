@@ -26,6 +26,8 @@ data class IncomesUiState(
     val hasAnyIncomes: Boolean = false,
     val selectedCategoryFilter: String? = null,
     val availableCategories: List<String> = emptyList(),
+    val selectedSubcategoryFilter: String? = null,
+    val availableSubcategories: List<String> = emptyList(),
     /** Total convertido a la moneda por defecto (null = sin tasas cargadas). */
     val totalIngresosConvertido: Double? = null,
     val defaultCurrency: String = "EUR",
@@ -48,6 +50,7 @@ class IncomesViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(IncomesUiState())
     val uiState: StateFlow<IncomesUiState> = _uiState.asStateFlow()
     private val selectedCategoryFilter = MutableStateFlow<String?>(null)
+    private val selectedSubcategoryFilter = MutableStateFlow<String?>(null)
 
     init {
         // Una sola cadena reactiva: ingresos + moneda destino + tasas.
@@ -56,21 +59,45 @@ class IncomesViewModel @Inject constructor(
                 .combine(selectedCategoryFilter) { incomes, categoryFilter ->
                     incomes to categoryFilter
                 }
-                .combine(currencyPreference.defaultCurrency) { (allIncomes, categoryFilter), target ->
-                    Triple(allIncomes, categoryFilter, target)
+                .combine(selectedSubcategoryFilter) { (allIncomes, categoryFilter), subcategoryFilter ->
+                    Triple(allIncomes, categoryFilter, subcategoryFilter)
                 }
-                .combine(exchangeRateProvider.rates) { (allIncomes, categoryFilter, target), _ ->
-                    val visibleIncomes = filterIncomesByCategory(allIncomes, categoryFilter)
+                .combine(currencyPreference.defaultCurrency) { (allIncomes, categoryFilter, subcategoryFilter), target ->
+                    (allIncomes to categoryFilter) to (subcategoryFilter to target)
+                }
+                .combine(exchangeRateProvider.rates) { (outer, inner), _ ->
+                    val (allIncomes, categoryFilter) = outer
+                    val (subcategoryFilter, target) = inner
+                    val visibleIncomes = filterIncomesByCategory(
+                        allIncomes,
+                        categoryFilter,
+                        subcategoryFilter
+                    )
                     val availableCategories = TransactionCategories.availableCategories(
                         defaults = TransactionCategories.defaultIncomeCategories,
                         existing = allIncomes.map { it.categoria }
                     )
+                    val availableSubcategories = if (categoryFilter == null || categoryFilter == UNCATEGORIZED_FILTER) {
+                        emptyList()
+                    } else {
+                        TransactionCategories.availableSubcategories(
+                            defaults = TransactionCategories.suggestedSubcategories(
+                                categoryFilter,
+                                isIncome = true
+                            ),
+                            existing = allIncomes
+                                .filter { TransactionCategories.matchesCategory(it.categoria, categoryFilter) }
+                                .map { it.subcategoria }
+                        )
+                    }
                     IncomesDisplayData(
                         incomes = visibleIncomes,
                         targetCurrency = target,
                         total = recomputeTotal(visibleIncomes, target),
                         categoryFilter = categoryFilter,
+                        subcategoryFilter = subcategoryFilter,
                         availableCategories = availableCategories,
+                        availableSubcategories = availableSubcategories,
                         hasAnyIncomes = allIncomes.isNotEmpty()
                     )
                 }
@@ -89,7 +116,9 @@ class IncomesViewModel @Inject constructor(
                             totalIngresosConvertido = data.total,
                             defaultCurrency = data.targetCurrency,
                             selectedCategoryFilter = data.categoryFilter,
-                            availableCategories = data.availableCategories
+                            availableCategories = data.availableCategories,
+                            selectedSubcategoryFilter = data.subcategoryFilter,
+                            availableSubcategories = data.availableSubcategories
                         )
                     }
                 }
@@ -97,8 +126,14 @@ class IncomesViewModel @Inject constructor(
     }
 
     fun filterByCategory(category: String?) {
-        _uiState.update { it.copy(selectedCategoryFilter = category) }
+        _uiState.update { it.copy(selectedCategoryFilter = category, selectedSubcategoryFilter = null) }
         selectedCategoryFilter.value = category
+        selectedSubcategoryFilter.value = null
+    }
+
+    fun filterBySubcategory(subcategory: String?) {
+        _uiState.update { it.copy(selectedSubcategoryFilter = subcategory) }
+        selectedSubcategoryFilter.value = subcategory
     }
 
     /**
@@ -117,12 +152,19 @@ class IncomesViewModel @Inject constructor(
         return if (allMissing) null else converted
     }
 
-    private fun filterIncomesByCategory(incomes: List<Income>, categoryFilter: String?): List<Income> =
-        when (categoryFilter) {
+    private fun filterIncomesByCategory(
+        incomes: List<Income>,
+        categoryFilter: String?,
+        subcategoryFilter: String? = null
+    ): List<Income> {
+        val byCategory = when (categoryFilter) {
             null -> incomes
             UNCATEGORIZED_FILTER -> incomes.filter { TransactionCategories.normalizeCategory(it.categoria) == null }
             else -> incomes.filter { TransactionCategories.matchesCategory(it.categoria, categoryFilter) }
         }
+        if (subcategoryFilter.isNullOrBlank()) return byCategory
+        return byCategory.filter { TransactionCategories.matchesCategory(it.subcategoria, subcategoryFilter) }
+    }
 
     fun deleteIncome(income: Income) {
         viewModelScope.launch {
@@ -145,6 +187,8 @@ private data class IncomesDisplayData(
     val targetCurrency: String,
     val total: Double?,
     val categoryFilter: String?,
+    val subcategoryFilter: String?,
     val availableCategories: List<String>,
+    val availableSubcategories: List<String>,
     val hasAnyIncomes: Boolean
 )
