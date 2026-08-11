@@ -1,0 +1,6 @@
+🔹 Subcategorías opcionales para gastos e ingresos, con sugerencias y categorías personalizadas.
+🔹 Nuevo Dashboard con selector mensual, estadísticas interactivas, porcentajes e importes.
+🔹 Drill-down de categoría a subcategoría y movimientos editables.
+🔹 Widgets del Dashboard reordenables y ocultables según tus preferencias.
+🔹 Botones flotantes movibles en Dashboard, Gastos e Ingresos, con posiciones independientes.
+🔹 Las preferencias del Dashboard y de los botones flotantes se incluyen en los backups.
