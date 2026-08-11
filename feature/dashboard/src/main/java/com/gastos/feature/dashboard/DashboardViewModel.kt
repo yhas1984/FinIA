@@ -364,29 +364,29 @@ class DashboardViewModel @Inject constructor(
     // ---- Acciones de selección ----
 
     fun previousMonth() {
-        selectedMonth.update { it.previous() }
         selectedCalendarDay.update { null }
         resetDrillDown()
+        selectedMonth.update { it.previous() }
     }
 
     /** Solo permite navegar hacia el futuro hasta el mes actual. */
     fun nextMonth() {
+        selectedCalendarDay.update { null }
+        resetDrillDown()
         selectedMonth.update { month ->
             if (month == currentMonth()) month else month.next()
         }
-        selectedCalendarDay.update { null }
-        resetDrillDown()
     }
 
     fun selectMonth(year: Int, month: Int) {
-        selectedMonth.update { MonthRef(year, month) }
         selectedCalendarDay.update { null }
         resetDrillDown()
+        selectedMonth.update { MonthRef(year, month) }
     }
 
     fun setAnalyticsType(type: AnalyticsType) {
-        analyticsType.update { type }
         resetDrillDown()
+        analyticsType.update { type }
     }
 
     /** Abre el drill-down de una categoría. */
