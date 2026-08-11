@@ -26,11 +26,6 @@ Crecimiento incremental sin romper: Dashboard · Gastos · Ingresos.
 - Detalle inferior con movimientos del día y acceso a su edición.
 - Compatible con layouts personalizados y backups anteriores: el widget nuevo se añade al final de layouts existentes.
 
-## Fase 4 — Cuentas y menú Más (solo si aporta valor)
-- Modelo opcional de cuentas (efectivo, banco, tarjeta, ahorro).
-- Cada movimiento pertenece opcionalmente a una cuenta.
-- Hub «Más» únicamente cuando existan suficientes herramientas reales.
-
 ## No copiar de la app de referencia
 - Cuadrícula 3x3 genérica, PC Manager, calculadora suelta, anuncios.
 - Nombres/colores/orden de categorías ajenos.
