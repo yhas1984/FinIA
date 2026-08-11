@@ -204,14 +204,15 @@ private fun SubcategoryList(
 }
 
 @Composable
-private fun MovementList(
+internal fun MovementList(
     movements: List<AnalyticsMovement>,
     fmt: (Double) -> String,
+    emptyText: String = "Sin movimientos en este mes.",
     onOpenMovement: (Boolean, Long) -> Unit
 ) {
     if (movements.isEmpty()) {
         Text(
-            text = "Sin movimientos en este mes.",
+            text = emptyText,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
@@ -226,7 +227,7 @@ private fun MovementList(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        items(movements, key = { it.id }) { movement ->
+        items(movements, key = { "${if (it.isExpense) "expense" else "income"}:${it.id}" }) { movement ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

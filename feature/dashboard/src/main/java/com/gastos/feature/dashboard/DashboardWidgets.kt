@@ -43,11 +43,12 @@ enum class DashboardWidget(
     BALANCE("balance", 1, "Balance"),
     CASHFLOW("cashflow", 2, "Flujo de caja"),
     ANALYTICS("analytics", 3, "Estadísticas"),
-    WEEKLY_CHART("weekly_chart", 4, "Últimos 7 días"),
-    WEEKLY_TOTALS("weekly_totals", 5, "Esta semana"),
-    TODAY("today", 6, "Hoy"),
-    CONVERSION("conversion", 7, "Conversión de moneda"),
-    CHAT_CTA("chat_cta", 8, "Asistente FinAI");
+    CALENDAR("calendar", 4, "Calendario financiero"),
+    WEEKLY_CHART("weekly_chart", 5, "Últimos 7 días"),
+    WEEKLY_TOTALS("weekly_totals", 6, "Esta semana"),
+    TODAY("today", 7, "Hoy"),
+    CONVERSION("conversion", 8, "Conversión de moneda"),
+    CHAT_CTA("chat_cta", 9, "Asistente FinAI");
 
     companion object {
         /** Orden por defecto del producto. */

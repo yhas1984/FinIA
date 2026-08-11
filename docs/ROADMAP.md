@@ -19,15 +19,12 @@ Crecimiento incremental sin romper: Dashboard · Gastos · Ingresos.
 - Drill-down: categoría → subcategoría → movimientos.
 - Reutiliza agregaciones ya existentes del Dashboard.
 
-## Fase 3 — Calendario financiero
+## Fase 3 — Calendario financiero (implementada)
 - Vista mensual con totales por día (ingresos/gastos/balance).
 - Navegación entre meses y resaltado del día seleccionado.
-- Integrado en el Dashboard como vista de desglose, no como pestaña nueva.
-
-## Fase 4 — Cuentas y menú Más (solo si aporta valor)
-- Modelo opcional de cuentas (efectivo, banco, tarjeta, ahorro).
-- Cada movimiento pertenece opcionalmente a una cuenta.
-- Hub «Más» únicamente cuando existan suficientes herramientas reales.
+- Integrado en el Dashboard como widget configurable, no como pestaña nueva.
+- Detalle inferior con movimientos del día y acceso a su edición.
+- Compatible con layouts personalizados y backups anteriores: el widget nuevo se añade al final de layouts existentes.
 
 ## No copiar de la app de referencia
 - Cuadrícula 3x3 genérica, PC Manager, calculadora suelta, anuncios.
