@@ -761,7 +761,7 @@ class DashboardViewModel @Inject constructor(
         cal.clear()
         cal.set(Calendar.YEAR, month.year)
         cal.set(Calendar.MONTH, month.month - 1)
-        val raw = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(cal.time)
+        val raw = SimpleDateFormat("MMMM yyyy", Locale.forLanguageTag("es-ES")).format(cal.time)
         return raw.replaceFirstChar { it.uppercase(Locale.ROOT) }
     }
 
