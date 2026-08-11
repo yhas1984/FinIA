@@ -244,9 +244,15 @@ class DashboardViewModel @Inject constructor(
         return DashboardLayout(order, hidden)
     }
 
-    private fun persistLayout(order: List<String>, hidden: Set<String>) {
+    private fun persistLayout(
+        order: List<String>,
+        hidden: Set<String>,
+        updateState: (DashboardUiState) -> DashboardUiState = { it }
+    ) {
         val layout = DashboardLayout(order, hidden)
-        _uiState.update { it.copy(widgetOrder = order, hiddenWidgets = hidden) }
+        _uiState.update { current ->
+            updateState(current.copy(widgetOrder = order, hiddenWidgets = hidden))
+        }
         viewModelScope.launch {
             dashboardLayoutPreference.updateDashboardLayout(layout)
         }
@@ -293,16 +299,21 @@ class DashboardViewModel @Inject constructor(
             widgetOrder = _uiState.value.widgetOrder,
             hiddenWidgets = _uiState.value.hiddenWidgets
         )
-        persistLayout(DashboardWidget.defaultOrder, emptySet())
-        _uiState.update { it.copy(showResetUndo = true) }
+        persistLayout(DashboardWidget.defaultOrder, emptySet()) {
+            it.copy(showResetUndo = true)
+        }
     }
 
     fun undoResetLayout() {
-        lastResetLayout?.let {
-            persistLayout(it.widgetOrder, it.hiddenWidgets)
-        }
+        val previousLayout = lastResetLayout
         lastResetLayout = null
-        _uiState.update { it.copy(showResetUndo = false) }
+        if (previousLayout != null) {
+            persistLayout(previousLayout.widgetOrder, previousLayout.hiddenWidgets) {
+                it.copy(showResetUndo = false)
+            }
+        } else {
+            _uiState.update { it.copy(showResetUndo = false) }
+        }
     }
 
     fun dismissResetUndo() {
