@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,10 +40,12 @@ fun DashboardScreen(
     defaultCurrency: String = "EUR",
     onNavigateToChat: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
-    onNavigateToBackup: () -> Unit = {}
+    onNavigateToBackup: () -> Unit = {},
+    onOpenMovement: (isExpense: Boolean, id: Long) -> Unit = { _, _ -> }
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val fmt = { amt: Double -> com.gastos.domain.model.formatMoney(amt, defaultCurrency) }
+    var showMonthPicker by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -62,6 +65,17 @@ fun DashboardScreen(
                 .padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
+            stickyHeader {
+                MonthSelectorRow(
+                    label = uiState.selectedMonthLabel,
+                    isCurrentMonth = uiState.isCurrentMonth,
+                    onPrevious = viewModel::previousMonth,
+                    onNext = viewModel::nextMonth,
+                    onPick = { showMonthPicker = true },
+                    modifier = Modifier.padding(top = 12.dp)
+                )
+            }
+
             item {
                 Spacer(modifier = Modifier.height(32.dp))
                 // Header with settings
@@ -97,9 +111,9 @@ fun DashboardScreen(
             }
 
             item {
-                // Balance Section
+                // Balance Section (mes seleccionado)
                 Text(
-                    text = "Balance del Mes",
+                    text = "Balance · ${uiState.selectedMonthLabel}",
                     style = MaterialTheme.typography.labelMedium.copy(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -238,22 +252,19 @@ fun DashboardScreen(
             }
 
             item {
-                CategoryBreakdownCard(
-                    title = "Gastos por categoría",
-                    rows = uiState.expenseCategoriesMes,
-                    color = MaterialTheme.colorScheme.error,
+                InteractiveAnalyticsCard(
+                    type = uiState.analyticsType,
+                    monthLabel = uiState.selectedMonthLabel,
+                    total = fmt(uiState.analyticsTotal),
+                    slices = uiState.analyticsSlices,
+                    emptyMessage = if (uiState.analyticsType == AnalyticsType.GASTOS) {
+                        "Sin gastos en ${uiState.selectedMonthLabel.lowercase()}. Prueba a cambiar de mes."
+                    } else {
+                        "Sin ingresos en ${uiState.selectedMonthLabel.lowercase()}. Prueba a cambiar de mes."
+                    },
                     fmt = fmt,
-                    emptyText = "Sin gastos categorizados este mes"
-                )
-            }
-
-            item {
-                CategoryBreakdownCard(
-                    title = "Ingresos por categoría",
-                    rows = uiState.incomeCategoriesMes,
-                    color = MaterialTheme.colorScheme.secondary,
-                    fmt = fmt,
-                    emptyText = "Sin ingresos categorizados este mes"
+                    onTypeChange = viewModel::setAnalyticsType,
+                    onSliceClick = viewModel::selectCategory
                 )
             }
 
@@ -369,67 +380,41 @@ fun DashboardScreen(
             }
         }
     }
-}
 
-@Composable
-private fun CategoryBreakdownCard(
-    title: String,
-    rows: List<CategoryTotal>,
-    color: Color,
-    fmt: (Double) -> String,
-    emptyText: String
-) {
-    GlassCard {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            ),
-            modifier = Modifier.padding(bottom = 12.dp)
+    // Hoja de selección de mes.
+    if (showMonthPicker) {
+        MonthPickerSheet(
+            selectedYear = uiState.selectedMonth.year,
+            selectedMonth = uiState.selectedMonth.month,
+            onSelect = viewModel::selectMonth,
+            onDismiss = { showMonthPicker = false }
         )
-        if (rows.isEmpty()) {
-            Text(
-                text = emptyText,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            return@GlassCard
-        }
-        val maxTotal = rows.maxOf { it.total }.takeIf { it > 0.0 } ?: 1.0
-        rows.take(6).forEach { row ->
-            Text(
-                text = row.label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth((row.total / maxTotal).toFloat())
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(color)
-                )
-            }
-            Spacer(modifier = Modifier.height(4.dp))
-            AutoSizeMonetaryText(
-                text = fmt(row.total),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-                minFontSize = 9.sp,
-                textAlign = TextAlign.Start
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-        }
+    }
+
+    // Drill-down de estadísticas (categoría → subcategoría → movimientos).
+    val detail = uiState.categoryDetail
+    if (uiState.selectedCategory != null && detail != null) {
+        AnalyticsDrillDownSheet(
+            type = uiState.analyticsType,
+            monthLabel = uiState.selectedMonthLabel,
+            detail = detail,
+            selectedSubcategory = uiState.selectedSubcategory,
+            subcategoryValueToLabel = { value ->
+                value ?: DashboardViewModel.NO_SUBCATEGORY_LABEL
+            },
+            movements = uiState.movements,
+            fmt = fmt,
+            onBack = {
+                if (uiState.selectedSubcategory != null) {
+                    viewModel.selectSubcategory(null)
+                } else {
+                    viewModel.resetDrillDown()
+                }
+            },
+            onSelectSubcategory = viewModel::selectSubcategory,
+            onOpenMovement = onOpenMovement,
+            onDismiss = viewModel::resetDrillDown
+        )
     }
 }
 
@@ -533,7 +518,7 @@ private fun ConversionRow(
 }
 
 @Composable
-private fun AutoSizeMonetaryText(
+internal fun AutoSizeMonetaryText(
     text: String,
     style: TextStyle,
     modifier: Modifier = Modifier,
@@ -563,9 +548,12 @@ private fun AutoSizeMonetaryText(
 }
 
 @Composable
-fun GlassCard(content: @Composable ColumnScope.() -> Unit) {
+fun GlassCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))

@@ -143,6 +143,13 @@ fun FinAIApp(defaultCurrency: String = "EUR") {
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateToBackup = {
                         navController.navigate(Routes.BACKUP) { launchSingleTop = true }
+                    },
+                    onOpenMovement = { isExpense, id ->
+                        if (isExpense) {
+                            navController.navigate("edit_invoice/$id")
+                        } else {
+                            navController.navigate("edit_income/$id")
+                        }
                     }
                 )
             }
