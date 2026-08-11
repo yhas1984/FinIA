@@ -517,7 +517,7 @@ class BackupViewModel @Inject constructor(
         products: List<Product>
     ): String = buildString {
         append('\uFEFF')
-        appendCsvRow("Tipo", "ID", "Fecha", "Concepto", "Monto", "Moneda", "IVA%", "IRPF%", "Devengado", "Neto", "Notas")
+        appendCsvRow("Tipo", "ID", "Fecha", "Concepto", "Monto", "Moneda", "IVA%", "IRPF%", "Devengado", "Neto", "Categoría", "Subcategoría", "Notas")
         val invoiceById = invoices.associateBy { it.id }
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
@@ -533,6 +533,8 @@ class BackupViewModel @Inject constructor(
                 invoice.irpfPercent,
                 "",
                 "",
+                invoice.categoria.orEmpty(),
+                invoice.subcategoria.orEmpty(),
                 invoice.notas.orEmpty()
             )
         }
@@ -546,6 +548,8 @@ class BackupViewModel @Inject constructor(
                 invoiceById[product.invoiceId]?.moneda.orEmpty(),
                 product.ivaPercent,
                 0,
+                "",
+                "",
                 "",
                 "",
                 ""
@@ -563,6 +567,8 @@ class BackupViewModel @Inject constructor(
                 income.irpfPercent,
                 income.totalDevengado,
                 income.totalNeto,
+                income.categoria.orEmpty(),
+                income.subcategoria.orEmpty(),
                 income.notas.orEmpty()
             )
         }

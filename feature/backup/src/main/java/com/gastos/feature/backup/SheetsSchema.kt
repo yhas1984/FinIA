@@ -141,6 +141,12 @@ internal object SheetsSchema {
         listOf("Conversiones pendientes", totals.pendingConversions)
     )
 
+    private fun displayCategoryWithSubcategory(category: String?, subcategory: String?): String {
+        val categoryLabel = TransactionCategories.displayCategory(category)
+        val subcategoryLabel = TransactionCategories.normalizeCategory(subcategory) ?: return categoryLabel
+        return "$categoryLabel / $subcategoryLabel"
+    }
+
     fun expenseRow(invoice: Invoice, conversion: ConversionSnapshot): List<Any> {
         val total = conversion.convert(invoice.total, invoice.moneda)
         val convertedTotal = total.convertedAmount
@@ -165,7 +171,7 @@ internal object SheetsSchema {
             invoice.irpfPercent,
             convertedTotal ?: "",
             conversion.targetCurrency,
-            TransactionCategories.displayCategory(invoice.categoria),
+            displayCategoryWithSubcategory(invoice.categoria, invoice.subcategoria),
             invoice.notas ?: "",
             invoice.id,
             invoice.driveWebViewLink ?: "",
@@ -192,7 +198,7 @@ internal object SheetsSchema {
             income.irpfPercent,
             conversion.targetCurrency,
             income.fuente ?: "",
-            TransactionCategories.displayCategory(income.categoria),
+            displayCategoryWithSubcategory(income.categoria, income.subcategoria),
             income.notas ?: "",
             income.id,
             amount.originalAmount,
