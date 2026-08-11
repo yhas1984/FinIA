@@ -31,6 +31,43 @@ object TransactionCategories {
         "Otros"
     )
 
+    /** Subcategorías sugeridas por categoría de GASTO (el usuario puede crear otras). */
+    val suggestedExpenseSubcategories: Map<String, List<String>> = mapOf(
+        "Alimentación" to listOf("Supermercado", "Restaurantes", "Cafetería", "Frutería", "Carnicería", "Panadería", "Bebidas"),
+        "Vivienda" to listOf("Hipoteca", "Alquiler", "Comunidad", "Reparaciones", "Mobiliario", "Electrodomésticos"),
+        "Transporte" to listOf("Combustible", "Transporte público", "Aparcamiento", "Peajes", "Mantenimiento", "Seguro del coche"),
+        "Servicios" to listOf("Electricidad", "Agua", "Gas", "Internet", "Teléfono", "Streaming"),
+        "Salud" to listOf("Farmacia", "Médico", "Seguro médico", "Óptica", "Dental"),
+        "Educación" to listOf("Cursos", "Matrícula", "Libros", "Material escolar"),
+        "Ocio" to listOf("Cine", "Deporte", "Videojuegos", "Suscripciones", "Fiestas"),
+        "Viajes" to listOf("Alojamiento", "Vuelos", "Tren", "Comidas", "Turismo"),
+        "Impuestos" to listOf("IVA", "IRPF", "Impuestos municipales", "Otros tributos"),
+        "Negocio" to listOf("Material", "Software", "Publicidad", "Envíos", "Imprenta"),
+        "Otros" to emptyList()
+    )
+
+    /** Subcategorías sugeridas por categoría de INGRESO (el usuario puede crear otras). */
+    val suggestedIncomeSubcategories: Map<String, List<String>> = mapOf(
+        "Nómina" to listOf("Salario base", "Extras", "Pagas extra"),
+        "Ventas" to listOf("Productos", "Servicios"),
+        "Honorarios" to listOf("Proyectos", "Consultoría"),
+        "Alquiler" to listOf("Vivienda", "Local"),
+        "Intereses" to listOf("Bancarios", "Inversiones"),
+        "Reembolsos" to listOf("Gastos", "Seguros"),
+        "Otros" to emptyList()
+    )
+
+    fun suggestedSubcategories(category: String?, isIncome: Boolean): List<String> {
+        val normalized = normalizeCategory(category) ?: return emptyList()
+        val map = if (isIncome) suggestedIncomeSubcategories else suggestedExpenseSubcategories
+        return map[normalized].orEmpty()
+    }
+
+    fun availableSubcategories(
+        defaults: List<String>,
+        existing: List<String?>
+    ): List<String> = availableCategories(defaults, existing)
+
     fun normalizeCategory(value: String?): String? = value
         ?.trim()
         ?.takeIf { it.isNotBlank() }
