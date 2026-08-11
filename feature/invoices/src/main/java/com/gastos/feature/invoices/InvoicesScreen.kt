@@ -84,11 +84,6 @@ fun InvoicesScreen(
                     }
                 }
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { onNavigateToEdit(0L) }) {
-                Icon(Icons.Default.Add, contentDescription = "Nueva factura")
-            }
         }
     ) { padding ->
         if (uiState.isLoading) {

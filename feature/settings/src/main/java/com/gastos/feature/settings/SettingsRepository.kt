@@ -17,6 +17,10 @@ import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.BackupSettingsProvider
 import com.gastos.repository.DashboardLayout
 import com.gastos.repository.DashboardLayoutPreference
+import com.gastos.repository.FloatingButtonEdge
+import com.gastos.repository.FloatingButtonIds
+import com.gastos.repository.FloatingButtonPosition
+import com.gastos.repository.FloatingButtonPositionPreference
 import com.gastos.repository.RestorableSettings
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
@@ -37,7 +41,10 @@ data class AppSettings(
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secureStorage: SecureStorage
-) : CurrencyPreference, BackupSettingsProvider, DashboardLayoutPreference {
+) : CurrencyPreference,
+    BackupSettingsProvider,
+    DashboardLayoutPreference,
+    FloatingButtonPositionPreference {
 
     // Scope propio para stateIn (el repo es un @Singleton a nivel app).
     private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -49,6 +56,7 @@ class SettingsRepository @Inject constructor(
         val DARK_MODE = stringPreferencesKey("dark_mode")
         val DASHBOARD_WIDGET_ORDER = stringPreferencesKey("dashboard_widget_order")
         val DASHBOARD_HIDDEN_WIDGETS = stringPreferencesKey("dashboard_hidden_widgets")
+        val FLOATING_BUTTON_POSITIONS = stringPreferencesKey("floating_button_positions")
     }
 
     /**
@@ -135,16 +143,50 @@ class SettingsRepository @Inject constructor(
         }
     }
 
+    // ---- Posiciones de botones flotantes ----
+
+    override val floatingButtonPositions: Flow<Map<String, FloatingButtonPosition>> =
+        context.dataStore.data.map { preferences ->
+            decodeFloatingButtonPositions(preferences[Keys.FLOATING_BUTTON_POSITIONS].orEmpty())
+        }
+
+    override suspend fun updateFloatingButtonPosition(id: String, position: FloatingButtonPosition) {
+        if (id !in FloatingButtonIds.all) return
+        context.dataStore.edit { preferences ->
+            val current = decodeFloatingButtonPositions(
+                preferences[Keys.FLOATING_BUTTON_POSITIONS].orEmpty()
+            )
+            preferences[Keys.FLOATING_BUTTON_POSITIONS] = encodeFloatingButtonPositions(
+                current + (id to position.normalized())
+            )
+        }
+    }
+
+    override suspend fun replaceFloatingButtonPositions(
+        positions: Map<String, FloatingButtonPosition>
+    ) {
+        context.dataStore.edit { preferences ->
+            val encoded = encodeFloatingButtonPositions(positions)
+            if (encoded.isEmpty()) {
+                preferences.remove(Keys.FLOATING_BUTTON_POSITIONS)
+            } else {
+                preferences[Keys.FLOATING_BUTTON_POSITIONS] = encoded
+            }
+        }
+    }
+
     override suspend fun snapshotSettings(): RestorableSettings {
         val current = settings.first()
         val layout = dashboardLayout.first()
+        val fabPositions = floatingButtonPositions.first()
         return RestorableSettings(
             systemInstructions = current.systemInstructions,
             defaultCurrency = current.defaultCurrency,
             defaultCountry = current.defaultCountry,
             darkMode = current.darkMode,
             dashboardWidgetOrder = layout.widgetOrder,
-            dashboardHiddenWidgets = layout.hiddenWidgets.toList()
+            dashboardHiddenWidgets = layout.hiddenWidgets.toList(),
+            floatingButtonPositions = fabPositions
         )
     }
 
@@ -164,7 +206,39 @@ class SettingsRepository @Inject constructor(
             } else {
                 preferences[Keys.DASHBOARD_HIDDEN_WIDGETS] = settings.dashboardHiddenWidgets.joinToString(",")
             }
+            val fabPositions = encodeFloatingButtonPositions(settings.floatingButtonPositions)
+            if (fabPositions.isEmpty()) {
+                preferences.remove(Keys.FLOATING_BUTTON_POSITIONS)
+            } else {
+                preferences[Keys.FLOATING_BUTTON_POSITIONS] = fabPositions
+            }
         }
     }
 
 }
+
+internal fun encodeFloatingButtonPositions(
+    positions: Map<String, FloatingButtonPosition>
+): String = positions
+    .filterKeys { it in FloatingButtonIds.all }
+    .toSortedMap()
+    .entries
+    .joinToString(";") { (id, position) ->
+        val normalized = position.normalized()
+        "$id|${normalized.edge.name}|${normalized.verticalFraction}"
+    }
+
+internal fun decodeFloatingButtonPositions(raw: String): Map<String, FloatingButtonPosition> = raw
+    .split(';')
+    .mapNotNull { encoded ->
+        val parts = encoded.split('|')
+        if (parts.size != 3) return@mapNotNull null
+        val id = parts[0].takeIf { it in FloatingButtonIds.all } ?: return@mapNotNull null
+        val edge = runCatching { FloatingButtonEdge.valueOf(parts[1]) }.getOrNull()
+            ?: return@mapNotNull null
+        val fraction = parts[2].toFloatOrNull()
+            ?.takeIf { it.isFinite() }
+            ?: return@mapNotNull null
+        id to FloatingButtonPosition(edge, fraction).normalized()
+    }
+    .toMap()

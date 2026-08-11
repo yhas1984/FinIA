@@ -7,6 +7,8 @@ import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import com.gastos.repository.BackupDataset
+import com.gastos.repository.FloatingButtonEdge
+import com.gastos.repository.FloatingButtonPosition
 import com.gastos.repository.RestorableSettings
 import com.gastos.storage.InvoiceImageStorage
 import kotlinx.serialization.Serializable
@@ -228,13 +230,32 @@ internal data class ChatMessageDto(
 }
 
 @Serializable
+internal data class FloatingButtonPositionDto(
+    val edge: String,
+    val verticalFraction: Float
+) {
+    fun toDomain(): FloatingButtonPosition? {
+        val parsedEdge = runCatching { FloatingButtonEdge.valueOf(edge) }.getOrNull() ?: return null
+        return FloatingButtonPosition(parsedEdge, verticalFraction).normalized()
+    }
+
+    companion object {
+        fun from(position: FloatingButtonPosition): FloatingButtonPositionDto {
+            val normalized = position.normalized()
+            return FloatingButtonPositionDto(normalized.edge.name, normalized.verticalFraction)
+        }
+    }
+}
+
+@Serializable
 internal data class RestorableSettingsDto(
     val systemInstructions: String,
     val defaultCurrency: String,
     val defaultCountry: String,
     val darkMode: String,
     val dashboardWidgetOrder: List<String> = emptyList(),
-    val dashboardHiddenWidgets: List<String> = emptyList()
+    val dashboardHiddenWidgets: List<String> = emptyList(),
+    val floatingButtonPositions: Map<String, FloatingButtonPositionDto> = emptyMap()
 ) {
     fun toDomain(): RestorableSettings = RestorableSettings(
         systemInstructions = systemInstructions,
@@ -242,7 +263,10 @@ internal data class RestorableSettingsDto(
         defaultCountry = defaultCountry,
         darkMode = darkMode,
         dashboardWidgetOrder = dashboardWidgetOrder,
-        dashboardHiddenWidgets = dashboardHiddenWidgets
+        dashboardHiddenWidgets = dashboardHiddenWidgets,
+        floatingButtonPositions = floatingButtonPositions.mapNotNull { (id, position) ->
+            position.toDomain()?.let { id to it }
+        }.toMap()
     )
 }
 
@@ -336,6 +360,9 @@ internal fun BackupDataset.toDto(
         defaultCountry = settings.defaultCountry,
         darkMode = settings.darkMode,
         dashboardWidgetOrder = settings.dashboardWidgetOrder,
-        dashboardHiddenWidgets = settings.dashboardHiddenWidgets
+        dashboardHiddenWidgets = settings.dashboardHiddenWidgets,
+        floatingButtonPositions = settings.floatingButtonPositions.mapValues { (_, position) ->
+            FloatingButtonPositionDto.from(position)
+        }
     )
 )

@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -33,6 +34,8 @@ import com.gastos.feature.settings.SettingsViewModel
 import com.gastos.feature.settings.PremiumScreen
 import com.gastos.feature.backup.BackupScreen
 import com.gastos.feature.chatbot.ChatbotScreen
+import com.gastos.repository.FloatingButtonIds
+import com.gastos.repository.FloatingButtonPosition
 import com.gastos.ui.theme.GastosEIngresosTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -57,7 +60,11 @@ class MainActivity : ComponentActivity() {
             }
 
             GastosEIngresosTheme(darkMode = uiState.settings.darkMode) {
-                FinAIApp(defaultCurrency = uiState.settings.defaultCurrency)
+                FinAIApp(
+                    defaultCurrency = uiState.settings.defaultCurrency,
+                    floatingButtonPositions = uiState.floatingButtonPositions,
+                    onFloatingButtonPositionChanged = settingsViewModel::updateFloatingButtonPosition
+                )
             }
         }
     }
@@ -95,7 +102,11 @@ object Routes {
 }
 
 @Composable
-fun FinAIApp(defaultCurrency: String = "EUR") {
+fun FinAIApp(
+    defaultCurrency: String = "EUR",
+    floatingButtonPositions: Map<String, FloatingButtonPosition> = emptyMap(),
+    onFloatingButtonPositionChanged: (String, FloatingButtonPosition) -> Unit = { _, _ -> }
+) {
     val navController = rememberNavController()
     val screens = listOf(Screen.Dashboard, Screen.Invoices, Screen.Incomes)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -103,6 +114,28 @@ fun FinAIApp(defaultCurrency: String = "EUR") {
 
     // Determinar si mostrar bottom bar
     val showBottomBar = currentDestination?.route in screens.map { it.route }
+
+    val floatingButton = when (currentDestination?.route) {
+        Screen.Dashboard.route -> FloatingButtonSpec(
+            id = FloatingButtonIds.DASHBOARD_AI,
+            icon = Icons.Filled.SmartToy,
+            contentDescription = "Abrir asistente de IA",
+            onClick = { navController.navigate(Routes.CHATBOT) }
+        )
+        Screen.Invoices.route -> FloatingButtonSpec(
+            id = FloatingButtonIds.EXPENSES_ADD,
+            icon = Icons.Filled.Add,
+            contentDescription = "Nueva factura",
+            onClick = { navController.navigate("edit_invoice/0") }
+        )
+        Screen.Incomes.route -> FloatingButtonSpec(
+            id = FloatingButtonIds.INCOMES_ADD,
+            icon = Icons.Filled.Add,
+            contentDescription = "Nuevo ingreso",
+            onClick = { navController.navigate("edit_income/0") }
+        )
+        else -> null
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -130,11 +163,12 @@ fun FinAIApp(defaultCurrency: String = "EUR") {
             }
         }
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Dashboard.route,
-            modifier = Modifier.padding(innerPadding)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Dashboard.route,
+                modifier = Modifier.padding(innerPadding)
+            ) {
             // Pantallas principales (con bottom bar)
             composable(Screen.Dashboard.route) {
                 DashboardScreen(
@@ -208,6 +242,28 @@ fun FinAIApp(defaultCurrency: String = "EUR") {
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
+            }
+
+            floatingButton?.let { spec ->
+                MovableFloatingActionButton(
+                    id = spec.id,
+                    position = floatingButtonPositions[spec.id] ?: FloatingButtonPosition(),
+                    bottomContentPadding = innerPadding.calculateBottomPadding(),
+                    icon = spec.icon,
+                    contentDescription = spec.contentDescription,
+                    onClick = spec.onClick,
+                    onPositionChanged = { position ->
+                        onFloatingButtonPositionChanged(spec.id, position)
+                    }
+                )
+            }
         }
     }
 }
+
+private data class FloatingButtonSpec(
+    val id: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val contentDescription: String,
+    val onClick: () -> Unit
+)
