@@ -94,6 +94,14 @@ fun EditInvoiceScreen(
                 singleLine = true
             )
 
+            OutlinedTextField(
+                value = form.numeroFactura,
+                onValueChange = { viewModel.updateNumeroFactura(it) },
+                label = { Text("Nº de factura") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
             // Fecha
             OutlinedTextField(
                 value = SimpleDateFormat("dd/MM/yyyy", locale).format(Date(form.fecha)),
@@ -149,6 +157,27 @@ fun EditInvoiceScreen(
                 singleLine = true,
                 prefix = { Text(form.moneda) }
             )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = form.baseImponible,
+                    onValueChange = { viewModel.updateBaseImponible(it) },
+                    label = { Text("Base imponible") },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    prefix = { Text(form.moneda) }
+                )
+                OutlinedTextField(
+                    value = form.cuotaIva,
+                    onValueChange = { viewModel.updateCuotaIva(it) },
+                    label = { Text("Cuota IVA") },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    singleLine = true,
+                    prefix = { Text(form.moneda) }
+                )
+            }
 
             ExposedDropdownMenuBox(
                 expanded = showCategoryPicker,

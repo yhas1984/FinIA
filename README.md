@@ -9,12 +9,12 @@
 ## ✨ Características principales
 
 - 🤖 **Asistente IA (Gemini)** — chat conversacional con memoria local; streaming solo en Premium e instrucciones personalizables.
-- 📷 **Escaneo de facturas y nóminas** — desde el propio chat (cámara o galería): extrae proveedor, fecha, total, IVA, IRPF, NIF y líneas de producto, distinguiendo nóminas de facturas.
+- 📷 **Escaneo de facturas y nóminas** — desde el propio chat (cámara o galería): extrae proveedor, fecha, número de factura, total, base imponible, IVA, IRPF, NIF y líneas de producto, distinguiendo nóminas de facturas.
 - 🎙️ **Comandos por voz** — registra gastos, ingresos o consulta tu balance hablando (SpeechRecognizer de Android, es-ES).
 - 💬 **Chat con streaming** — el asistente responde en tiempo real, recordando el contexto de la conversación.
 - 🛒 **Consultas inteligentes** — entiende periodos ("esta semana", "en julio"), productos concretos ("agua", "café") y aclara ambigüedades mostrando las coincidencias exactas antes de decidir.
 - 📊 **Dashboard** — resumen de ingresos, gastos, balance, actividad de los últimos 7 días, desglose por categoría y calendario financiero mensual configurable.
-- 🏷️ **Categorías** — gastos e ingresos con etiquetas predeterminadas o personalizadas, propuestas automáticamente por la IA desde texto, voz y OCR. Filtran listas, alimentan el Dashboard y viajan a Sheets.
+- 🏷️ **Categorías y subcategorías** — gastos e ingresos con etiquetas predeterminadas o personalizadas, propuestas automáticamente por la IA desde texto, voz y OCR. Filtran listas, alimentan el Dashboard y viajan a Sheets.
 - 🧾 **Gestión completa** de facturas/gastos, productos e ingresos (CRUD).
 - ☁️ **Google Sheets: exportación + sincronización multimoneda** — Sheet con Facturas Recibidas, Ingresos unificados, Productos y Resumen, con importes convertidos a tu moneda local.
 - 🔄 **Sincronización bidireccional** — altas, ediciones y borrados en la app se reflejan automáticamente (upsert/delete por ID de registro). “Forzar sincronización” reexporta el Sheet completo.
@@ -63,8 +63,8 @@ Arquitectura **modular multi-módulo** en 3 capas (clean-ish), con inyección de
 ```
 
 ### Modelos de dominio principales
-- **`Invoice`** — factura/gasto (fecha, proveedor, tipo, total, IVA, IRPF, NIF emisor/receptor, imagen, OCR).
-- **`Income`** — ingreso (concepto, monto, devengado/neto, fuente, IVA/IRPF).
+- **`Invoice`** — factura/gasto (fecha, proveedor, tipo, número de factura, total, base imponible, IVA, IRPF, NIF emisor/receptor, categoría, subcategoría, imagen, OCR).
+- **`Income`** — ingreso (concepto, monto, devengado/neto, fuente, categoría, subcategoría, IVA/IRPF).
 - **`Product`** — línea de factura (descripción, cantidad, precio unitario, subtotal).
 - **`CountryFiscalConfig`** — configuración fiscal por país (IVA, IRPF, formato NIF).
 
@@ -83,8 +83,9 @@ FinAI usa **Gemini** a través de la **API gratuita de Google AI Studio**.
 - **Chat conversacional** con memoria (3 turnos gratis, 10 con Premium) y respuestas en streaming.
 - **Instrucciones personalizables** — define el tono, la moneda por defecto, el comportamiento, etc.
 - **Registro natural** — *"gasté 20€ en café"*, *"cobré 1500€ de nómina"*.
-- **Consultas** — *"¿cuánto gasté este mes?"*, *"mi balance de la semana"*. La IA clasifica la consulta y el cálculo se hace localmente; el resultado financiero se excluye del contexto posterior del modelo.
-- **OCR de documentos** — foto de factura, ticket o nómina desde el chat. Detección multi-país de moneda, IVA e identificación fiscal.
+- **Consultas** — *"¿cuánto gasté este mes?"*, *"mi balance de la semana"*, *"¿cuánto gasté en Alimentación / Supermercado?"*. La IA clasifica la consulta y el cálculo se hace localmente, con filtros por comercio, producto, categoría y subcategoría; el resultado financiero se excluye del contexto posterior del modelo.
+- **Productos** — permite listar productos por comercio, agrupar variantes como «pan» y solicitar coincidencias exactas cuando la descripción es específica.
+- **OCR de documentos** — foto de factura, ticket o nómina desde el chat. Usa una respuesta JSON estructurada, redimensionado hasta 2048 px, JPEG de calidad 88 y resolución multimedia alta. Los campos fiscales opcionales ilegibles se conservan como `null` en lugar de inventarse o convertirse en cero.
 
 > ⚠️ Tus mensajes se envían a la API de Gemini para procesarse. El historial del chat se guarda localmente y se incluye en la copia de seguridad de la app.
 
@@ -175,6 +176,26 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 # Tests unitarios
 ./gradlew testDebugUnitTest
 ```
+
+### Validación funcional reciente
+
+La build de desarrollo se ha validado con:
+
+```bash
+# Unit tests, lint dirigido y APK debug
+./gradlew testDebugUnitTest \
+  :feature:ai:lintDebug \
+  :feature:invoices:lintDebug \
+  :feature:chatbot:lintDebug \
+  :app:assembleDebug
+
+# Tests instrumentados en un dispositivo Android 16 / API 36
+./gradlew :app:connectedDebugAndroidTest
+```
+
+La suite instrumentada actual pasa **6/6 tests**. También se ha comprobado en el dispositivo el registro de gastos e ingresos por lenguaje natural, consultas de productos y filtros de categoría/subcategoría, además del OCR de una factura real desde la galería. Room utiliza el esquema v10 con migración desde v9.
+
+El lint dirigido no presenta incidencias propias en `feature:ai`; `feature:chatbot` y `feature:invoices` solo muestran avisos procedentes de `google-http-client` (`TrustAllX509TrustManager`).
 
 > El `signingConfigs.release` lee credenciales de variables de entorno (`FINAI_KEYSTORE_FILE`, `FINAI_KEYSTORE_PASSWORD`, `FINAI_KEY_ALIAS`, `FINAI_KEY_PASSWORD`) o de `gradle.properties`; nunca se hardcodean en el repo.
 >

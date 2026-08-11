@@ -40,6 +40,7 @@ dependencies {
     implementation(libs.hilt.navigation.compose.lib)
 
     // Core
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.coroutines.android)
 
@@ -54,4 +55,5 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.coroutines.test)
+    testImplementation("org.json:json:20240303")
 }

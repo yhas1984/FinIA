@@ -150,16 +150,20 @@ internal object SheetsSchema {
     fun expenseRow(invoice: Invoice, conversion: ConversionSnapshot): List<Any> {
         val total = conversion.convert(invoice.total, invoice.moneda)
         val convertedTotal = total.convertedAmount
-        val convertedBase = convertedTotal?.let {
+        val convertedBase = invoice.baseImponible?.let {
+            conversion.convert(it, invoice.moneda).convertedAmount
+        } ?: convertedTotal?.let {
             if (invoice.ivaPercent > 0) round2(it / (1 + invoice.ivaPercent / 100.0)) else round2(it)
         }
-        val convertedQuota = if (convertedTotal != null && convertedBase != null) {
+        val convertedQuota = invoice.cuotaIva?.let {
+            conversion.convert(it, invoice.moneda).convertedAmount
+        } ?: if (convertedTotal != null && convertedBase != null) {
             round2(convertedTotal - convertedBase)
         } else {
             null
         }
         return listOf(
-            extractFromOcr(invoice.ocrRawText, "numero_factura"),
+            invoice.numeroFactura ?: extractFromOcr(invoice.ocrRawText, "numero_factura"),
             formatDate(invoice.fecha),
             invoice.paisCodigo,
             invoice.nifEmisor ?: "",

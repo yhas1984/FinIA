@@ -3,7 +3,6 @@ package com.gastos.feature.invoices
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -17,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.Invoice
@@ -368,6 +368,29 @@ private fun InvoiceCard(
                 }
             }
 
+            if (invoice.numeroFactura != null || invoice.baseImponible != null || invoice.cuotaIva != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    invoice.numeroFactura?.let {
+                        Text("Nº factura: $it", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (invoice.baseImponible != null || invoice.cuotaIva != null) {
+                        Text(
+                            text = buildString {
+                                invoice.baseImponible?.let {
+                                    append("Base: ${com.gastos.domain.model.formatMoney(it, invoice.moneda)}")
+                                }
+                                invoice.cuotaIva?.let {
+                                    if (isNotEmpty()) append(" · ")
+                                    append("IVA: ${com.gastos.domain.model.formatMoney(it, invoice.moneda)}")
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+
             if (invoice.imagenUri != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 when {
@@ -453,7 +476,7 @@ private fun openTrustedUrl(
     allowedHosts: Set<String>,
     onError: (String) -> Unit
 ) {
-    val uri = Uri.parse(rawUrl)
+    val uri = rawUrl.toUri()
     val host = uri.host?.lowercase(Locale.ROOT)
     if (uri.scheme != "https" || host !in allowedHosts) {
         onError("El enlace guardado no es válido o ya no es seguro abrirlo.")

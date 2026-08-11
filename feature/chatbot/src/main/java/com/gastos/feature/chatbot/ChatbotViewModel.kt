@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
+import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.extension.SafeLog
@@ -52,6 +53,7 @@ private data class PendingProductClarification(
     val requestedItem: String,
     val provider: String?,
     val category: String?,
+    val subcategory: String?,
     val variants: List<String>
 )
 
@@ -60,6 +62,7 @@ internal data class ResolvedFinancialQuery(
     val item: String?,
     val matchMode: String?,
     val category: String?,
+    val subcategory: String?,
     val provider: String?
 )
 
@@ -89,6 +92,7 @@ internal object FinancialQueryResolver {
         originalQuestion: String?,
         productNames: List<String>,
         category: String? = null,
+        subcategory: String? = null,
         provider: String? = null,
         providerNames: List<String> = emptyList(),
         categoryNames: List<String> = emptyList()
@@ -96,6 +100,7 @@ internal object FinancialQueryResolver {
         val normalizedType = queryType?.lowercase(Locale.ROOT)
         val explicitItem = item?.trim()?.takeIf { it.isNotEmpty() }
         val explicitCategory = category?.trim()?.takeIf { it.isNotEmpty() }
+        val explicitSubcategory = subcategory?.trim()?.takeIf { it.isNotEmpty() }
         val explicitProvider = provider?.trim()?.takeIf { it.isNotEmpty() }
         val knownProduct = explicitItem?.let { findKnownName(it, productNames) }
         val knownCategory = explicitCategory?.let { findKnownExactName(it, categoryNames) }
@@ -153,6 +158,7 @@ internal object FinancialQueryResolver {
             item = resolvedItem,
             matchMode = resolvedMode,
             category = resolvedCategory,
+            subcategory = explicitSubcategory,
             provider = resolvedProvider
         )
     }
@@ -503,6 +509,7 @@ class ChatbotViewModel @Inject constructor(
                 queryType = "productos",
                 periodo = pending.periodo,
                 categoria = pending.category,
+                subcategoria = pending.subcategory,
                 provider = pending.provider,
                 item = clarification.item,
                 matchMode = clarification.matchMode,
@@ -574,22 +581,11 @@ class ChatbotViewModel @Inject constructor(
                 )
                 val invoiceId = saveInvoiceUseCase(invoice, result.products)
                 val savedInvoice = invoice.copy(id = invoiceId)
-                val driveResult = if (savedInvoice.driveUploadPending) {
-                    invoiceDriveService.upload(savedInvoice)
-                } else {
-                    null
-                }
-                val syncedInvoice = driveResult?.invoice ?: savedInvoice
-                val savedProducts = productRepository.getProductsByInvoiceId(invoiceId).first()
-                sheetsSyncManager.syncExpense(
-                    syncedInvoice,
-                    savedProducts
-                )
-                val driveMessage = driveResult?.let { "\n${if (it.uploaded) "☁️" else "⚠️"} ${it.message}" }.orEmpty()
                 showResult(
-                    "✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}$driveMessage",
+                    "✅ Gasto registrado: ${invoice.proveedor} - ${invoice.total} ${invoice.moneda}",
                     shouldIncludeInContext = false
                 )
+                syncInvoiceInBackground(savedInvoice)
             }
             // Ingreso detectado por OCR (factura marcada como ingreso)
             result.invoice != null && result.invoice!!.tipo == InvoiceType.INGRESO -> {
@@ -629,6 +625,7 @@ class ChatbotViewModel @Inject constructor(
                             json.optString("periodo", "mes")
                         )
                         val categoria = json.optString("categoria", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val subcategoria = json.optString("subcategoria", "").takeIf { it.isNotEmpty() && it != "null" }
                         val provider = json.optString("proveedor", "").takeIf { it.isNotEmpty() && it != "null" }
                         val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
                         val matchMode = json.optString("match_mode", "").takeIf { it.isNotEmpty() && it != "null" }
@@ -636,6 +633,7 @@ class ChatbotViewModel @Inject constructor(
                             queryType = queryType,
                             periodo = periodo,
                             categoria = categoria,
+                            subcategoria = subcategoria,
                             provider = provider,
                             item = item,
                             matchMode = matchMode,
@@ -655,6 +653,31 @@ class ChatbotViewModel @Inject constructor(
             }
             result.success -> showResult(result.message)
             else -> showResult("❌ ${result.message}", shouldPersist = false)
+        }
+    }
+
+    private fun syncInvoiceInBackground(invoice: Invoice) {
+        viewModelScope.launch {
+            val syncedInvoice = if (invoice.driveUploadPending) {
+                try {
+                    invoiceDriveService.upload(invoice).invoice
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    SafeLog.e(TAG, "Error uploading invoice image in background", error)
+                    invoice
+                }
+            } else {
+                invoice
+            }
+            try {
+                val savedProducts = productRepository.getProductsByInvoiceId(invoice.id).first()
+                sheetsSyncManager.syncExpense(syncedInvoice, savedProducts)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                SafeLog.e(TAG, "Error queueing invoice Sheets sync in background", error)
+            }
         }
     }
 
@@ -786,6 +809,7 @@ class ChatbotViewModel @Inject constructor(
         queryType: String?,
         periodo: String,
         categoria: String?,
+        subcategoria: String?,
         provider: String?,
         item: String?,
         matchMode: String?,
@@ -810,21 +834,25 @@ class ChatbotViewModel @Inject constructor(
             originalQuestion = originalQuestion,
             productNames = allProducts.map { it.descripcion },
             category = categoria,
+            subcategory = subcategoria,
             provider = provider,
             providerNames = invoices.map { it.proveedor },
             categoryNames = categoryNames
         )
         val resolvedQueryType = resolvedQuery.queryType
         val normalizedCategory = TransactionCategories.normalizeCategory(resolvedQuery.category)
+        val normalizedSubcategory = TransactionCategories.normalizeCategory(resolvedQuery.subcategory)
         val resolvedProvider = resolvedQuery.provider
         val periodInvoices = invoices.filter { it.fecha in start..end }
         val periodIncomes = incomes.filter { it.fecha in start..end }
         val filteredInvoices = periodInvoices.filter {
             TransactionCategories.matchesCategory(it.categoria, normalizedCategory) &&
+                TransactionCategories.matchesCategory(it.subcategoria, normalizedSubcategory) &&
                 (resolvedProvider == null || FinancialQueryResolver.matchesProvider(it.proveedor, resolvedProvider))
         }
         val filteredIncomes = periodIncomes.filter {
-            TransactionCategories.matchesCategory(it.categoria, normalizedCategory)
+            TransactionCategories.matchesCategory(it.categoria, normalizedCategory) &&
+                TransactionCategories.matchesCategory(it.subcategoria, normalizedSubcategory)
         }
         val filteredInvoiceIds = filteredInvoices.map { it.id }.toSet()
         val periodProducts = allProducts.filter { it.invoiceId in filteredInvoiceIds }
@@ -839,11 +867,13 @@ class ChatbotViewModel @Inject constructor(
             append(periodLabel)
             resolvedProvider?.let { append(" en $it") }
             normalizedCategory?.let { append(" · categoría ${TransactionCategories.displayCategory(it)}") }
+            normalizedSubcategory?.let { append(" · subcategoría ${TransactionCategories.displayCategory(it)}") }
         }
         val contextText = buildString {
             append("Consulta financiera ejecutada: tipo=${resolvedQueryType ?: "desconocido"}; periodo=$periodo")
             append("; proveedor=${resolvedProvider ?: "ninguno"}")
             append("; categoria=${normalizedCategory ?: "ninguna"}")
+            append("; subcategoria=${normalizedSubcategory ?: "ninguna"}")
             append("; producto=${resolvedQuery.item ?: "ninguno"}.")
         }
         fun result(text: String): ExecutedFinancialQuery = ExecutedFinancialQuery(text, contextText)
@@ -966,9 +996,10 @@ class ChatbotViewModel @Inject constructor(
                             requestedItem = resolvedItem,
                             provider = resolvedProvider,
                             category = normalizedCategory,
+                            subcategory = normalizedSubcategory,
                             variants = matchResult.variants
                         )
-                        return result(buildProductClarification(periodo, resolvedItem, matchResult.variants))
+                        return result(buildProductClarification(periodo, resolvedItem, matchResult.variants, normalizedCategory, normalizedSubcategory, resolvedProvider))
                     }
                     if (matchResult.matches.isEmpty()) {
                         return result("📦 No encontré un producto exacto para '$resolvedItem' durante $scopeLabel.")
@@ -1050,16 +1081,28 @@ class ChatbotViewModel @Inject constructor(
         }
     }
 
-    private fun buildProductClarification(periodo: String, item: String, variants: List<String>): String {
+    private fun buildProductClarification(
+        periodo: String,
+        item: String,
+        variants: List<String>,
+        category: String?,
+        subcategory: String?,
+        provider: String?
+    ): String {
         val options = variants.take(5).mapIndexed { index, variant ->
             "${index + 1}. ${variant.trim()}"
         }.joinToString("\n")
+        val scope = buildString {
+            provider?.let { append(" en $it") }
+            category?.let { append(" · categoría ${TransactionCategories.displayCategory(it)}") }
+            subcategory?.let { append(" · subcategoría ${TransactionCategories.displayCategory(it)}") }
+        }
         val instruction = if (variants.size == 1) {
             "¿Te refieres a ese producto? Responde “sí” o escribe su nombre exacto."
         } else {
             "Responde con el número, el nombre exacto o “todas”."
         }
-        return "No encontré “$item” como producto exacto durante $periodo.\n\nEncontré:\n$options\n\n$instruction"
+        return "No encontré “$item” como producto exacto durante $periodo$scope.\n\nEncontré:\n$options\n\n$instruction"
     }
 
     private fun buildProductsByProviderReport(

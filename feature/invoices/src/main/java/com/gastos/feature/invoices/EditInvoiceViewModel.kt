@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import javax.inject.Inject
 
 data class EditInvoiceUiState(
@@ -40,6 +41,9 @@ data class EditInvoiceForm(
     val proveedor: String = "",
     val moneda: String = "EUR",
     val total: String = "",
+    val numeroFactura: String = "",
+    val baseImponible: String = "",
+    val cuotaIva: String = "",
     val ivaPercent: String = "21.0",
     val irpfPercent: String = "0.0",
     val paisCodigo: String = "ES",
@@ -58,8 +62,8 @@ data class EditInvoiceForm(
      *
      * Interpretación (factura emitida/recibida en España):
      *   - [total] es el importe con IVA incluido (bruto).
-     *   - [baseImponible] = total / (1 + iva%)       → sin IVA
-     *   - [ivaAmount]     = total - baseImponible     → cuota de IVA
+     *   - [baseImponible] = OCR/manual value or total / (1 + iva%)
+     *   - [ivaAmount]     = OCR/manual value or total - baseImponible
      *   - [irpfAmount]    = baseImponible * irpf%     → retención
      *   - [totalNeto]     = total - irpfAmount        → a ingresar/cobrar
      */
@@ -85,8 +89,14 @@ data class EditInvoiceForm(
         val total = total.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 } ?: return null
         val iva = ivaPercent.toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
         val irpf = irpfPercent.toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
-        val base = total / (1.0 + iva / 100.0)
-        val ivaAmount = total - base
+        val enteredBase = baseImponible.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+        if (baseImponible.isNotBlank() && enteredBase == null) return null
+        val enteredCuota = cuotaIva.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+        if (cuotaIva.isNotBlank() && enteredCuota == null) return null
+        val base = enteredBase
+            ?: total / (1.0 + iva / 100.0)
+        val ivaAmount = enteredCuota
+            ?: total - base
         val irpfAmount = base * irpf / 100.0
         val neto = total - irpfAmount
         return FiscalBreakdown(
@@ -151,6 +161,9 @@ class EditInvoiceViewModel @Inject constructor(
                             proveedor = invoice.proveedor,
                             moneda = invoice.moneda,
                             total = invoice.total.toString(),
+                            numeroFactura = invoice.numeroFactura ?: "",
+                            baseImponible = invoice.baseImponible?.toString() ?: "",
+                            cuotaIva = invoice.cuotaIva?.toString() ?: "",
                             ivaPercent = invoice.ivaPercent.toString(),
                             irpfPercent = invoice.irpfPercent.toString(),
                             paisCodigo = invoice.paisCodigo,
@@ -191,6 +204,9 @@ class EditInvoiceViewModel @Inject constructor(
     fun updateFecha(value: Long) { _form.update { it.copy(fecha = value) } }
     fun updateMoneda(value: String) { _form.update { it.copy(moneda = value) } }
     fun updateTotal(value: String) { _form.update { it.copy(total = value) } }
+    fun updateNumeroFactura(value: String) { _form.update { it.copy(numeroFactura = value) } }
+    fun updateBaseImponible(value: String) { _form.update { it.copy(baseImponible = value) } }
+    fun updateCuotaIva(value: String) { _form.update { it.copy(cuotaIva = value) } }
     fun updateIvaPercent(value: String) { _form.update { it.copy(ivaPercent = value) } }
     fun updateIrpfPercent(value: String) { _form.update { it.copy(irpfPercent = value) } }
     fun updatePaisCodigo(value: String) { _form.update { it.copy(paisCodigo = value) } }
@@ -238,6 +254,30 @@ class EditInvoiceViewModel @Inject constructor(
                 _uiState.update { it.copy(saveResult = "El proveedor es obligatorio") }
                 return@launch
             }
+            val enteredBase = form.baseImponible.toDoubleOrNull()
+            val enteredCuota = form.cuotaIva.toDoubleOrNull()
+            val fiscalValuesAreConsistent = when {
+                enteredBase != null && enteredCuota != null -> {
+                    val rateQuota = enteredBase * fiscal.ivaPercent / 100.0
+                    abs(enteredBase + enteredCuota - fiscal.total) <= FISCAL_TOLERANCE &&
+                        abs(enteredCuota - rateQuota) <= FISCAL_TOLERANCE
+                }
+                enteredBase != null -> abs(
+                    enteredBase * (1.0 + fiscal.ivaPercent / 100.0) - fiscal.total
+                ) <= FISCAL_TOLERANCE
+                enteredCuota != null -> {
+                    val inferredBase = fiscal.total - enteredCuota
+                    inferredBase >= -FISCAL_TOLERANCE &&
+                        abs(enteredCuota - inferredBase * fiscal.ivaPercent / 100.0) <= FISCAL_TOLERANCE
+                }
+                else -> true
+            }
+            if (!fiscalValuesAreConsistent) {
+                _uiState.update {
+                    it.copy(saveResult = "La base y la cuota IVA no coinciden con el total y el porcentaje")
+                }
+                return@launch
+            }
             val currency = form.moneda.trim().uppercase()
             if (currency !in SUPPORTED_CURRENCIES) {
                 _uiState.update { it.copy(saveResult = "La moneda seleccionada no está soportada") }
@@ -263,6 +303,17 @@ class EditInvoiceViewModel @Inject constructor(
                     subcategoria = TransactionCategories.normalizeCategory(form.subcategoria),
                     moneda = currency,
                     total = fiscal.total,
+                    numeroFactura = form.numeroFactura.trim().takeIf { it.isNotBlank() },
+                    baseImponible = if (original != null && form.baseImponible.isBlank()) {
+                        null
+                    } else {
+                        fiscal.baseImponible
+                    },
+                    cuotaIva = if (original != null && form.cuotaIva.isBlank()) {
+                        null
+                    } else {
+                        fiscal.ivaAmount
+                    },
                     ivaPercent = fiscal.ivaPercent,
                     irpfPercent = fiscal.irpfPercent,
                     paisCodigo = form.paisCodigo,
@@ -306,5 +357,9 @@ class EditInvoiceViewModel @Inject constructor(
 
     fun clearSaveResult() {
         _uiState.update { it.copy(saveResult = null) }
+    }
+
+    private companion object {
+        private const val FISCAL_TOLERANCE = 0.02
     }
 }

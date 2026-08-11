@@ -517,7 +517,10 @@ class BackupViewModel @Inject constructor(
         products: List<Product>
     ): String = buildString {
         append('\uFEFF')
-        appendCsvRow("Tipo", "ID", "Fecha", "Concepto", "Monto", "Moneda", "IVA%", "IRPF%", "Devengado", "Neto", "Categoría", "Subcategoría", "Notas")
+        appendCsvRow(
+            "Tipo", "ID", "Fecha", "Nº Factura", "Concepto", "Monto", "Moneda", "Base Imponible",
+            "IVA%", "Cuota IVA", "IRPF%", "Devengado", "Neto", "Categoría", "Subcategoría", "Notas"
+        )
         val invoiceById = invoices.associateBy { it.id }
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
@@ -526,10 +529,13 @@ class BackupViewModel @Inject constructor(
                 if (invoice.tipo == InvoiceType.GASTO) "Gasto" else "Ingreso",
                 invoice.id,
                 dateFormat.format(Date(invoice.fecha)),
+                invoice.numeroFactura.orEmpty(),
                 invoice.proveedor,
                 invoice.total,
                 invoice.moneda,
+                invoice.baseImponible ?: "",
                 invoice.ivaPercent,
+                invoice.cuotaIva ?: "",
                 invoice.irpfPercent,
                 "",
                 "",
@@ -543,10 +549,13 @@ class BackupViewModel @Inject constructor(
                 "Producto",
                 product.id,
                 dateFormat.format(Date(product.createdAt)),
+                "",
                 product.descripcion,
                 product.subtotal,
                 invoiceById[product.invoiceId]?.moneda.orEmpty(),
+                "",
                 product.ivaPercent,
+                "",
                 0,
                 "",
                 "",
@@ -560,10 +569,13 @@ class BackupViewModel @Inject constructor(
                 "Ingreso",
                 income.id,
                 dateFormat.format(Date(income.fecha)),
+                "",
                 income.concepto,
                 income.monto,
                 income.moneda,
+                "",
                 income.ivaPercent,
+                "",
                 income.irpfPercent,
                 income.totalDevengado,
                 income.totalNeto,

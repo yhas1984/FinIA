@@ -120,6 +120,23 @@ class FinancialQueryResolverTest {
     }
 
     @Test
+    fun `subcategory is preserved independently from category`() {
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "gastos",
+            item = null,
+            matchMode = null,
+            originalQuestion = "Cuánto he gastado en la subcategoría Cafetería este mes",
+            productNames = emptyList(),
+            category = "Alimentación",
+            subcategory = "Cafetería"
+        )
+
+        assertEquals("gastos", resolved.queryType)
+        assertEquals("Alimentación", resolved.category)
+        assertEquals("Cafetería", resolved.subcategory)
+    }
+
+    @Test
     fun `earned wording resolves to net balance rather than income`() {
         val resolved = FinancialQueryResolver.resolve(
             queryType = "ingresos",

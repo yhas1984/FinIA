@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -76,6 +77,8 @@ class EditInvoiceViewModelTest {
                         it.driveWebViewLink == "https://drive.google.com/file/d/drive-5/view" &&
                         it.driveUploadPending &&
                         it.categoria == null &&
+                        it.baseImponible == null &&
+                        it.cuotaIva == null &&
                         it.ocrRawText == original.ocrRawText &&
                         it.createdAt == 100L
                 })
@@ -105,6 +108,25 @@ class EditInvoiceViewModelTest {
                     it.tipo == InvoiceType.GASTO
             })
         }
+    }
+
+    @Test
+    fun `saveInvoice rechaza un desglose fiscal inconsistente`() = runTest(dispatcher) {
+        val repo = mockk<com.gastos.repository.InvoiceRepository>()
+        val productRepo = mockk<com.gastos.repository.ProductRepository>()
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+        every { repo.getAllInvoices() } returns flowOf(emptyList())
+
+        val vm = EditInvoiceViewModel(repo, productRepo, sync)
+        vm.updateProveedor("Acme")
+        vm.updateTotal("121")
+        vm.updateBaseImponible("90")
+        vm.updateCuotaIva("21")
+        vm.saveInvoice()
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.saveResult?.contains("no coinciden") == true)
+        coVerify(exactly = 0) { repo.insertInvoice(any()) }
     }
 
     @Test

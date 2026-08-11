@@ -54,6 +54,12 @@ class EditInvoiceFormTest {
     }
 
     @Test
+    fun `base o cuota no numericas devuelven null`() {
+        assertNull(EditInvoiceForm(total = "100", baseImponible = "x").recalcFiscal())
+        assertNull(EditInvoiceForm(total = "100", cuotaIva = "x").recalcFiscal())
+    }
+
+    @Test
     fun `total negativo devuelve null`() {
         assertNull(form("-10").recalcFiscal())
     }

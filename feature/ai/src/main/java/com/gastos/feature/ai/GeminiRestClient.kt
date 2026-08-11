@@ -25,7 +25,8 @@ internal data class GeminiTextPart(val text: String)
 
 internal data class GeminiInlineDataPart(
     val mimeType: String,
-    val data: String
+    val data: String,
+    val byteCount: Int = 0
 )
 
 internal data class GeminiContent(
@@ -37,7 +38,15 @@ internal data class GeminiContent(
 internal data class GeminiGenerateRequest(
     val apiKey: String,
     val systemInstruction: String,
-    val contents: List<GeminiContent>
+    val contents: List<GeminiContent>,
+    val generationConfig: GeminiGenerationConfig? = null
+)
+
+internal data class GeminiGenerationConfig(
+    val thinkingLevel: String? = null,
+    val responseMimeType: String? = null,
+    val responseSchema: JSONObject? = null,
+    val mediaResolution: String? = null
 )
 
 internal class GeminiApiException(
@@ -175,6 +184,16 @@ class GeminiRestClient @Inject constructor() {
                 })
             }
         })
+        generationConfig?.let { config ->
+            put("generationConfig", JSONObject().apply {
+                config.thinkingLevel?.let { level ->
+                    put("thinkingConfig", JSONObject().put("thinkingLevel", level))
+                }
+                config.responseMimeType?.let { mimeType -> put("responseMimeType", mimeType) }
+                config.responseSchema?.let { schema -> put("responseSchema", schema) }
+                config.mediaResolution?.let { resolution -> put("mediaResolution", resolution) }
+            })
+        }
     }
 
     private companion object {

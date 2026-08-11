@@ -32,12 +32,18 @@ class SheetsSchemaTest {
                 tipo = InvoiceType.GASTO,
                 categoria = "Alimentación",
                 total = 121.0,
+                numeroFactura = "F-9",
+                baseImponible = 100.0,
+                cuotaIva = 21.0,
                 driveWebViewLink = "https://drive.test/9"
             ),
             snapshot()
         )
 
         assertEquals(SheetsSchema.recibidasHeaders.size, row.size)
+        assertEquals("F-9", row[0])
+        assertEquals(100.0, row[5])
+        assertEquals(21.0, row[7])
         assertEquals("Alimentación", row[12])
         assertEquals(9L, row[14])
         assertEquals("https://drive.test/9", row[15])
