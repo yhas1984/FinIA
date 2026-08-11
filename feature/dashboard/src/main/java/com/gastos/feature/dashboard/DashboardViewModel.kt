@@ -20,15 +20,59 @@ import javax.inject.Inject
 
 private const val TAG = "DashboardVM"
 
+/** Tipo de movimiento analizado en las estadísticas interactivas. */
+enum class AnalyticsType { GASTOS, INGRESOS }
+
+/** Mes seleccionado en las estadísticas (month en 1..12). */
+data class MonthRef(val year: Int, val month: Int) {
+    fun previous(): MonthRef =
+        if (month == 1) MonthRef(year - 1, 12) else MonthRef(year, month - 1)
+
+    fun next(): MonthRef =
+        if (month == 12) MonthRef(year + 1, 1) else MonthRef(year, month + 1)
+
+    override fun toString(): String = "$year-${month.toString().padStart(2, '0')}"
+}
+
 data class DayData(
     val dayLabel: String,
     val gastos: Double,
     val ingresos: Double
 )
 
-data class CategoryTotal(
+/** Porción del donut: una categoría con su agregación del mes. */
+data class AnalyticsSlice(
+    val category: String,
+    val total: Double,
+    val percentage: Double,
+    val count: Int,
+    val subcategories: List<SubcategorySlice> = emptyList()
+)
+
+/** Subcategoría dentro de una categoría. [subcategory] == null → "Sin subcategoría". */
+data class SubcategorySlice(
     val label: String,
-    val total: Double
+    val subcategory: String?,
+    val total: Double,
+    val percentage: Double,
+    val count: Int
+)
+
+/** Movimiento individual listado en el drill-down. */
+data class AnalyticsMovement(
+    val id: Long,
+    val fecha: Long,
+    val descripcion: String,
+    val monto: Double,
+    val isExpense: Boolean
+)
+
+/** Detalle de la categoría seleccionada en el drill-down. */
+data class CategoryDetail(
+    val category: String,
+    val total: Double,
+    val percentage: Double,
+    val subcategories: List<SubcategorySlice>
 )
 
 data class DashboardUiState(
@@ -39,8 +83,6 @@ data class DashboardUiState(
     val totalIngresosHoy: Double = 0.0,
     val totalGastosSemana: Double = 0.0,
     val totalIngresosSemana: Double = 0.0,
-    val expenseCategoriesMes: List<CategoryTotal> = emptyList(),
-    val incomeCategoriesMes: List<CategoryTotal> = emptyList(),
     val dailyData: List<DayData> = emptyList(),
     val isLoading: Boolean = true,
     val totalFacturas: Int = 0,
@@ -51,7 +93,28 @@ data class DashboardUiState(
     /** Tasa `defaultCurrency → USD` aplicada cuando es != 1.0 (para mostrarla). */
     val defaultToUsdRate: Double? = null,
     /** Moneda por defecto del usuario (para mostrar junto a los registros convertidos). */
-    val defaultCurrency: String = "EUR"
+    val defaultCurrency: String = "EUR",
+    // ---- Estadísticas interactivas ----
+    /** Mes seleccionado para el análisis. */
+    val selectedMonth: MonthRef = MonthRef(1970, 1),
+    /** Etiqueta del mes seleccionado (ej. "Agosto 2026"). */
+    val selectedMonthLabel: String = "",
+    /** ¿El mes seleccionado es el mes actual? */
+    val isCurrentMonth: Boolean = true,
+    /** Tipo analizado (Gastos/Ingresos). */
+    val analyticsType: AnalyticsType = AnalyticsType.GASTOS,
+    /** Total del tipo seleccionado en el mes (moneda por defecto). */
+    val analyticsTotal: Double = 0.0,
+    /** Porciones del donut, ordenadas por importe descendente. */
+    val analyticsSlices: List<AnalyticsSlice> = emptyList(),
+    /** Categoría seleccionada en el drill-down (null → vista raíz del donut). */
+    val selectedCategory: String? = null,
+    /** Subcategoría seleccionada en el drill-down (null → lista de subcategorías). */
+    val selectedSubcategory: String? = null,
+    /** Detalle de [selectedCategory] cuando está seleccionada. */
+    val categoryDetail: CategoryDetail? = null,
+    /** Movimientos de la categoría+subcategoría seleccionada. */
+    val movements: List<AnalyticsMovement> = emptyList()
 )
 
 /**
@@ -77,8 +140,16 @@ class DashboardViewModel @Inject constructor(
     private val currencyPreference: CurrencyPreference
 ) : ViewModel() {
 
+    /** Reloj inyectable para pruebas deterministas. */
+    internal var nowProvider: () -> Long = System::currentTimeMillis
+
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+
+    private val selectedMonth = MutableStateFlow(currentMonth())
+    private val analyticsType = MutableStateFlow(AnalyticsType.GASTOS)
+    private val selectedCategory = MutableStateFlow<String?>(null)
+    private val selectedSubcategory = MutableStateFlow<String?>(null)
 
     init {
         observeDashboardData()
@@ -86,45 +157,102 @@ class DashboardViewModel @Inject constructor(
 
     /**
      * Agrega facturas + ingresos convertidos a la moneda por defecto del
-     * usuario. Recalcula en cuanto cambian los datos, las tasas de cambio
-     * o la moneda por defecto.
+     * usuario. Recalcula en cuanto cambian los datos, las tasas de cambio,
+     * la moneda por defecto o la selección (mes / tipo / drill-down).
      *
      * Los registros cuya moneda no tenga tasa de cambio se EXCLUYEN del
-     * total (convert() devuelve null → contribuyen 0), en lugar de
-     * sumarlos como si estuvieran en la moneda por defecto (que era el bug).
+     * total (convert() devuelve null → contribuyen 0).
      */
     private fun observeDashboardData() {
         viewModelScope.launch {
             combine(
-                invoiceRepository.getAllInvoices(),
-                incomeRepository.getAllIncomes(),
-                exchangeRateProvider.rates,
-                currencyPreference.defaultCurrency
-            ) { invoices, incomes, _, target ->
-                Triple(invoices, incomes, target)
-            }.collect { (invoices, incomes, target) ->
-                _uiState.value = computeState(invoices, incomes, target)
+                combine(
+                    invoiceRepository.getAllInvoices(),
+                    incomeRepository.getAllIncomes(),
+                    exchangeRateProvider.rates,
+                    currencyPreference.defaultCurrency
+                ) { invoices, incomes, _, target ->
+                    Triple(invoices, incomes, target)
+                },
+                combine(selectedMonth, analyticsType, selectedCategory, selectedSubcategory) { month, type, category, subcategory ->
+                    DashboardSelection(month, type, category, subcategory)
+                }
+            ) { data, selection ->
+                computeState(data.first, data.second, data.third, selection)
+            }.collect { state ->
+                _uiState.value = state
             }
         }
     }
 
+    // ---- Acciones de selección ----
+
+    fun previousMonth() {
+        selectedMonth.update { it.previous() }
+        resetDrillDown()
+    }
+
+    /** Solo permite navegar hacia el futuro hasta el mes actual. */
+    fun nextMonth() {
+        selectedMonth.update { month ->
+            if (month == currentMonth()) month else month.next()
+        }
+        resetDrillDown()
+    }
+
+    fun selectMonth(year: Int, month: Int) {
+        selectedMonth.update { MonthRef(year, month) }
+        resetDrillDown()
+    }
+
+    fun setAnalyticsType(type: AnalyticsType) {
+        analyticsType.update { type }
+        resetDrillDown()
+    }
+
+    /** Abre el drill-down de una categoría. */
+    fun selectCategory(category: String) {
+        selectedCategory.update { category }
+        selectedSubcategory.update { null }
+    }
+
+    /** Navega al nivel de subcategoría (label "Sin subcategoría" → null). */
+    fun selectSubcategory(subcategory: String?) {
+        selectedSubcategory.update { subcategory }
+    }
+
+    /** Cierra el drill-down volviendo a la vista raíz. */
+    fun resetDrillDown() {
+        selectedCategory.update { null }
+        selectedSubcategory.update { null }
+    }
+
+    private fun currentMonth(): MonthRef {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = nowProvider()
+        return MonthRef(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1)
+    }
+
     /**
-     * Cálculo puro del estado del dashboard a partir de los registros y la
-     * moneda destino. Usa [ExchangeRateProvider] para convertir cada importe.
-     * Si una moneda no tiene tasa, su importe se excluye (suma 0).
+     * Cálculo puro del estado del dashboard a partir de los registros, la
+     * moneda destino y la selección actual. Usa [ExchangeRateProvider] para
+     * convertir cada importe. Si una moneda no tiene tasa, su importe se
+     * excluye (suma 0).
      */
     private fun computeState(
         invoices: List<Invoice>,
         incomes: List<Income>,
-        target: String
+        target: String,
+        selection: DashboardSelection
     ): DashboardUiState {
-        val ranges = computeDateRanges()
-        val now = System.currentTimeMillis()
+        val now = nowProvider()
+        val ranges = computeCurrentRanges(now)
+        val monthRange = computeMonthRanges(selection.month)
 
         val monthlyExpenseInvoices = invoices.filter {
-            it.tipo == InvoiceType.GASTO && it.fecha in ranges.mesInicio..ranges.mesFin
+            it.tipo == InvoiceType.GASTO && it.fecha in monthRange.first..monthRange.second
         }
-        val monthlyIncomes = incomes.filter { it.fecha in ranges.mesInicio..ranges.mesFin }
+        val monthlyIncomes = incomes.filter { it.fecha in monthRange.first..monthRange.second }
         val gastosMes = monthlyExpenseInvoices.sumInvoicesConverted(target)
         val ingresosMes = monthlyIncomes.sumIncomesConverted(target)
 
@@ -142,26 +270,22 @@ class DashboardViewModel @Inject constructor(
             .filter { it.fecha >= ranges.semanaInicio && it.fecha <= now }
             .sumIncomesConverted(target)
 
-        SafeLog.d(TAG, "Dashboard convertido a '$target': gastosMes=$gastosMes, ingresosMes=$ingresosMes")
-
-        // Registros del mes con moneda distinta a la por defecto (para la UI
-        // de "conversión aplicada"). Cada uno lleva su tasa + fecha de tasa.
+        // Registros del mes con moneda distinta a la por defecto.
         val converted = mutableListOf<ConvertedRecord>()
-        invoices.filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.mesInicio..ranges.mesFin }
-            .forEach { inv ->
-                val r = exchangeRateProvider.convertWithMeta(inv.total, inv.moneda, target)
-                if (r != null && !r.wasNative) {
-                    converted.add(ConvertedRecord(
-                        descripcion = inv.proveedor,
-                        monedaOriginal = inv.moneda,
-                        montoOriginal = inv.total,
-                        montoConvertido = r.amount,
-                        rateApplied = r.rateApplied,
-                        asOf = r.asOf
-                    ))
-                }
+        monthlyExpenseInvoices.forEach { inv ->
+            val r = exchangeRateProvider.convertWithMeta(inv.total, inv.moneda, target)
+            if (r != null && !r.wasNative) {
+                converted.add(ConvertedRecord(
+                    descripcion = inv.proveedor,
+                    monedaOriginal = inv.moneda,
+                    montoOriginal = inv.total,
+                    montoConvertido = r.amount,
+                    rateApplied = r.rateApplied,
+                    asOf = r.asOf
+                ))
             }
-        incomes.filter { it.fecha in ranges.mesInicio..ranges.mesFin }.forEach { inc ->
+        }
+        monthlyIncomes.forEach { inc ->
             val r = exchangeRateProvider.convertWithMeta(inc.monto, inc.moneda, target)
             if (r != null && !r.wasNative) {
                 converted.add(ConvertedRecord(
@@ -175,8 +299,15 @@ class DashboardViewModel @Inject constructor(
             }
         }
 
-        // Tasa default→USD (para mostrarla si es != 1.0; si default es USD, no aparece).
         val defaultToUsdRate = exchangeRateProvider.convert(1.0, target, "USD")
+        val isCurrentMonth = selection.month == currentMonth()
+
+        val analytics = computeAnalytics(
+            selection = selection,
+            expenseInvoices = monthlyExpenseInvoices,
+            incomes = monthlyIncomes,
+            target = target
+        )
 
         return DashboardUiState(
             totalGastosMes = gastosMes,
@@ -186,17 +317,157 @@ class DashboardViewModel @Inject constructor(
             totalIngresosHoy = ingresosHoy,
             totalGastosSemana = gastosSemana,
             totalIngresosSemana = ingresosSemana,
-            expenseCategoriesMes = computeExpenseCategories(monthlyExpenseInvoices, target),
-            incomeCategoriesMes = computeIncomeCategories(monthlyIncomes, target),
-            dailyData = computeDailyData(invoices, incomes, target),
+            dailyData = computeDailyData(invoices, incomes, target, now),
             isLoading = false,
             totalFacturas = invoices.count { it.tipo == InvoiceType.GASTO },
             totalIngresosCount = incomes.size,
             convertedRecords = converted,
             defaultToUsdRate = defaultToUsdRate,
-            defaultCurrency = target
+            defaultCurrency = target,
+            selectedMonth = selection.month,
+            selectedMonthLabel = monthLabel(selection.month),
+            isCurrentMonth = isCurrentMonth,
+            analyticsType = selection.type,
+            analyticsTotal = analytics.total,
+            analyticsSlices = analytics.slices,
+            selectedCategory = selection.category,
+            selectedSubcategory = selection.subcategory,
+            categoryDetail = analytics.categoryDetail,
+            movements = analytics.movements
         )
     }
+
+    // ---- Estadísticas interactivas ----
+
+    private data class AnalyticsResult(
+        val total: Double,
+        val slices: List<AnalyticsSlice>,
+        val categoryDetail: CategoryDetail?,
+        val movements: List<AnalyticsMovement>
+    )
+
+    /**
+     * Agrega las estadísticas del mes según la selección:
+     *   • slices: total por categoría (para el donut y la leyenda).
+     *   • categoryDetail: subcategorías de la categoría seleccionada.
+     *   • movements: movimientos de categoría+subcategoría seleccionada.
+     */
+    private fun computeAnalytics(
+        selection: DashboardSelection,
+        expenseInvoices: List<Invoice>,
+        incomes: List<Income>,
+        target: String
+    ): AnalyticsResult {
+        val isExpense = selection.type == AnalyticsType.GASTOS
+        val records: List<AnalyticsRecord> = if (isExpense) {
+            expenseInvoices.map { inv ->
+                AnalyticsRecord(
+                    id = inv.id,
+                    fecha = inv.fecha,
+                    descripcion = inv.proveedor,
+                    amount = exchangeRateProvider.convert(inv.total, inv.moneda, target),
+                    category = categoryLabel(inv.categoria),
+                    subcategory = inv.subcategoria
+                )
+            }
+        } else {
+            incomes.map { inc ->
+                AnalyticsRecord(
+                    id = inc.id,
+                    fecha = inc.fecha,
+                    descripcion = inc.concepto,
+                    amount = exchangeRateProvider.convert(inc.monto, inc.moneda, target),
+                    category = categoryLabel(inc.categoria),
+                    subcategory = inc.subcategoria
+                )
+            }
+        }
+
+        // Solo cuentan los registros convertibles (con tasa disponible).
+        val convertible = records.filter { it.amount != null }
+        val total = convertible.sumOf { it.amount!! }
+
+        val groupedByCategory: Map<String, List<AnalyticsRecord>> =
+            convertible.groupBy { it.category }
+
+        val slices: List<AnalyticsSlice> = groupedByCategory
+            .map { (category, rows) ->
+                val categoryTotal = rows.sumOf { it.amount!! }
+                val subcategories: List<SubcategorySlice> = rows
+                    .groupBy { subcategoryLabel(it.subcategory) to it.subcategory }
+                    .map { (labelAndValue, subRows) ->
+                        val (label, value) = labelAndValue
+                        val subTotal = subRows.sumOf { it.amount!! }
+                        SubcategorySlice(
+                            label = label,
+                            subcategory = value,
+                            total = subTotal,
+                            percentage = percentage(subTotal, categoryTotal),
+                            count = subRows.size
+                        )
+                    }
+                    .sortedByDescending { it.total }
+                AnalyticsSlice(
+                    category = category,
+                    total = categoryTotal,
+                    percentage = percentage(categoryTotal, total),
+                    count = rows.size,
+                    subcategories = subcategories
+                )
+            }
+            .sortedByDescending { it.total }
+
+        val categoryDetail: CategoryDetail? = selection.category?.let { category ->
+            slices.firstOrNull { it.category == category }?.let { slice ->
+                CategoryDetail(
+                    category = slice.category,
+                    total = slice.total,
+                    percentage = slice.percentage,
+                    subcategories = slice.subcategories
+                )
+            }
+        }
+
+        val movements: List<AnalyticsMovement> = if (selection.category != null && selection.subcategory != null) {
+            val matching = groupedByCategory[selection.category].orEmpty()
+                .filter {
+                    normalizeSubcategory(it.subcategory) == normalizeSubcategory(selection.subcategory)
+                }
+                .sortedByDescending { it.fecha }
+            matching.map {
+                AnalyticsMovement(
+                    id = it.id,
+                    fecha = it.fecha,
+                    descripcion = it.descripcion,
+                    monto = it.amount!!,
+                    isExpense = isExpense
+                )
+            }
+        } else {
+            emptyList()
+        }
+
+        return AnalyticsResult(total, slices, categoryDetail, movements)
+    }
+
+    private data class AnalyticsRecord(
+        val id: Long,
+        val fecha: Long,
+        val descripcion: String,
+        /** Importe convertido; null = sin tasa disponible (excluido). */
+        val amount: Double?,
+        val category: String,
+        val subcategory: String?
+    )
+
+    private fun percentage(part: Double, total: Double): Double =
+        if (total > 0.0) part / total * 100.0 else 0.0
+
+    private fun subcategoryLabel(subcategory: String?): String =
+        TransactionCategories.normalizeCategory(subcategory) ?: NO_SUBCATEGORY_LABEL
+
+    private fun normalizeSubcategory(subcategory: String?): String? =
+        TransactionCategories.normalizeKey(subcategory)
 
     /** Suma los importes convertidos a [target] (facturas). */
     private fun List<Invoice>.sumInvoicesConverted(target: String): Double =
@@ -206,39 +477,28 @@ class DashboardViewModel @Inject constructor(
     private fun List<Income>.sumIncomesConverted(target: String): Double =
         sumOf { exchangeRateProvider.convert(it.monto, it.moneda, target) ?: 0.0 }
 
-    private fun computeExpenseCategories(invoices: List<Invoice>, target: String): List<CategoryTotal> =
-        invoices.groupBy { categoryLabel(it.categoria) }
-            .mapNotNull { (label, rows) ->
-                val total = rows.sumOf { exchangeRateProvider.convert(it.total, it.moneda, target) ?: 0.0 }
-                val hasConvertible = rows.any { exchangeRateProvider.convert(it.total, it.moneda, target) != null }
-                if (!hasConvertible) null else CategoryTotal(label = label, total = total)
-            }
-            .sortedByDescending { it.total }
-
-    private fun computeIncomeCategories(incomes: List<Income>, target: String): List<CategoryTotal> =
-        incomes.groupBy { categoryLabel(it.categoria) }
-            .mapNotNull { (label, rows) ->
-                val total = rows.sumOf { exchangeRateProvider.convert(it.monto, it.moneda, target) ?: 0.0 }
-                val hasConvertible = rows.any { exchangeRateProvider.convert(it.monto, it.moneda, target) != null }
-                if (!hasConvertible) null else CategoryTotal(label = label, total = total)
-            }
-            .sortedByDescending { it.total }
-
     private fun categoryLabel(category: String?): String =
         TransactionCategories.canonicalExpenseCategory(category)
             ?: TransactionCategories.canonicalIncomeCategory(category)
             ?: TransactionCategories.UNCATEGORIZED_LABEL
 
-    private data class DateRanges(
+    private fun monthLabel(month: MonthRef): String {
+        val cal = Calendar.getInstance()
+        cal.clear()
+        cal.set(Calendar.YEAR, month.year)
+        cal.set(Calendar.MONTH, month.month - 1)
+        val raw = SimpleDateFormat("MMMM yyyy", Locale.forLanguageTag("es-ES")).format(cal.time)
+        return raw.replaceFirstChar { it.uppercase(Locale.ROOT) }
+    }
+
+    private data class CurrentRanges(
         val hoyInicio: Long,
         val hoyFin: Long,
-        val semanaInicio: Long,
-        val mesInicio: Long,
-        val mesFin: Long
+        val semanaInicio: Long
     )
 
-    private fun computeDateRanges(): DateRanges {
-        val hoyCal = Calendar.getInstance()
+    private fun computeCurrentRanges(now: Long): CurrentRanges {
+        val hoyCal = Calendar.getInstance().apply { timeInMillis = now }
         hoyCal.set(Calendar.HOUR_OF_DAY, 0)
         hoyCal.set(Calendar.MINUTE, 0)
         hoyCal.set(Calendar.SECOND, 0)
@@ -251,7 +511,7 @@ class DashboardViewModel @Inject constructor(
         hoyCal.set(Calendar.MILLISECOND, 999)
         val hoyFin = hoyCal.timeInMillis
 
-        val semanaCal = Calendar.getInstance()
+        val semanaCal = Calendar.getInstance().apply { timeInMillis = now }
         semanaCal.firstDayOfWeek = Calendar.MONDAY
         semanaCal.set(Calendar.DAY_OF_WEEK, semanaCal.firstDayOfWeek)
         semanaCal.set(Calendar.HOUR_OF_DAY, 0)
@@ -260,34 +520,40 @@ class DashboardViewModel @Inject constructor(
         semanaCal.set(Calendar.MILLISECOND, 0)
         val semanaInicio = semanaCal.timeInMillis
 
-        val mesCal = Calendar.getInstance()
-        mesCal.set(Calendar.DAY_OF_MONTH, 1)
-        mesCal.set(Calendar.HOUR_OF_DAY, 0)
-        mesCal.set(Calendar.MINUTE, 0)
-        mesCal.set(Calendar.SECOND, 0)
-        mesCal.set(Calendar.MILLISECOND, 0)
-        val mesInicio = mesCal.timeInMillis
+        return CurrentRanges(hoyInicio, hoyFin, semanaInicio)
+    }
 
-        mesCal.set(Calendar.DAY_OF_MONTH, mesCal.getActualMaximum(Calendar.DAY_OF_MONTH))
-        mesCal.set(Calendar.HOUR_OF_DAY, 23)
-        mesCal.set(Calendar.MINUTE, 59)
-        mesCal.set(Calendar.SECOND, 59)
-        mesCal.set(Calendar.MILLISECOND, 999)
-        val mesFin = mesCal.timeInMillis
-
-        return DateRanges(hoyInicio, hoyFin, semanaInicio, mesInicio, mesFin)
+    /** [inicio, fin] en epoch ms del mes dado. */
+    private fun computeMonthRanges(month: MonthRef): Pair<Long, Long> {
+        val cal = Calendar.getInstance()
+        cal.clear()
+        cal.set(Calendar.YEAR, month.year)
+        cal.set(Calendar.MONTH, month.month - 1)
+        cal.set(Calendar.DAY_OF_MONTH, 1)
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        val inicio = cal.timeInMillis
+        cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
+        cal.set(Calendar.HOUR_OF_DAY, 23)
+        cal.set(Calendar.MINUTE, 59)
+        cal.set(Calendar.SECOND, 59)
+        cal.set(Calendar.MILLISECOND, 999)
+        return inicio to cal.timeInMillis
     }
 
     private fun computeDailyData(
         invoices: List<Invoice>,
         incomes: List<Income>,
-        target: String
+        target: String,
+        now: Long
     ): List<DayData> {
         val data = mutableListOf<DayData>()
         val dayFormat = SimpleDateFormat("EEE", Locale.forLanguageTag("es-ES"))
 
         repeat(7) { i ->
-            val dayCal = Calendar.getInstance()
+            val dayCal = Calendar.getInstance().apply { timeInMillis = now }
             dayCal.add(Calendar.DAY_OF_YEAR, -(6 - i))
             dayCal.set(Calendar.HOUR_OF_DAY, 0)
             dayCal.set(Calendar.MINUTE, 0)
@@ -328,11 +594,29 @@ class DashboardViewModel @Inject constructor(
                 val invoices = invoiceRepository.getAllInvoices().first()
                 val incomes = incomeRepository.getAllIncomes().first()
                 val target = currencyPreference.defaultCurrency.value
-                _uiState.value = computeState(invoices, incomes, target)
+                val selection = DashboardSelection(
+                    month = selectedMonth.value,
+                    type = analyticsType.value,
+                    category = selectedCategory.value,
+                    subcategory = selectedSubcategory.value
+                )
+                _uiState.value = computeState(invoices, incomes, target, selection)
             } catch (e: Exception) {
                 SafeLog.e(TAG, "Error refrescando dashboard", e)
                 _uiState.update { it.copy(isLoading = false) }
             }
         }
+    }
+
+    private data class DashboardSelection(
+        val month: MonthRef,
+        val type: AnalyticsType,
+        val category: String?,
+        val subcategory: String?
+    )
+
+    companion object {
+        /** Etiqueta para movimientos con categoría pero sin subcategoría. */
+        const val NO_SUBCATEGORY_LABEL: String = "Sin subcategoría"
     }
 }
