@@ -23,7 +23,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import java.util.Calendar
 import java.util.Locale
-
 /** Widget mensual con totales diarios y acceso al detalle de cada día. */
 @Composable
 fun FinancialCalendarCard(
