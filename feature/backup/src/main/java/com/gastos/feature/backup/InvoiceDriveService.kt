@@ -43,26 +43,26 @@ class InvoiceDriveService @Inject constructor(
             return@withContext InvoiceDriveUploadResult(
                 invoice = invoice.copy(driveUploadPending = true),
                 uploaded = false,
-                message = "La copia en Google Drive requiere Premium."
+                message = context.getString(R.string.drive_upload_requires_premium)
             )
         }
         if (invoice.tipo != InvoiceType.GASTO || invoice.id <= 0 || invoice.imagenUri.isNullOrBlank()) {
             return@withContext InvoiceDriveUploadResult(
                 invoice = invoice,
                 uploaded = false,
-                message = "La factura no tiene una imagen válida para subir."
+                message = context.getString(R.string.drive_upload_invalid_invoice_image)
             )
         }
         val account = sheetsExportService.getLastSignedInAccount()
             ?: return@withContext InvoiceDriveUploadResult(
                 invoice = invoice.copy(driveUploadPending = true),
                 uploaded = false,
-                message = "Conecta tu cuenta Google para subir la foto a Drive."
+                message = context.getString(R.string.drive_upload_connect_google)
             )
 
         try {
             val selectedAccount = account.account
-                ?: error("La cuenta Google seleccionada no está disponible")
+                ?: error(context.getString(R.string.selected_google_account_unavailable))
             val drive = createDriveService(selectedAccount)
             val folderId = ensureFinAiFolder(drive, account.id ?: account.email.orEmpty())
             val existing = findInvoiceFile(drive, folderId, invoice.id)
@@ -81,7 +81,7 @@ class InvoiceDriveService @Inject constructor(
             InvoiceDriveUploadResult(
                 invoice = updated,
                 uploaded = true,
-                message = "Foto guardada en Google Drive."
+                message = context.getString(R.string.drive_upload_success)
             )
         } catch (error: CancellationException) {
             throw error
@@ -208,7 +208,7 @@ class InvoiceDriveService @Inject constructor(
             quotaMessage = "Google Drive rechazó el permiso o la cuota disponible.",
             genericMessage = "No se pudo subir la foto a Drive. Podrás reintentarlo."
         )
-    ).message
+        ).message
 
     companion object {
         private const val PREFS_NAME = "finai_drive_sync"

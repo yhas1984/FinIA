@@ -11,6 +11,7 @@ import android.os.SystemClock
 import android.util.Base64
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
+import com.gastos.feature.ai.R
 import com.gastos.domain.model.ChatMessageRecord
 import com.gastos.domain.model.CountryFiscalConfig
 import com.gastos.domain.model.Income
@@ -35,6 +36,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.util.Locale
 import kotlin.math.roundToInt
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -148,7 +150,7 @@ class AIService @Inject constructor(
     fun isConfigured(): Boolean = currentApiKey.isNotBlank()
 
     suspend fun validateApiKey(apiKey: String): Result<Unit> = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank()) return@withContext Result.failure(Exception("API key vacía"))
+        if (apiKey.isBlank()) return@withContext Result.failure(Exception(context.getString(R.string.ai_api_key_empty)))
         try {
             geminiRestClient.generateContent(
                 GeminiGenerateRequest(
@@ -187,7 +189,7 @@ class AIService @Inject constructor(
         val userMsg = command
         return flow {
             chatMutex.withLock {
-                if (!isConfigured()) throw IllegalStateException(NO_API_KEY_MESSAGE)
+                if (!isConfigured()) throw IllegalStateException(context.getString(R.string.ai_no_api_key))
                 val collected = StringBuilder()
                 geminiRestClient.streamGenerateContent(
                     buildRequest(listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(userMsg)))))
@@ -231,7 +233,7 @@ class AIService @Inject constructor(
                         if (!bitmap.isRecycled) bitmap.recycle()
                     }
                 }
-            } ?: return AIResult(success = false, message = "Error al cargar la imagen")
+            } ?: return AIResult(success = false, message = context.getString(R.string.ai_image_load_error))
             val preparationTimeMs = SystemClock.elapsedRealtime() - preparationStartedAt
             val fiscalConfig = currentFiscalConfig()
             val defaultCurrency = getDefaultCurrency()
@@ -284,7 +286,7 @@ class AIService @Inject constructor(
                     contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(queryExtractionPrompt(query)))))
                 )
             )
-            AIResult(success = true, message = "Consulta procesada", queryResult = responseText)
+            AIResult(success = true, message = context.getString(R.string.ai_query_processed), queryResult = responseText)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -293,17 +295,17 @@ class AIService @Inject constructor(
         }
     }
 
-    private fun notConfiguredResult(): AIResult = AIResult(success = false, message = NO_API_KEY_MESSAGE)
+    private fun notConfiguredResult(): AIResult = AIResult(success = false, message = context.getString(R.string.ai_no_api_key))
 
     private fun friendlyError(error: Exception): String {
         return when {
             error is GeminiApiException && error.statusCode in listOf(400, 401, 403) ->
-                "Tu API key de Gemini no es válida. Revísala en $SETTINGS_PATH."
+                context.getString(R.string.ai_friendly_api_key_invalid, SETTINGS_PATH)
             error is GeminiApiException && error.statusCode == 429 ->
-                "Se ha alcanzado el límite de uso de la API gratuita de Gemini. Inténtalo de nuevo más tarde."
+                context.getString(R.string.ai_friendly_api_rate_limit)
             error is GeminiApiException && error.statusCode in 500..599 ->
-                "Gemini no responde temporalmente. Inténtalo de nuevo más tarde."
-            else -> "Error al contactar con Gemini. Inténtalo de nuevo más tarde."
+                context.getString(R.string.ai_friendly_api_temporary_unavailable)
+            else -> context.getString(R.string.ai_friendly_api_generic)
         }
     }
 
@@ -348,12 +350,14 @@ class AIService @Inject constructor(
         val defaultCurrency = getDefaultCurrency()
         val extra = userInstructions.trim()
         val extraBlock = if (extra.isNotEmpty()) {
-            "\n\nInstrucciones adicionales del usuario (sigue también estas reglas):\n$extra"
+            if (isEnglishLocale()) "\n\nAdditional user instructions (follow these rules too):\n$extra" else "\n\nInstrucciones adicionales del usuario (sigue también estas reglas):\n$extra"
         } else ""
-        return """
-            Eres FinAI, un asistente financiero personal inteligente, cercano y conversacional.
-            Respondes siempre en español, con tono amable y profesional. Hoy es $today.
+        return if (isEnglishLocale()) buildEnglishSystemPrompt(today, defaultCurrency, extraBlock) else buildSpanishSystemPrompt(today, defaultCurrency, extraBlock)
+    }
 
+    private fun buildSpanishSystemPrompt(today: String, defaultCurrency: String, extraBlock: String): String = """
+            $ES_SYSTEM_PROMPT
+            Hoy es $today.
             Tu trabajo es analizar el mensaje del usuario y decidir qué acción realizar.
             Para registrar o consultar datos devuelves SOLO un objeto JSON válido,
             sin markdown ni texto adicional. Para conversación general respondes
@@ -363,7 +367,6 @@ class AIService @Inject constructor(
             1. CONSULTA FINANCIERA: si pregunta cuánto gastó, sus ingresos, balance, totales,
                comercios, proveedores, productos comprados, etc.:
                 {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
-
                Diferencia siempre estos filtros:
                 - COMERCIO/PROVEEDOR: Mercadona, Lidl, Amazon, Repsol, etc. Usa
                   query_type="gastos", proveedor="nombre", categoria=null e item=null.
@@ -387,7 +390,6 @@ class AIService @Inject constructor(
                - "lo que va de mes", "este mes" y "mes actual" usan periodo="mes".
                - En seguimientos como "ese comercio", "esa tienda" o "ahí", conserva
                  el proveedor mencionado en la conversación anterior.
-
                Reglas extra para productos:
                - Un nombre genérico (agua, café, leche, pan) representa una familia y usa match_mode="group".
                - Si el usuario pide SOLO un producto exacto o escribe la descripción completa de la línea
@@ -419,16 +421,55 @@ class AIService @Inject constructor(
                conversacional y personalizado, evitando frases genéricas. Sin prefijos.
             $extraBlock
         """.trimIndent()
-    }
+
+    private fun buildEnglishSystemPrompt(today: String, defaultCurrency: String, extraBlock: String): String = """
+            $EN_SYSTEM_PROMPT
+            Today is $today.
+            Your job is to analyze the user's message and decide which action to take.
+            For data entry or lookup, return ONLY a valid JSON object, with no markdown or extra text.
+            For general conversation, reply directly with natural language, never JSON.
+
+            Action rules:
+            1. FINANCIAL QUERY: if the user asks how much was spent, income, balance, totals,
+               stores, providers, purchased products, etc.:
+                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+               Distinguish these filters:
+                - STORE/PROVIDER: Mercadona, Lidl, Amazon, Repsol, etc. Use query_type="gastos",
+                   proveedor="name", categoria=null and item=null.
+                 - CATEGORY: Alimentación, Transporte, Vivienda, Ocio, etc. Use categoria="name"
+                   and proveedor=null.
+                 - SUBCATEGORY: Supermercado, Restaurantes, Combustible, Farmacia, Internet, salary base, etc.
+                   Use subcategoria="name" and do not confuse it with categoria.
+                - PRODUCT: coffee, water, bread, gasoline, etc. Use query_type="productos" and item="name".
+                  A store or company is NEVER a product.
+                - PRODUCT LIST BY STORE: if the user asks what products they bought or what a ticket contains,
+                  use query_type="productos_por_comercio" and fill provider if mentioned.
+                - "earned", "profit", "net", or "what's left" mean balance (income minus expenses).
+                - "received", "paid", "salary" mean income, not balance.
+                - "this month" and similar map to periodo="mes".
+                - In follow-ups like "that store" or "there", keep the previous provider.
+                Product rules: generic names use match_mode="group"; exact line descriptions use match_mode="exact".
+                Do not use balance for product questions.
+            2. ADD EXPENSE: if the user says they spent, bought or paid for something:
+                {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0.0,"total":0.0,"moneda":"$defaultCurrency","fecha":"$today","categoria":"texto","subcategoria":"texto"}
+            3. ADD INCOME: if the user mentions salary, payment or received income:
+                {"action":"add_income","concepto":"texto","total_devengado":0.0,"total_neto":0.0,"monto":0.0,"moneda":"$defaultCurrency","fecha":"$today","fuente":"texto","categoria":"texto","subcategoria":"texto"}
+            4. GENERAL CONVERSATION: reply naturally, no JSON.
+            $extraBlock
+        """.trimIndent()
 
     private fun buildOcrSystemPrompt(userInstructions: String): String {
         val extra = userInstructions.trim()
         val extraBlock = if (extra.isNotEmpty()) {
-            "\n\nInstrucciones adicionales del usuario:\n$extra"
+            if (isEnglishLocale()) {
+                "\n\nAdditional user instructions:\n$extra"
+            } else {
+                "\n\nInstrucciones adicionales del usuario:\n$extra"
+            }
         } else {
             ""
         }
-        return OCR_SYSTEM_PROMPT + extraBlock
+        return (if (isEnglishLocale()) OCR_SYSTEM_PROMPT_EN else OCR_SYSTEM_PROMPT_ES) + extraBlock
     }
 
     private fun buildOcrUserPrompt(
@@ -436,14 +477,31 @@ class AIService @Inject constructor(
         defaultCurrency: String
     ): String {
         val countryHint = fiscalConfig?.let {
-            "Si el país no es legible, usa ${it.paisCodigo} (${it.nombrePais}) como respaldo. " +
-                "Sus tipos habituales de ${it.nombreLeyFiscal} son ${it.ivaRates.joinToString()}%."
+            if (isEnglishLocale()) {
+                "If the country is unreadable, fall back to ${it.paisCodigo} (${it.nombrePais}). " +
+                    "Its usual ${it.nombreLeyFiscal} rates are ${it.ivaRates.joinToString()}%."
+            } else {
+                "Si el país no es legible, usa ${it.paisCodigo} (${it.nombrePais}) como respaldo. " +
+                    "Sus tipos habituales de ${it.nombreLeyFiscal} son ${it.ivaRates.joinToString()}%."
+            }
         }.orEmpty()
-        return "Analiza toda la imagen adjunta, incluidos encabezado, pie, bloques fiscales y líneas de productos. " +
-            "Amplía mentalmente el texto pequeño antes de extraerlo. $countryHint " +
-            "Si la moneda no es legible, usa $defaultCurrency como respaldo. " +
-            "Nunca sustituyas valores legibles por valores de respaldo y conserva literalmente los NIF."
+        return if (isEnglishLocale()) {
+            "Analyze the entire attached image, including header, footer, fiscal blocks and product lines. " +
+                "Mentally zoom into small text before extracting it. $countryHint " +
+                "If the currency is unreadable, use $defaultCurrency as fallback. " +
+                "Never replace readable values with fallbacks and preserve tax IDs exactly as written."
+        } else {
+            "Analiza toda la imagen adjunta, incluidos encabezado, pie, bloques fiscales y líneas de productos. " +
+                "Amplía mentalmente el texto pequeño antes de extraerlo. $countryHint " +
+                "Si la moneda no es legible, usa $defaultCurrency como respaldo. " +
+                "Nunca sustituyas valores legibles por valores de respaldo y conserva literalmente los NIF."
+        }
     }
+
+    private fun isEnglishLocale(): Boolean = activeLocale().language == "en"
+
+    private fun activeLocale(): Locale = context.resources.configuration.locales[0]
+        ?: Locale.getDefault()
 
     private fun buildOcrResponseSchema(): JSONObject = JSONObject().apply {
         put("type", "OBJECT")
@@ -545,16 +603,18 @@ class AIService @Inject constructor(
             if (esNomina) {
                 val empresa = readString(json, "empresa", "proveedor").ifBlank { "Nómina" }
                 val moneda = resolveCurrency(json.optString("moneda"), defaultCurrency)
-                val devengado = readDouble(json, "devengado", "total_devengado")
-                val liquido = readDouble(json, "liquido", "neto", "total_neto")
-                val total = readDouble(json, "total")
+                val devengado = readNullableDouble(json, "devengado", "total_devengado")
+                val liquido = readNullableDouble(json, "liquido", "neto", "total_neto")
+                val total = readNullableDouble(json, "total")
                 val monto = when {
-                    liquido > 0 -> liquido
-                    devengado > 0 -> devengado
+                    liquido != null && liquido > 0 -> liquido
+                    devengado != null && devengado > 0 -> devengado
                     else -> total
                 }
-                if (monto <= 0) return AIResult(success = false, message = "No se pudo leer el importe de la nómina")
-                val irpf = readDouble(json, "retencion_irpf")
+                if (monto == null || monto <= 0) {
+                    return AIResult(success = false, message = context.getString(R.string.ai_manual_review_payroll))
+                }
+                val irpf = readNullableDouble(json, "retencion_irpf") ?: 0.0
                 val fecha = parseDate(json.optString("fecha", ""))
                 val concepto = "Nómina - $empresa"
                 val subcategoria = readNullableString(json, "subcategoria")
@@ -562,8 +622,8 @@ class AIService @Inject constructor(
                     fecha = fecha,
                     concepto = concepto,
                     monto = monto,
-                    totalDevengado = if (devengado > 0) devengado else monto,
-                    totalNeto = if (liquido > 0) liquido else monto,
+                    totalDevengado = if (devengado != null && devengado > 0) devengado else monto,
+                    totalNeto = if (liquido != null && liquido > 0) liquido else monto,
                     moneda = moneda,
                     fuente = empresa,
                     categoria = TransactionCategories.canonicalIncomeCategory(readString(json, "categoria").ifBlank { "Nómina" }),
@@ -575,7 +635,13 @@ class AIService @Inject constructor(
                 )
                 return AIResult(
                     success = true,
-                    message = "Nómina procesada: $empresa — líquido ${if (liquido > 0) liquido else monto} $moneda${if (irpf > 0) " (IRPF ${irpf}%)" else ""}",
+                    message = context.getString(
+                        R.string.ai_payroll_processed,
+                        empresa,
+                        liquido?.takeIf { it > 0 } ?: monto,
+                        moneda,
+                        if (irpf > 0) " (IRPF ${irpf}%)" else ""
+                    ),
                     income = income
                 )
             }
@@ -584,10 +650,12 @@ class AIService @Inject constructor(
                 "proveedor", "empresa", "razon_social", "razon social", "nombre", "name", "merchant", "comercio",
                 "establecimiento", "vendedor", "supplier", "razon", "sociedad", "compañia", "compania"
             ).ifBlank { "Desconocido" }
-            val total = readDouble(json, "total")
+            val total = readNullableDouble(json, "total")
+                ?: return AIResult(success = false, message = context.getString(R.string.ai_manual_review_invoice_missing))
+            if (total <= 0) return AIResult(success = false, message = context.getString(R.string.ai_manual_review_invoice_non_positive))
             val moneda = resolveCurrency(json.optString("moneda"), defaultCurrency)
-            val ivaPercent = readDouble(json, "tipo_iva", "iva_percent")
-            val irpfPercent = readDouble(json, "retencion_irpf")
+            val ivaPercent = readNullableDouble(json, "tipo_iva", "iva_percent") ?: 0.0
+            val irpfPercent = readNullableDouble(json, "retencion_irpf") ?: 0.0
             val numeroFactura = readNullableString(json, "numero_factura", "numeroFactura", "no_factura", "n_factura")
             val baseImponible = readNullableDouble(json, "base_imponible", "baseImponible")
             val cuotaIva = readNullableDouble(json, "cuota_iva", "cuotaIva", "iva_amount")
@@ -624,26 +692,35 @@ class AIService @Inject constructor(
                 for (index in 0 until productsArray.length()) {
                     val productJson = productsArray.getJSONObject(index)
                     val descripcion = readNullableString(productJson, "descripcion") ?: continue
+                    val cantidad = readNullableDouble(productJson, "cantidad")?.takeIf { it > 0.0 } ?: 1.0
+                    val precioUnitario = readNullableDouble(productJson, "precio_unitario", "precioUnitario")
+                    val subtotal = readNullableDouble(productJson, "subtotal")
+                        ?: precioUnitario?.let { cantidad * it }
+                        ?: continue
+                    val effectivePrecio = precioUnitario ?: (if (cantidad > 0.0) subtotal / cantidad else null)
+                    if (effectivePrecio == null || effectivePrecio < 0 || subtotal < 0) continue
                     products.add(
                         Product(
                             invoiceId = 0,
                             descripcion = descripcion,
-                            cantidad = readDouble(productJson, "cantidad").takeIf { it > 0.0 } ?: 1.0,
-                            precioUnitario = readDouble(productJson, "precio_unitario"),
-                            subtotal = readDouble(productJson, "subtotal"),
-                            ivaPercent = readDouble(productJson, "iva_percent").takeIf { it > 0.0 } ?: ivaPercent
+                            cantidad = cantidad,
+                            precioUnitario = effectivePrecio,
+                            subtotal = subtotal,
+                            ivaPercent = readNullableDouble(productJson, "iva_percent").takeIf { it != null && it > 0.0 } ?: ivaPercent
                         )
                     )
                 }
             }
             AIResult(
                 success = true,
-                message = if (esIngresoFactura) "Ingreso procesado correctamente" else "Gasto procesado correctamente",
+                message = context.getString(
+                    if (esIngresoFactura) R.string.ai_income_processed else R.string.ai_expense_processed
+                ),
                 invoice = invoice,
                 products = products
             )
         } catch (error: Exception) {
-            AIResult(success = false, message = "Error al parsear documento: ${error.message}")
+            AIResult(success = false, message = context.getString(R.string.ai_parse_document_error, error.message.orEmpty()))
         }
     }
 
@@ -660,13 +737,34 @@ class AIService @Inject constructor(
     private fun readNullableString(json: JSONObject, vararg keys: String): String? =
         readString(json, *keys).takeIf(String::isNotBlank)
 
-    private fun readDouble(json: JSONObject, vararg keys: String): Double =
-        readNullableDouble(json, *keys) ?: 0.0
-
     private fun readNullableDouble(json: JSONObject, vararg keys: String): Double? = keys.asSequence()
-        .filter { key -> json.has(key) && !json.isNull(key) }
-        .map { key -> json.optDouble(key, Double.NaN) }
-        .firstOrNull(Double::isFinite)
+        .mapNotNull { key -> readJsonNumber(json, key) }
+        .firstOrNull()
+
+    private fun readJsonNumber(json: JSONObject, key: String): Double? {
+        if (!json.has(key) || json.isNull(key)) return null
+        val raw = json.opt(key)
+        return when (raw) {
+            is Number -> raw.toDouble().takeIf(Double::isFinite)
+            is String -> parseNumber(raw)
+            else -> parseNumber(raw?.toString() ?: return null)
+        }
+    }
+
+    private fun parseNumber(raw: String): Double? {
+        val normalized = raw.trim().lowercase(Locale.ROOT)
+        if (normalized.isBlank() || normalized in MISSING_TEXT_VALUES) return null
+        if (normalized in setOf("-", "—", "null", "none", "nan", "undefined")) return null
+        val compact = normalized.replace(" ", "")
+        val candidate = when {
+            compact.count { it == ',' } == 1 && compact.count { it == '.' } == 0 -> compact.replace(',', '.')
+            compact.count { it == '.' } > 1 && compact.count { it == ',' } == 0 -> compact.replace(".", "")
+            compact.count { it == ',' } > 1 && compact.count { it == '.' } == 0 -> compact.replace(",", "")
+            compact.contains(',') && compact.contains('.') -> if (compact.lastIndexOf(',') > compact.lastIndexOf('.')) compact.replace(".", "").replace(',', '.') else compact.replace(",", "")
+            else -> compact
+        }
+        return candidate.toDoubleOrNull()?.takeIf(Double::isFinite)
+    }
 
     private fun isMeaningfulText(value: String): Boolean = value.isNotBlank() &&
         value.lowercase() !in MISSING_TEXT_VALUES && value !in setOf("-", "—", "N/A", "n/a")
@@ -698,7 +796,12 @@ class AIService @Inject constructor(
                         total = total
                     )
                     val product = Product(invoiceId = 0, descripcion = descripcion, cantidad = cantidad, precioUnitario = precioUnitario, subtotal = total)
-                    AIResult(success = true, message = "Gasto agregado: $descripcion - $total $moneda", invoice = invoice, products = listOf(product))
+                    AIResult(
+                        success = true,
+                        message = context.getString(R.string.ai_expense_added, descripcion, total.toString(), moneda),
+                        invoice = invoice,
+                        products = listOf(product)
+                    )
                 }
                 "add_income" -> {
                     val concepto = json.optString("concepto", json.optString("descripcion", ""))
@@ -723,18 +826,24 @@ class AIService @Inject constructor(
                         subcategoria = subcategoria
                     )
                     val displayMonto = if (totalDevengado > 0 && totalNeto > 0) {
-                        "Devengado: $totalDevengado $moneda / Neto: $totalNeto $moneda"
+                        context.getString(
+                            R.string.ai_income_amounts_format,
+                            totalDevengado.toString(),
+                            moneda,
+                            totalNeto.toString(),
+                            moneda
+                        )
                     } else {
-                        "$monto $moneda"
+                        context.getString(R.string.ai_income_amount_format, monto.toString(), moneda)
                     }
-                    AIResult(success = true, message = "Ingreso agregado: $concepto - $displayMonto", income = income)
+                    AIResult(success = true, message = context.getString(R.string.ai_income_added, concepto, displayMonto), income = income)
                 }
-                "query" -> AIResult(success = true, message = "Consulta procesada", queryResult = json.toString())
+                "query" -> AIResult(success = true, message = context.getString(R.string.ai_query_processed), queryResult = json.toString())
                 "chat" -> AIResult(success = true, message = json.optString("response", ""))
                 else -> AIResult(success = true, message = trimmed)
             }
         } catch (error: Exception) {
-            AIResult(success = false, message = "No se pudo interpretar la respuesta: ${error.message}")
+            AIResult(success = false, message = context.getString(R.string.ai_parse_response_error, error.message.orEmpty()))
         }
     }
 
@@ -790,9 +899,9 @@ class AIService @Inject constructor(
         private const val ROLE_USER = "user"
         private const val ROLE_MODEL = "model"
         const val SETTINGS_PATH = "Configuración > IA"
-        const val NO_API_KEY_MESSAGE =
-            "Aún no has configurado tu API key de Gemini. Ve a $SETTINGS_PATH para añadir la tuya (es gratis en Google AI Studio)."
-        private val OCR_SYSTEM_PROMPT = """
+        private val ES_SYSTEM_PROMPT = "Eres FinAI, un asistente financiero personal inteligente, cercano y conversacional. Respondes siempre en español, con tono amable y profesional."
+        private val EN_SYSTEM_PROMPT = "You are FinAI, a smart personal finance assistant. Reply in English only, with a friendly and professional tone."
+        private val OCR_SYSTEM_PROMPT_ES = """
             Eres el extractor OCR contable de FinAI. Analiza una factura, ticket, recibo o nómina
             y devuelve exactamente un objeto JSON válido, sin markdown ni texto adicional.
             Devuelve SIEMPRE todas las claves definidas por el esquema. Para un texto ilegible usa
@@ -822,6 +931,35 @@ class AIService @Inject constructor(
             subtotales deben conservar los valores legibles del documento. Verifica que base,
             impuestos y total sean coherentes antes de responder y no redondees los NIF ni los
             números de factura.
+        """.trimIndent()
+        private val OCR_SYSTEM_PROMPT_EN = """
+            You are FinAI's accounting OCR extractor. Analyze an invoice, receipt, payslip, or ticket
+            and return exactly one valid JSON object, without markdown or extra text.
+            Return all keys defined by the schema. If text is unreadable, use "" and if an optional
+            fiscal amount is unreadable, use null; never omit keys or invent values.
+            Read country, currency and date directly from the document; use pais="XX" only if the
+            country cannot be determined and keep the date in YYYY-MM-DD format.
+
+            tipo_documento must be one of: nomina, factura_recibida, factura_emitida, ticket or recibo.
+            For invoices, tickets and receipts extract provider, invoice number, category, subcategory,
+            issuer and recipient tax ids, tax base, VAT rate, VAT amount, income tax withholding,
+            total and products. Copy tax ids character by character, including hyphens. Each product
+            contains descripcion, cantidad, precio_unitario, subtotal and iva_percent. If there are no
+            product lines, productos must be [].
+
+            Expense categories must be one of: Alimentación, Vivienda, Transporte, Servicios, Salud,
+            Educación, Ocio, Viajes, Impuestos, Negocio or Otros. Infer it from the store, text and
+            products; use Otros only when there is not enough evidence. The subcategory should reflect
+            the kind of purchase when it can be inferred, for example Supermercado, Restaurantes,
+            Combustible, Farmacia or Internet.
+
+            A payslip is never an expense: use empresa, devengado, liquido, retencion_irpf,
+            base_cotizacion and seguridad_social. For fields that do not apply to the document type,
+            return "" or null, but do not omit them.
+
+            Read the VAT or tax shown; do not assume it from the country. Product unit prices and
+            subtotals must preserve the document's readable values. Verify that base, taxes and total
+            are consistent before responding and do not round tax IDs or invoice numbers.
         """.trimIndent()
         const val FREE_MAX_HISTORY_TURNS = 3
         const val PREMIUM_MAX_HISTORY_TURNS = 10

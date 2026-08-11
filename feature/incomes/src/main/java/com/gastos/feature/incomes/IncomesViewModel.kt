@@ -2,6 +2,8 @@ package com.gastos.feature.incomes
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.feature.backup.SheetsSyncManager
@@ -9,6 +11,7 @@ import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.IncomeRepository
 import com.gastos.storage.InvoiceImageStorage
+import com.gastos.feature.incomes.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +43,7 @@ private const val UNCATEGORIZED_FILTER = "__uncategorized__"
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class IncomesViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val incomeRepository: IncomeRepository,
     private val sheetsSyncManager: SheetsSyncManager,
     private val exchangeRateProvider: ExchangeRateProvider,
@@ -103,7 +107,7 @@ class IncomesViewModel @Inject constructor(
                 }
                 .catch { e ->
                     _uiState.update {
-                        it.copy(error = e.message ?: "Error al cargar ingresos", isLoading = false)
+                        it.copy(error = e.message ?: context.getString(R.string.load_income_error), isLoading = false)
                     }
                 }
                 .collect { data ->
@@ -175,7 +179,7 @@ class IncomesViewModel @Inject constructor(
                 sheetsSyncManager.deleteIncome(income.id)
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(error = e.message ?: "Error al eliminar")
+                        it.copy(error = e.message ?: context.getString(R.string.delete_income_error))
                 }
             }
         }

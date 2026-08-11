@@ -19,6 +19,7 @@
 - ☁️ **Google Sheets: exportación + sincronización multimoneda** — Sheet con Facturas Recibidas, Ingresos unificados, Productos y Resumen, con importes convertidos a tu moneda local.
 - 🔄 **Sincronización bidireccional** — altas, ediciones y borrados en la app se reflejan automáticamente (upsert/delete por ID de registro). “Forzar sincronización” reexporta el Sheet completo.
 - ☁️ **Google Drive** — subida automática de la foto tras escanear una factura si Premium y Google están conectados, con reintento y limpieza del temporal de cámara.
+- 🗑️ **Fotos remotas** — borrar una factura local no elimina automáticamente su foto de Drive; la copia remota se conserva y puede eliminarse directamente desde Google Drive.
 - 💎 **Premium** (pago único vía Google Play Billing, con flag debug independiente) — amplía la memoria del asistente de 3 a 10 turnos y desbloquea Sheets/Drive.
 - 🔐 **Backup recuperable** — archivo `.finai` cifrado para todos; copia automática versionada en Google Drive para Premium.
 - 📄 **Exportación CSV y PDF** para informes y uso externo.

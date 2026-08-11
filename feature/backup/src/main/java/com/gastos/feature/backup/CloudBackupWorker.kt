@@ -1,6 +1,7 @@
 package com.gastos.feature.backup
 
 import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -12,7 +13,7 @@ import kotlinx.coroutines.CancellationException
 
 @HiltWorker
 class CloudBackupWorker @AssistedInject constructor(
-    @Assisted appContext: Context,
+    @Assisted private val appContext: Context,
     @Assisted params: WorkerParameters,
     private val cloudBackupService: CloudBackupService,
     private val archiveService: BackupArchiveService,
@@ -25,7 +26,7 @@ class CloudBackupWorker @AssistedInject constructor(
         if (!premiumStatus.isPremium.value) return Result.success()
         if (!archiveService.isPasswordConfigured()) return Result.success()
         if (!sheetsExportService.isSignedIn()) {
-            preferences.recordError("Vuelve a conectar Google para reanudar el backup automático.")
+            preferences.recordError(appContext.getString(R.string.reconnect_google_backup_auto))
             return Result.success()
         }
         return try {
@@ -38,11 +39,11 @@ class CloudBackupWorker @AssistedInject constructor(
             val classified = GoogleApiErrorClassifier.classify(
                 error,
                 GoogleApiErrorContext(
-                    featureLabel = "el backup automático",
-                    networkMessage = "Sin conexión con Google Drive. FinAI volverá a intentarlo automáticamente.",
-                    transientMessage = "Google Drive no responde temporalmente. FinAI volverá a intentarlo automáticamente.",
-                    quotaMessage = "Google Drive no pudo guardar la copia por permisos o cuota. No se reintentará automáticamente.",
-                    genericMessage = "No se pudo crear el backup automático. Revisa la configuración del backup."
+                    featureLabel = appContext.getString(R.string.auto_backup_feature_label),
+                    networkMessage = appContext.getString(R.string.drive_network_message),
+                    transientMessage = appContext.getString(R.string.drive_transient_message),
+                    quotaMessage = appContext.getString(R.string.drive_quota_message),
+                    genericMessage = appContext.getString(R.string.drive_generic_message)
                 )
             )
             if (classified.category != GoogleApiErrorCategory.CANCELLATION) {

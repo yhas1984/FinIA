@@ -11,12 +11,66 @@ import java.util.Date
 import java.util.Locale
 
 internal object SheetsSchema {
-    const val RECIBIDAS = "Facturas Recibidas"
-    const val INGRESOS = "Ingresos"
-    const val PRODUCTOS = "Productos"
-    const val RESUMEN = "Resumen"
-    const val LEGACY_NOMINAS = "Nóminas"
     const val SCHEMA_VERSION = 7
+    const val SCHEMA_LOCALE_ES = "es"
+    const val SCHEMA_LOCALE_EN = "en"
+    const val LEGACY_NOMINAS = "Nóminas"
+    private const val CONVERSION_OK = "OK"
+
+    enum class LocaleCode(val code: String) { ES(SCHEMA_LOCALE_ES), EN(SCHEMA_LOCALE_EN) }
+
+    data class Descriptor(
+        val locale: LocaleCode,
+        val recibidasTitle: String,
+        val ingresosTitle: String,
+        val productosTitle: String,
+        val resumenTitle: String,
+        val recibidasHeaders: List<Any>,
+        val productosHeaders: List<Any>,
+        val ingresosHeaders: List<Any>,
+        val summaryTitle: String,
+        val summaryUpdatedLabel: String,
+        val summaryCurrencyLabel: String,
+        val summaryExpensesLabel: String,
+        val summaryIncomeLabel: String,
+        val summaryBalanceLabel: String,
+        val summaryPendingLabel: String,
+        val conversionOkLabel: String,
+        val conversionLocalLabel: String,
+        val conversionPendingLabel: String,
+    )
+
+    val es = Descriptor(
+        locale = LocaleCode.ES,
+        recibidasTitle = "Facturas Recibidas",
+        ingresosTitle = "Ingresos",
+        productosTitle = "Productos",
+        resumenTitle = "Resumen",
+        recibidasHeaders = listOf("Nº Factura", "Fecha", "NIF País", "NIF Emisor", "Emisor (Razón Social)", "Base Imponible", "Tipo IVA", "Cuota IVA", "Recargo Eq.", "IRPF %", "Total antes de retención", "Moneda", "Categoría", "Notas", "ID", "Foto Drive", "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"),
+        productosHeaders = listOf("Descripción", "Cantidad", "Precio Unitario", "Subtotal", "IVA %", "Total (IVA incluido)", "Factura (Proveedor)", "InvoiceID", "ProductID", "Precio Unitario Original", "Subtotal Original", "Total Original (IVA incluido)", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"),
+        ingresosHeaders = listOf("Concepto", "Fecha", "Importe", "Devengado", "Líquido", "IRPF %", "Moneda", "Fuente", "Categoría", "Notas", "ID", "Importe Original", "Devengado Original", "Líquido Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"),
+        summaryTitle = "Resumen Financiero (AEAT)", summaryUpdatedLabel = "Fecha actualización", summaryCurrencyLabel = "Moneda informe", summaryExpensesLabel = "Total Gastos", summaryIncomeLabel = "Total Ingresos", summaryBalanceLabel = "Balance", summaryPendingLabel = "Conversiones pendientes", conversionOkLabel = "OK", conversionLocalLabel = "Moneda local", conversionPendingLabel = "Tasa pendiente"
+    )
+    val en = Descriptor(
+        locale = LocaleCode.EN,
+        recibidasTitle = "Received Invoices",
+        ingresosTitle = "Income",
+        productosTitle = "Products",
+        resumenTitle = "Summary",
+        recibidasHeaders = listOf("Invoice No.", "Date", "Country VAT ID", "Issuer VAT ID", "Issuer (Legal Name)", "Tax Base", "VAT %", "VAT Amount", "Surcharge", "Withholding %", "Total before withholding", "Currency", "Category", "Notes", "ID", "Drive Photo", "Original Total", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status"),
+        productosHeaders = listOf("Description", "Quantity", "Unit Price", "Subtotal", "VAT %", "Total (VAT included)", "Invoice (Supplier)", "InvoiceID", "ProductID", "Original Unit Price", "Original Subtotal", "Original Total (VAT included)", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status"),
+        ingresosHeaders = listOf("Concept", "Date", "Amount", "Accrued", "Net", "Withholding %", "Currency", "Source", "Category", "Notes", "ID", "Original Amount", "Original Accrued", "Original Net", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status"),
+        summaryTitle = "Financial Summary (AEAT)", summaryUpdatedLabel = "Updated", summaryCurrencyLabel = "Report currency", summaryExpensesLabel = "Total expenses", summaryIncomeLabel = "Total income", summaryBalanceLabel = "Balance", summaryPendingLabel = "Pending conversions", conversionOkLabel = CONVERSION_OK, conversionLocalLabel = "local currency", conversionPendingLabel = "pending rate"
+    )
+
+    val RECIBIDAS: String get() = es.recibidasTitle
+    val INGRESOS: String get() = es.ingresosTitle
+    val PRODUCTOS: String get() = es.productosTitle
+    val RESUMEN: String get() = es.resumenTitle
+
+    val recibidasHeaders: List<Any> get() = es.recibidasHeaders
+    val productosHeaders: List<Any> get() = es.productosHeaders
+    val ingresosHeaders: List<Any> get() = es.ingresosHeaders
 
     const val RECIBIDAS_KEY_COLUMN = "O"
     const val RECIBIDAS_LAST_COLUMN = "U"
@@ -25,33 +79,24 @@ internal object SheetsSchema {
     const val PRODUCTOS_PARENT_COLUMN = "H"
     const val PRODUCTOS_LAST_COLUMN = "P"
 
-    private const val CONVERSION_OK = "OK"
-    private const val CONVERSION_LOCAL = "Moneda local"
-    private const val CONVERSION_PENDING = "Tasa pendiente"
+    fun descriptor(locale: LocaleCode): Descriptor = if (locale == LocaleCode.EN) en else es
 
-    val recibidasHeaders: List<Any> = listOf(
-        "Nº Factura", "Fecha", "NIF País", "NIF Emisor",
-        "Emisor (Razón Social)", "Base Imponible", "Tipo IVA", "Cuota IVA",
-        "Recargo Eq.", "IRPF %", "Total antes de retención", "Moneda", "Categoría", "Notas", "ID", "Foto Drive",
-        "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
-    )
+    fun localeFromCode(code: String?): LocaleCode = when (code?.lowercase(Locale.ROOT)) { SCHEMA_LOCALE_EN -> LocaleCode.EN else -> LocaleCode.ES }
 
-    val productosHeaders: List<Any> = listOf(
-        "Descripción", "Cantidad", "Precio Unitario", "Subtotal", "IVA %",
-        "Total (IVA incluido)", "Factura (Proveedor)", "InvoiceID", "ProductID",
-        "Precio Unitario Original", "Subtotal Original", "Total Original (IVA incluido)",
-        "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
-    )
-
-    val ingresosHeaders: List<Any> = listOf(
-        "Concepto", "Fecha", "Importe", "Devengado", "Líquido", "IRPF %",
-        "Moneda", "Fuente", "Categoría", "Notas", "ID", "Importe Original",
-        "Devengado Original", "Líquido Original", "Moneda Original",
-        "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"
-    )
+    fun detectLocale(appProperties: Map<String, String>?, sheetTitles: List<String>?, headers: List<String>?): LocaleCode {
+        val fromMeta = localeFromCode(appProperties?.get("finaiSchemaLocale"))
+        if (appProperties?.get("finaiSchemaLocale") in listOf(SCHEMA_LOCALE_ES, SCHEMA_LOCALE_EN)) return fromMeta
+        val titles = sheetTitles.orEmpty().toSet()
+        if (titles.intersect(setOf(en.recibidasTitle, en.ingresosTitle, en.productosTitle, en.resumenTitle)).isNotEmpty()) return LocaleCode.EN
+        if (titles.intersect(setOf(es.recibidasTitle, es.ingresosTitle, es.productosTitle, es.resumenTitle)).isNotEmpty()) return LocaleCode.ES
+        val h = headers.orEmpty().toSet()
+        if (h.intersect(setOf(en.recibidasHeaders.first().toString(), en.ingresosHeaders.first().toString(), en.productosHeaders.first().toString(), en.summaryTitle)).isNotEmpty()) return LocaleCode.EN
+        return LocaleCode.ES
+    }
 
     data class ConversionSnapshot(
         val targetCurrency: String,
+        val locale: LocaleCode = LocaleCode.ES,
         private val exchangeRateProvider: ExchangeRateProvider
     ) {
         fun convert(amount: Double, originalCurrency: String): ConvertedAmount {
@@ -64,7 +109,7 @@ internal object SheetsSchema {
                     originalCurrency = normalizedCurrency,
                     appliedRate = null,
                     rateTimestampLabel = "",
-                    status = CONVERSION_PENDING
+                    status = descriptor(locale).conversionPendingLabel
                 )
                 meta.wasNative -> ConvertedAmount(
                     convertedAmount = round2(meta.amount),
@@ -72,15 +117,15 @@ internal object SheetsSchema {
                     originalCurrency = normalizedCurrency,
                     appliedRate = 1.0,
                     rateTimestampLabel = "",
-                    status = CONVERSION_LOCAL
+                    status = descriptor(locale).conversionLocalLabel
                 )
                 else -> ConvertedAmount(
                     convertedAmount = round2(meta.amount),
                     originalAmount = round2(amount),
                     originalCurrency = normalizedCurrency,
                     appliedRate = round6(meta.rateApplied),
-                    rateTimestampLabel = meta.asOf?.let(::formatTimestamp).orEmpty(),
-                    status = CONVERSION_OK
+                    rateTimestampLabel = meta.asOf?.let { formatTimestamp(it, locale) }.orEmpty(),
+                    status = descriptor(locale).conversionOkLabel
                 )
             }
         }
@@ -128,22 +173,30 @@ internal object SheetsSchema {
     }
 
     fun summaryRows(
+        descriptor: Descriptor,
         exportDate: String,
         reportCurrency: String,
         totals: SummaryTotals
     ): List<List<Any>> = listOf(
-        listOf("Resumen Financiero (AEAT)"),
-        listOf("Fecha actualización", exportDate),
-        listOf("Moneda informe", reportCurrency),
-        listOf("Total Gastos", totals.totalExpenses),
-        listOf("Total Ingresos", totals.totalIncomes),
-        listOf("Balance", totals.balance),
-        listOf("Conversiones pendientes", totals.pendingConversions)
+        listOf(descriptor.summaryTitle),
+        listOf(descriptor.summaryUpdatedLabel, exportDate),
+        listOf(descriptor.summaryCurrencyLabel, reportCurrency),
+        listOf(descriptor.summaryExpensesLabel, totals.totalExpenses),
+        listOf(descriptor.summaryIncomeLabel, totals.totalIncomes),
+        listOf(descriptor.summaryBalanceLabel, totals.balance),
+        listOf(descriptor.summaryPendingLabel, totals.pendingConversions)
     )
 
-    private fun displayCategoryWithSubcategory(category: String?, subcategory: String?): String {
-        val categoryLabel = TransactionCategories.displayCategory(category)
-        val subcategoryLabel = TransactionCategories.normalizeCategory(subcategory) ?: return categoryLabel
+    private fun displayCategoryWithSubcategory(
+        category: String?,
+        subcategory: String?,
+        locale: LocaleCode
+    ): String {
+        val language = locale.code
+        val categoryLabel = TransactionCategories.displayCategory(category, language)
+        val subcategoryLabel = TransactionCategories.normalizeCategory(subcategory)
+            ?.let { TransactionCategories.displayCategory(it, language) }
+            ?: return categoryLabel
         return "$categoryLabel / $subcategoryLabel"
     }
 
@@ -164,7 +217,7 @@ internal object SheetsSchema {
         }
         return listOf(
             invoice.numeroFactura ?: extractFromOcr(invoice.ocrRawText, "numero_factura"),
-            formatDate(invoice.fecha),
+            formatDate(invoice.fecha, conversion.locale),
             invoice.paisCodigo,
             invoice.nifEmisor ?: "",
             invoice.proveedor,
@@ -175,7 +228,7 @@ internal object SheetsSchema {
             invoice.irpfPercent,
             convertedTotal ?: "",
             conversion.targetCurrency,
-            displayCategoryWithSubcategory(invoice.categoria, invoice.subcategoria),
+            displayCategoryWithSubcategory(invoice.categoria, invoice.subcategoria, conversion.locale),
             invoice.notas ?: "",
             invoice.id,
             invoice.driveWebViewLink ?: "",
@@ -195,14 +248,14 @@ internal object SheetsSchema {
             ?.let { conversion.convert(it, income.moneda) }
         return listOf(
             income.concepto,
-            formatDate(income.fecha),
+            formatDate(income.fecha, conversion.locale),
             amount.convertedAmount ?: "",
             devengado?.convertedAmount ?: "",
             liquido?.convertedAmount ?: "",
             income.irpfPercent,
             conversion.targetCurrency,
             income.fuente ?: "",
-            displayCategoryWithSubcategory(income.categoria, income.subcategoria),
+            displayCategoryWithSubcategory(income.categoria, income.subcategoria, conversion.locale),
             income.notas ?: "",
             income.id,
             amount.originalAmount,
@@ -227,7 +280,7 @@ internal object SheetsSchema {
         // finales con IVA incluido. No se vuelve a sumar aquí.
         val totalWithVatOriginal = product.subtotal
         val totalWithVat = conversion.convert(totalWithVatOriginal, originalCurrency)
-        val primary = if (subtotal.status == CONVERSION_PENDING) subtotal else totalWithVat
+        val primary = if (subtotal.status == descriptor(conversion.locale).conversionPendingLabel) subtotal else totalWithVat
         return listOf(
             product.descripcion,
             product.cantidad,
@@ -248,11 +301,14 @@ internal object SheetsSchema {
         )
     }
 
-    private fun formatDate(timestamp: Long): String =
-        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(timestamp))
+    private fun formatDate(timestamp: Long, locale: LocaleCode): String =
+        SimpleDateFormat("dd/MM/yyyy", javaLocale(locale)).format(Date(timestamp))
 
-    private fun formatTimestamp(timestamp: Long): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(timestamp))
+    private fun formatTimestamp(timestamp: Long, locale: LocaleCode): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm", javaLocale(locale)).format(Date(timestamp))
+
+    private fun javaLocale(locale: LocaleCode): Locale =
+        if (locale == LocaleCode.EN) Locale.US else Locale.forLanguageTag("es-ES")
 
     private fun extractFromOcr(rawText: String?, field: String): String {
         if (rawText.isNullOrBlank()) return ""

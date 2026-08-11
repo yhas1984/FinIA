@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -50,7 +52,7 @@ private val AnalyticsPalette = listOf(
 
 /** Color estable para una categoría; "Sin categoría" siempre neutral. */
 fun categoryColor(category: String): Color {
-    if (category == TransactionCategories.UNCATEGORIZED_LABEL) {
+    if (TransactionCategories.isUncategorized(category)) {
         return Color(0xFF9E9E9E)
     }
     val index = Math.floorMod(category.hashCode(), AnalyticsPalette.size)
@@ -81,7 +83,7 @@ fun InteractiveAnalyticsCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Estadísticas",
+                text = stringResource(R.string.analytics),
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
             )
             AnalyticsTypeToggle(type = type, onTypeChange = onTypeChange)
@@ -102,7 +104,7 @@ fun InteractiveAnalyticsCard(
         // Donut con total centrado.
         DonutChart(
             slices = slices,
-            totalLabel = if (type == AnalyticsType.GASTOS) "Gastos" else "Ingresos",
+            totalLabel = if (type == AnalyticsType.GASTOS) stringResource(R.string.expenses) else stringResource(R.string.income),
             total = total,
             onSliceClick = onSliceClick,
             modifier = Modifier
@@ -134,7 +136,7 @@ private fun AnalyticsTypeToggle(
                 selected = type == option,
                 onClick = { onTypeChange(option) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = AnalyticsType.entries.size),
-                label = { Text(if (option == AnalyticsType.GASTOS) "Gastos" else "Ingresos") }
+                label = { Text(if (option == AnalyticsType.GASTOS) stringResource(R.string.expenses) else stringResource(R.string.income)) }
             )
         }
     }
@@ -238,6 +240,7 @@ private fun AnalyticsLegendRow(
     fmt: (Double) -> String,
     onClick: () -> Unit
 ) {
+    val language = LocalLocale.current.platformLocale.language
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -254,14 +257,14 @@ private fun AnalyticsLegendRow(
         )
         Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = slice.category,
+            text = TransactionCategories.displayCategory(slice.category, language),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             modifier = Modifier.weight(1f)
         )
         Text(
-            text = "${"%.1f".format(slice.percentage).replace('.', ',')}%",
+            text = stringResource(R.string.percent_format, slice.percentage),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(end = 12.dp)

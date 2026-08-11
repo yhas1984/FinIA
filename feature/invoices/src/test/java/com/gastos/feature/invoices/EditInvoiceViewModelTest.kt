@@ -1,5 +1,7 @@
 package com.gastos.feature.invoices
 
+import android.content.Context
+import com.gastos.feature.invoices.R
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.TransactionCategories
@@ -25,6 +27,17 @@ class EditInvoiceViewModelTest {
 
     private val dispatcher = UnconfinedTestDispatcher()
 
+    private fun mockContext(): Context = mockk {
+        every { getString(R.string.validation_total_percentages) } returns "Revisa el total y los porcentajes (deben estar entre 0 y 100)"
+        every { getString(R.string.validation_provider_required) } returns "El proveedor es obligatorio"
+        every { getString(R.string.validation_base_vat_mismatch) } returns "La base y la cuota IVA no coinciden con el total y el porcentaje"
+        every { getString(R.string.validation_currency_not_supported) } returns "La moneda seleccionada no está soportada"
+        every { getString(R.string.saved_ok) } returns "Factura guardada correctamente"
+        every { getString(R.string.invoice_not_found) } returns "Factura no encontrada"
+        every { getString(R.string.load_invoice_error) } returns "Error al cargar factura"
+        every { getString(R.string.save_invoice_error_prefix, any()) } answers { "Error al guardar: ${secondArg<Any?>()?.toString().orEmpty()}" }
+    }
+
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
@@ -41,6 +54,7 @@ class EditInvoiceViewModelTest {
             val repo = mockk<com.gastos.repository.InvoiceRepository>()
             val productRepo = mockk<com.gastos.repository.ProductRepository>()
             val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+            val context = mockContext()
             val original = Invoice(
                 id = 5L,
                 fecha = 1L,
@@ -61,7 +75,7 @@ class EditInvoiceViewModelTest {
             every { repo.getAllInvoices() } returns flowOf(listOf(original))
             every { productRepo.getProductsByInvoiceId(5L) } returns kotlinx.coroutines.flow.flowOf(emptyList())
 
-            val vm = EditInvoiceViewModel(repo, productRepo, sync)
+            val vm = EditInvoiceViewModel(context, repo, productRepo, sync)
             vm.loadInvoice(5L)
             advanceUntilIdle()
             vm.updateProveedor("Acme Editado")
@@ -90,10 +104,11 @@ class EditInvoiceViewModelTest {
         val repo = mockk<com.gastos.repository.InvoiceRepository>()
         val productRepo = mockk<com.gastos.repository.ProductRepository>()
         val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+        val context = mockContext()
         every { repo.getAllInvoices() } returns flowOf(emptyList())
         coEvery { repo.insertInvoice(any()) } returns 10L
 
-        val vm = EditInvoiceViewModel(repo, productRepo, sync)
+        val vm = EditInvoiceViewModel(context, repo, productRepo, sync)
         vm.updateProveedor("Acme")
         vm.updateTotal("121")
         vm.selectCategory("Alimentación", isCustomCategory = false)
@@ -115,9 +130,10 @@ class EditInvoiceViewModelTest {
         val repo = mockk<com.gastos.repository.InvoiceRepository>()
         val productRepo = mockk<com.gastos.repository.ProductRepository>()
         val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+        val context = mockContext()
         every { repo.getAllInvoices() } returns flowOf(emptyList())
 
-        val vm = EditInvoiceViewModel(repo, productRepo, sync)
+        val vm = EditInvoiceViewModel(context, repo, productRepo, sync)
         vm.updateProveedor("Acme")
         vm.updateTotal("121")
         vm.updateBaseImponible("90")
@@ -134,6 +150,7 @@ class EditInvoiceViewModelTest {
         val repo = mockk<com.gastos.repository.InvoiceRepository>()
         val productRepo = mockk<com.gastos.repository.ProductRepository>()
         val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+        val context = mockContext()
         val original = Invoice(
             id = 7L,
             fecha = 1L,
@@ -148,7 +165,7 @@ class EditInvoiceViewModelTest {
         coEvery { repo.getInvoiceById(7L) } returns original
         every { repo.getAllInvoices() } returns flowOf(listOf(original))
 
-        val vm = EditInvoiceViewModel(repo, productRepo, sync)
+        val vm = EditInvoiceViewModel(context, repo, productRepo, sync)
         vm.loadInvoice(7L)
         advanceUntilIdle()
 
@@ -163,7 +180,8 @@ class EditInvoiceViewModelTest {
         val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
         every { repo.getAllInvoices() } returns flowOf(listOf(Invoice(id = 1L, fecha = 1L, proveedor = "A", tipo = InvoiceType.GASTO, total = 1.0, ivaPercent = 0.0, irpfPercent = 0.0, subcategoria = "Supermercado")))
 
-        val vm = EditInvoiceViewModel(repo, productRepo, sync)
+        val context = mockk<Context>()
+        val vm = EditInvoiceViewModel(context, repo, productRepo, sync)
         vm.selectCategory("Alimentación", isCustomCategory = false)
         advanceUntilIdle()
 

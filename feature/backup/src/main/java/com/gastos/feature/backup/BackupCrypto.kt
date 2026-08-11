@@ -7,7 +7,6 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.SecureRandom
-import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
@@ -15,6 +14,8 @@ import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 internal data class BackupKeyMaterial(
     val dataKey: ByteArray,
@@ -24,6 +25,7 @@ internal data class BackupKeyMaterial(
     val iterations: Int
 )
 
+@OptIn(ExperimentalEncodingApi::class)
 internal object BackupCrypto {
     const val KEY_SIZE_BYTES = 32
     const val IV_SIZE_BYTES = 12
@@ -72,9 +74,9 @@ internal object BackupCrypto {
 
     fun randomIv(): ByteArray = randomBytes(IV_SIZE_BYTES)
 
-    fun encode(value: ByteArray): String = Base64.getEncoder().encodeToString(value)
+    fun encode(value: ByteArray): String = Base64.encode(value)
 
-    fun decode(value: String): ByteArray = Base64.getDecoder().decode(value)
+    fun decode(value: String): ByteArray = Base64.decode(value)
 
     private fun derivePasswordKey(password: CharArray, salt: ByteArray, iterations: Int): ByteArray {
         require(iterations in 100_000..2_000_000) { "Parámetros de cifrado no válidos." }

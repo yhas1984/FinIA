@@ -22,11 +22,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -40,7 +42,7 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val locale = LocalLocale.current.platformLocale
 
     var showApiKeyDialog by remember { mutableStateOf(false) }
@@ -57,10 +59,10 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Configuración") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -78,11 +80,11 @@ fun SettingsScreen(
         ) {
             // Sección IA
             SettingsSection(
-                title = "Inteligencia Artificial",
+                title = stringResource(R.string.settings_ai_section),
                 icon = Icons.Outlined.SmartToy
             ) {
                 Text(
-                    text = "FinAI usa Gemini 3.6 Flash a través de la API gratuita de Google AI Studio.",
+                    text = stringResource(R.string.settings_ai_description),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -120,9 +122,9 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = when {
-                                uiState.isApiKeyValidating -> "Validando API key..."
-                                uiState.settings.geminiApiKey.isEmpty() -> "API key no configurada"
-                                else -> "API key configurada (Gemini 3.6 Flash)"
+                                uiState.isApiKeyValidating -> stringResource(R.string.settings_api_key_validating)
+                                uiState.settings.geminiApiKey.isEmpty() -> stringResource(R.string.settings_api_key_not_configured)
+                                else -> stringResource(R.string.settings_api_key_configured)
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
@@ -143,8 +145,8 @@ fun SettingsScreen(
                     Icon(Icons.Default.Key, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        if (uiState.settings.geminiApiKey.isEmpty()) "Configurar API Key"
-                        else "Cambiar API Key"
+                        if (uiState.settings.geminiApiKey.isEmpty()) stringResource(R.string.settings_configure_api_key)
+                        else stringResource(R.string.settings_change_api_key)
                     )
                 }
 
@@ -155,7 +157,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.DeleteOutline, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Eliminar API Key")
+                        Text(stringResource(R.string.settings_delete_api_key))
                     }
                 }
 
@@ -163,13 +165,13 @@ fun SettingsScreen(
 
                 // Instrucciones del asistente
                 Text(
-                    text = "Instrucciones del asistente",
+                    text = stringResource(R.string.settings_assistant_instructions),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Personaliza cómo se comporta FinAI. Por ejemplo: el tono, en qué moneda responder, qué evitar, etc.",
+                    text = stringResource(R.string.settings_assistant_instructions_help),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -180,9 +182,7 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
                     maxLines = 6,
-                    placeholder = {
-                        Text("Ej. Responde de forma breve. Usa siempre MXN como moneda.")
-                    }
+                        placeholder = { Text(stringResource(R.string.settings_assistant_instructions_placeholder)) }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
@@ -192,24 +192,24 @@ fun SettingsScreen(
                     TextButton(onClick = {
                         instructionsInput = uiState.settings.systemInstructions
                     }) {
-                        Text("Descartar")
+                        Text(stringResource(R.string.discard))
                     }
                     Button(
                         onClick = { viewModel.updateSystemInstructions(instructionsInput) },
                         enabled = instructionsInput != uiState.settings.systemInstructions
                     ) {
-                        Text("Guardar instrucciones")
+                        Text(stringResource(R.string.save_instructions))
                     }
                 }
             }
 
             // Sección Apariencia
             SettingsSection(
-                title = "Apariencia",
+                title = stringResource(R.string.settings_appearance_section),
                 icon = Icons.Outlined.Palette
             ) {
                 Text(
-                    text = "Tema",
+                    text = stringResource(R.string.settings_theme_label),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
@@ -221,21 +221,21 @@ fun SettingsScreen(
                 ) {
                     ThemeOption(
                         icon = Icons.Default.PhoneAndroid,
-                        label = "Sistema",
+                        label = stringResource(R.string.system),
                         selected = uiState.settings.darkMode == "system",
                         onClick = { viewModel.updateDarkMode("system") },
                         modifier = Modifier.weight(1f)
                     )
                     ThemeOption(
                         icon = Icons.Default.LightMode,
-                        label = "Claro",
+                        label = stringResource(R.string.light),
                         selected = uiState.settings.darkMode == "light",
                         onClick = { viewModel.updateDarkMode("light") },
                         modifier = Modifier.weight(1f)
                     )
                     ThemeOption(
                         icon = Icons.Default.DarkMode,
-                        label = "Oscuro",
+                        label = stringResource(R.string.dark),
                         selected = uiState.settings.darkMode == "dark",
                         onClick = { viewModel.updateDarkMode("dark") },
                         modifier = Modifier.weight(1f)
@@ -245,17 +245,17 @@ fun SettingsScreen(
 
             // Sección Regional
             SettingsSection(
-                title = "Regional",
+                title = stringResource(R.string.settings_regional_section),
                 icon = Icons.Outlined.Public
             ) {
                 Text(
-                    text = "Moneda con la que se muestran los totales (dashboard) y la moneda por defecto de tus registros.",
+                    text = stringResource(R.string.settings_exchange_rates_help),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 SettingsDropdown(
-                    label = "Moneda",
+                    label = stringResource(R.string.currency),
                     value = uiState.settings.defaultCurrency,
                     options = com.gastos.domain.model.SUPPORTED_CURRENCIES,
                     onValueChange = { viewModel.updateDefaultCurrency(it) }
@@ -264,14 +264,14 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 SettingsDropdown(
-                    label = "País fiscal por defecto",
+                    label = stringResource(R.string.default_tax_country),
                     value = uiState.settings.defaultCountry,
                     options = com.gastos.domain.model.SUPPORTED_FISCAL_COUNTRIES,
                     optionLabel = { code: String -> com.gastos.domain.model.fiscalCountryLabel(code) },
                     onValueChange = { viewModel.updateDefaultCountry(it) }
                 )
                 Text(
-                    text = "Se usa solo si el país no puede detectarse en el documento.",
+                    text = stringResource(R.string.settings_country_help),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
@@ -301,20 +301,20 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Tipos de cambio",
+                                text = stringResource(R.string.settings_exchange_rates_title),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
                                 text = when {
-                                    uiState.isRefreshingRates -> "Actualizando…"
+                                    uiState.isRefreshingRates -> stringResource(R.string.settings_exchange_rates_loading)
                                     uiState.ratesAsOf != null -> {
                                         val d = java.text.SimpleDateFormat(
                                             "dd/MM/yyyy HH:mm", locale
                                         ).format(java.util.Date(uiState.ratesAsOf!!))
-                                        "${uiState.ratesCount} monedas · actualizado $d"
+                                        stringResource(R.string.settings_exchange_rates_status, uiState.ratesCount, d)
                                     }
-                                    else -> "Sin tasas todavía. Pulsa para descargar."
+                                    else -> stringResource(R.string.settings_exchange_rates_empty)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -333,7 +333,7 @@ fun SettingsScreen(
                                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Actualizar")
+                            Text(stringResource(R.string.update))
                         }
                     }
                 }
@@ -341,13 +341,13 @@ fun SettingsScreen(
 
             // Sección Premium
             SettingsSection(
-                title = "Premium",
+                title = stringResource(R.string.settings_premium_title),
                 icon = if (uiState.isPremium) Icons.Filled.Star else Icons.Outlined.StarBorder,
                 headerContent = {
                     if (uiState.isPremium) {
                         AssistChip(
                             onClick = {},
-                            label = { Text("Pro") },
+                            label = { Text(stringResource(R.string.settings_premium_chip)) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Default.CheckCircle,
@@ -364,13 +364,13 @@ fun SettingsScreen(
             ) {
                 if (uiState.isPremium) {
                     Text(
-                        text = "Funciones premium activadas ✓",
+                        text = stringResource(R.string.settings_premium_enabled),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
                     Text(
-                        text = "Desbloquea exportación a Google Sheets y chat IA avanzado.",
+                        text = stringResource(R.string.settings_premium_pitch),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -381,17 +381,17 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Ver Premium")
+                        Text(stringResource(R.string.see_premium))
                     }
                 }
             }
 
             SettingsSection(
-                title = "Botones flotantes",
+                title = stringResource(R.string.settings_floating_buttons_title),
                 icon = Icons.Outlined.OpenWith
             ) {
                 Text(
-                    text = "Mantén pulsado un botón flotante para moverlo. Cada pantalla recuerda su posición.",
+                    text = stringResource(R.string.floating_buttons_help),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -403,17 +403,17 @@ fun SettingsScreen(
                 ) {
                     Icon(Icons.Default.RestartAlt, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Restablecer posiciones")
+                    Text(stringResource(R.string.reset_positions))
                 }
             }
 
             // Sección Datos
             SettingsSection(
-                title = "Datos",
+                title = stringResource(R.string.settings_data_title),
                 icon = Icons.Outlined.Storage
             ) {
                 Text(
-                    text = "Copia de seguridad local, exportación CSV/PDF y sincronización con Google Sheets.",
+                    text = stringResource(R.string.data_help),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -424,14 +424,14 @@ fun SettingsScreen(
                 ) {
                     Icon(Icons.Default.Download, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Ir a Backup")
+                    Text(stringResource(R.string.go_backup))
                 }
             }
 
             // Sección Debug (solo visible en builds debug)
             if (uiState.isDebug) {
                 SettingsSection(
-                    title = "Debug",
+                    title = stringResource(R.string.settings_debug_title),
                     icon = Icons.Outlined.BugReport
                 ) {
                     Row(
@@ -441,11 +441,11 @@ fun SettingsScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Premium (debug)",
+                                text = stringResource(R.string.premium_debug),
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Text(
-                                text = "Forzar el estado Premium para probar las funciones de pago",
+                                text = stringResource(R.string.premium_debug_help),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -466,7 +466,7 @@ fun SettingsScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "FinAI",
+                    text = stringResource(R.string.app_name),
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -480,7 +480,7 @@ fun SettingsScreen(
                     }.getOrNull() ?: ""
                 }
                 Text(
-                    text = "Versión $appVersion",
+                    text = stringResource(R.string.version, appVersion),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -497,20 +497,17 @@ fun SettingsScreen(
                 apiKeyDialogError = null
                 viewModel.resetApiKeyValidation()
             },
-            title = { Text("Gemini API Key") },
+            title = { Text(stringResource(R.string.settings_api_key_dialog_title)) },
             text = {
                 Column {
                     Text(
-                        text = "Cómo obtener tu API key gratuita:",
+                        text = stringResource(R.string.settings_api_key_help_title),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "1. Abre Google AI Studio (botón de abajo)\n" +
-                                "2. Inicia sesión con tu cuenta Google\n" +
-                                "3. Pulsa \"Create API key\"\n" +
-                                "4. Copia la clave y pégala aquí",
+                        text = stringResource(R.string.settings_api_key_help_steps),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -527,7 +524,7 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Abrir Google AI Studio")
+                        Text(stringResource(R.string.settings_open_google_ai_studio))
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     apiKeyDialogError?.let { message ->
@@ -539,7 +536,7 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                     }
                     Text(
-                        text = "💡 Gemini 3.6 Flash tiene un plan gratuito suficiente para uso personal (aprox. 10 solicitudes/min y 1500/día). Consulta tus límites exactos en AI Studio.",
+                        text = stringResource(R.string.settings_gemini_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -550,7 +547,7 @@ fun SettingsScreen(
                             apiKeyInput = it
                             viewModel.resetApiKeyValidation()
                         },
-                        label = { Text("API Key") },
+                        label = { Text(stringResource(R.string.settings_api_key_label)) },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth()
@@ -570,7 +567,7 @@ fun SettingsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    "API key válida",
+                                    stringResource(R.string.settings_api_key_valid),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -586,7 +583,7 @@ fun SettingsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    v.message,
+                                    stringResource(v.messageRes),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error
                                 )
@@ -600,7 +597,7 @@ fun SettingsScreen(
                     enabled = !uiState.isApiKeyValidating,
                     onClick = { viewModel.updateGeminiApiKey(apiKeyInput) }
                 ) {
-                    Text(if (uiState.isApiKeyValidating) "Validando..." else "Guardar")
+                    Text(if (uiState.isApiKeyValidating) stringResource(R.string.settings_api_key_validating_short) else stringResource(R.string.save))
                 }
             },
             dismissButton = {
@@ -609,7 +606,7 @@ fun SettingsScreen(
                     apiKeyDialogError = null
                     viewModel.resetApiKeyValidation()
                 }) {
-                    Text("Cancelar")
+                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -627,16 +624,16 @@ fun SettingsScreen(
     if (showDeleteApiKeyConfirmation) {
         AlertDialog(
             onDismissRequest = { showDeleteApiKeyConfirmation = false },
-            title = { Text("Eliminar API key") },
-            text = { Text("Se borrará la API key de Gemini guardada en este dispositivo. Tendrás que introducirla de nuevo para seguir usando la IA.") },
+            title = { Text(stringResource(R.string.settings_delete_api_key_title)) },
+            text = { Text(stringResource(R.string.settings_delete_api_key_message)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteApiKeyConfirmation = false
                     viewModel.clearGeminiApiKey()
-                }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(R.string.settings_delete_api_key_confirm), color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteApiKeyConfirmation = false }) { Text("Cancelar") }
+                TextButton(onClick = { showDeleteApiKeyConfirmation = false }) { Text(stringResource(R.string.cancel)) }
             }
         )
     }
@@ -650,14 +647,14 @@ private fun openTrustedUrl(
     val uri = Uri.parse(rawUrl)
     val host = uri.host?.lowercase(java.util.Locale.ROOT)
     if (uri.scheme != "https" || host !in allowedHosts) {
-        return "El enlace solicitado no es válido o ya no es seguro abrirlo."
+        return context.getString(R.string.settings_untrusted_link_error)
     }
     val intent = Intent(Intent.ACTION_VIEW, uri)
     return try {
         context.startActivity(intent)
         null
     } catch (_: ActivityNotFoundException) {
-        "No se pudo abrir el enlace solicitado."
+        context.getString(R.string.settings_open_link_error)
     }
 }
 

@@ -6,6 +6,11 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.gastos.local.dao.*
 import com.gastos.local.database.AppDatabase
+import com.gastos.feature.backup.RemoteSyncOutboxDatabase
+import com.gastos.feature.backup.RemoteSyncOutboxDao
+import com.gastos.feature.backup.RemoteSyncState
+import com.gastos.feature.backup.RemoteSyncStateImpl
+import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -226,6 +231,16 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
 
 @Module
 @InstallIn(SingletonComponent::class)
+abstract class RemoteSyncBindingsModule {
+    @Binds
+    abstract fun bindRemoteSyncScheduler(queue: com.gastos.feature.backup.RemoteSyncQueue): com.gastos.feature.backup.RemoteSyncScheduler
+
+    @Binds
+    abstract fun bindRemoteSyncState(state: RemoteSyncStateImpl): RemoteSyncState
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
 object AppModule {
 
     @Provides
@@ -276,4 +291,12 @@ object AppModule {
     @Provides
     @Singleton
     fun provideBackupDao(database: AppDatabase): BackupDao = database.backupDao()
+
+    @Provides
+    @Singleton
+    fun provideRemoteSyncOutboxDatabase(@ApplicationContext context: Context): RemoteSyncOutboxDatabase =
+        Room.databaseBuilder(context, RemoteSyncOutboxDatabase::class.java, "finai_remote_sync.db").build()
+
+    @Provides
+    fun provideRemoteSyncOutboxDao(database: RemoteSyncOutboxDatabase): RemoteSyncOutboxDao = database.dao()
 }

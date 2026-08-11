@@ -16,15 +16,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-
-private val SPANISH_MONTHS = listOf(
-    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
-)
 
 /** Selector de mes en formato píldora con navegación prev/sig. */
 @Composable
@@ -47,7 +42,7 @@ fun MonthSelectorRow(
         IconButton(onClick = onPrevious) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                contentDescription = "Mes anterior",
+                contentDescription = stringResource(R.string.previous_month),
                 tint = MaterialTheme.colorScheme.onSurface
             )
         }
@@ -71,7 +66,7 @@ fun MonthSelectorRow(
             Spacer(modifier = Modifier.width(4.dp))
             Icon(
                 imageVector = Icons.Filled.ArrowDropDown,
-                contentDescription = "Elegir mes",
+                contentDescription = stringResource(R.string.choose_month),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
             )
@@ -79,7 +74,7 @@ fun MonthSelectorRow(
         IconButton(onClick = onNext, enabled = !isCurrentMonth) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "Mes siguiente",
+                contentDescription = stringResource(R.string.next_month),
                 tint = if (isCurrentMonth) {
                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
                 } else {
@@ -104,6 +99,20 @@ fun MonthPickerSheet(
 ) {
     var year by remember { mutableStateOf(selectedYear) }
     val now = remember { CalendarProvider.today() }
+    val months = listOf(
+        stringResource(R.string.month_january),
+        stringResource(R.string.month_february),
+        stringResource(R.string.month_march),
+        stringResource(R.string.month_april),
+        stringResource(R.string.month_may),
+        stringResource(R.string.month_june),
+        stringResource(R.string.month_july),
+        stringResource(R.string.month_august),
+        stringResource(R.string.month_september),
+        stringResource(R.string.month_october),
+        stringResource(R.string.month_november),
+        stringResource(R.string.month_december)
+    )
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -113,7 +122,7 @@ fun MonthPickerSheet(
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                text = "Elegir mes",
+                text = stringResource(R.string.choose_month),
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
             )
             Spacer(modifier = Modifier.height(16.dp))
@@ -129,7 +138,7 @@ fun MonthPickerSheet(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                        contentDescription = "Año anterior",
+                        contentDescription = stringResource(R.string.previous_year),
                         tint = if (year > now.first) {
                             MaterialTheme.colorScheme.onSurface
                         } else {
@@ -148,7 +157,7 @@ fun MonthPickerSheet(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "Año siguiente",
+                        contentDescription = stringResource(R.string.next_year),
                         tint = if (year < now.first) {
                             MaterialTheme.colorScheme.onSurface
                         } else {
@@ -167,8 +176,8 @@ fun MonthPickerSheet(
                 userScrollEnabled = false,
                 modifier = Modifier.height(48.dp * 3 + 8.dp * 2)
             ) {
-                items(SPANISH_MONTHS) { monthName ->
-                    val monthIndex = SPANISH_MONTHS.indexOf(monthName) + 1
+                items(months) { monthName ->
+                    val monthIndex = months.indexOf(monthName) + 1
                     val isSelected = year == selectedYear && monthIndex == selectedMonth
                     val isFuture = year > now.first || (year == now.first && monthIndex > now.second)
                     MonthCell(

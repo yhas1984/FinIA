@@ -1,4 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FinAI</string>
+    <string name="lang_es">español</string>
+    <string name="lang_en">inglés</string>
+    <string name="dashboard_title">Inicio</string>
+    <string name="expenses_title">Gastos</string>
+    <string name="income_title">Ingresos</string>
+    <string name="open_ai_assistant">Abrir asistente FinAI</string>
+    <string name="new_expense">Nuevo gasto</string>
+    <string name="new_income">Nuevo ingreso</string>
+    <string name="floating_button_state_left">Botón movible en el borde izquierdo</string>
+    <string name="floating_button_state_right">Botón movible en el borde derecho</string>
+    <string name="floating_button_move_left">Mover al borde izquierdo</string>
+    <string name="floating_button_move_right">Mover al borde derecho</string>
+    <string name="floating_button_reset_position">Restablecer posición</string>
 </resources>

@@ -2,6 +2,8 @@ package com.gastos.feature.invoices
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.SUPPORTED_CURRENCIES
@@ -9,6 +11,7 @@ import com.gastos.domain.model.TransactionCategories
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.ProductRepository
 import com.gastos.feature.backup.SheetsSyncManager
+import com.gastos.feature.invoices.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -113,6 +116,7 @@ data class EditInvoiceForm(
 
 @HiltViewModel
 class EditInvoiceViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val invoiceRepository: InvoiceRepository,
     private val productRepository: ProductRepository,
     private val sheetsSyncManager: SheetsSyncManager
@@ -189,12 +193,12 @@ class EditInvoiceViewModel @Inject constructor(
                     _uiState.update { it.copy(isLoading = false, invoice = invoice) }
                 } else {
                     _uiState.update {
-                        it.copy(isLoading = false, error = "Factura no encontrada")
+                        it.copy(isLoading = false, error = context.getString(R.string.invoice_not_found))
                     }
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = e.message ?: "Error al cargar factura")
+                    it.copy(isLoading = false, error = e.message ?: context.getString(R.string.load_invoice_error))
                 }
             }
         }
@@ -246,12 +250,12 @@ class EditInvoiceViewModel @Inject constructor(
             val fiscal = form.recalcFiscal()
             if (fiscal == null || fiscal.total <= 0.0) {
                 _uiState.update {
-                    it.copy(saveResult = "Revisa el total y los porcentajes (deben estar entre 0 y 100)")
+                    it.copy(saveResult = context.getString(R.string.validation_total_percentages))
                 }
                 return@launch
             }
             if (form.proveedor.isBlank()) {
-                _uiState.update { it.copy(saveResult = "El proveedor es obligatorio") }
+                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_provider_required)) }
                 return@launch
             }
             val enteredBase = form.baseImponible.toDoubleOrNull()
@@ -274,13 +278,13 @@ class EditInvoiceViewModel @Inject constructor(
             }
             if (!fiscalValuesAreConsistent) {
                 _uiState.update {
-                    it.copy(saveResult = "La base y la cuota IVA no coinciden con el total y el porcentaje")
+                    it.copy(saveResult = context.getString(R.string.validation_base_vat_mismatch))
                 }
                 return@launch
             }
             val currency = form.moneda.trim().uppercase()
             if (currency !in SUPPORTED_CURRENCIES) {
-                _uiState.update { it.copy(saveResult = "La moneda seleccionada no está soportada") }
+                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_currency_not_supported)) }
                 return@launch
             }
 
@@ -341,14 +345,14 @@ class EditInvoiceViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isSaving = false,
-                        saveResult = "Factura guardada correctamente"
+                        saveResult = context.getString(R.string.saved_ok)
                     )
                 }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
                         isSaving = false,
-                        saveResult = "Error al guardar: ${e.message}"
+                        saveResult = context.getString(R.string.save_invoice_error_prefix, e.message.orEmpty())
                     )
                 }
             }

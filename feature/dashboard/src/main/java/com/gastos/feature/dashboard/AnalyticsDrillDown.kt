@@ -21,6 +21,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalLocale
+import com.gastos.domain.model.TransactionCategories
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -46,6 +49,7 @@ fun AnalyticsDrillDownSheet(
     onDismiss: () -> Unit
 ) {
     val isMovementLevel = selectedSubcategory != null
+    val language = LocalLocale.current.platformLocale.language
     BackHandler(enabled = true) {
         if (isMovementLevel) onBack() else onDismiss()
     }
@@ -65,22 +69,22 @@ fun AnalyticsDrillDownSheet(
                 IconButton(onClick = { if (isMovementLevel) onBack() else onDismiss() }) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Volver",
+                        contentDescription = stringResource(R.string.back),
                         tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "${if (type == AnalyticsType.GASTOS) "Gastos" else "Ingresos"} · $monthLabel",
+                        text = stringResource(if (type == AnalyticsType.GASTOS) R.string.category_gastos_month else R.string.category_ingresos_month, monthLabel),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         text = if (isMovementLevel) {
-                            "${detail.category} › ${subcategoryValueToLabel(selectedSubcategory)}"
+                            "${TransactionCategories.displayCategory(detail.category, language)} › ${TransactionCategories.displayCategory(subcategoryValueToLabel(selectedSubcategory), language)}"
                         } else {
-                            detail.category
+                            TransactionCategories.displayCategory(detail.category, language)
                         },
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSurface,
@@ -90,7 +94,7 @@ fun AnalyticsDrillDownSheet(
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "${"%.1f".format(detail.percentage).replace('.', ',')}%",
+                    text = stringResource(R.string.percent_format, detail.percentage),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -109,6 +113,7 @@ fun AnalyticsDrillDownSheet(
                 MovementList(
                     movements = movements,
                     fmt = fmt,
+                    emptyText = stringResource(R.string.no_movements_month),
                     onOpenMovement = onOpenMovement
                 )
             } else {
@@ -163,7 +168,7 @@ private fun SubcategoryList(
                             modifier = Modifier.weight(1f)
                         )
                         Text(
-                            text = "${"%.1f".format(sub.percentage).replace('.', ',')}%",
+                        text = stringResource(R.string.percent_format, sub.percentage),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -187,7 +192,7 @@ private fun SubcategoryList(
                     }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "${sub.count} mov. · ${fmt(sub.total)}",
+                        text = stringResource(R.string.count_movements_format, sub.count, fmt(sub.total)),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -207,7 +212,7 @@ private fun SubcategoryList(
 internal fun MovementList(
     movements: List<AnalyticsMovement>,
     fmt: (Double) -> String,
-    emptyText: String = "Sin movimientos en este mes.",
+    emptyText: String = "",
     onOpenMovement: (Boolean, Long) -> Unit
 ) {
     if (movements.isEmpty()) {
@@ -255,7 +260,7 @@ internal fun MovementList(
                 }
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = movement.descripcion.ifBlank { "Sin descripción" },
+                text = movement.descripcion.ifBlank { stringResource(R.string.showing_no_description) },
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,

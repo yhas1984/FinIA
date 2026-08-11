@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="voice_unavailable">Reconocimiento de voz no disponible</string>
+    <string name="voice_listening">Escuchando...</string>
+    <string name="voice_speak_now">Habla ahora...</string>
+    <string name="voice_processing">Procesando...</string>
+    <string name="voice_error_audio">Error de audio</string>
+    <string name="voice_error_client">Error del cliente</string>
+    <string name="voice_error_permissions">Permisos insuficientes</string>
+    <string name="voice_error_network">Error de red</string>
+    <string name="voice_error_network_timeout">Tiempo de espera de red agotado</string>
+    <string name="voice_error_no_match">No se encontró coincidencia</string>
+    <string name="voice_error_busy">Reconocedor ocupado</string>
+    <string name="voice_error_server">Error del servidor</string>
+    <string name="voice_error_speech_timeout">Tiempo de espera agotado</string>
+    <string name="voice_error_unknown">Error desconocido: %1$d</string>
+    <string name="voice_no_text">No se detectó texto</string>
+</resources>

@@ -15,6 +15,12 @@ class FinancialQueryResolverTest {
     }
 
     @Test
+    fun `english period aliases normalize correctly`() {
+        assertEquals("semana", FinancialQueryResolver.normalizePeriod("this week"))
+        assertEquals("año", FinancialQueryResolver.normalizePeriod("year"))
+    }
+
+    @Test
     fun `period normalization keeps supported values`() {
         assertEquals("hoy", FinancialQueryResolver.normalizePeriod("hoy"))
         assertEquals("semana", FinancialQueryResolver.normalizePeriod("esta semana"))
@@ -79,6 +85,33 @@ class FinancialQueryResolverTest {
         assertEquals("gastos", resolved.queryType)
         assertNull(resolved.item)
         assertNull(resolved.matchMode)
+    }
+
+    @Test
+    fun `english query terms map to balance and income`() {
+        assertEquals(true, FinancialQueryResolver.requestsNetBalance("what's left this month"))
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "income",
+            item = null,
+            matchMode = null,
+            originalQuestion = "how much income did I receive",
+            productNames = emptyList()
+        )
+        assertEquals("ingresos", resolved.queryType)
+    }
+
+    @Test
+    fun `english query contract normalizes period and query type`() {
+        assertEquals("mes", FinancialQueryResolver.normalizePeriod("this month"))
+        val resolved = FinancialQueryResolver.resolve(
+            queryType = "products_by_store",
+            item = null,
+            matchMode = null,
+            originalQuestion = "what did I buy at Consum",
+            productNames = emptyList(),
+            provider = "Consum"
+        )
+        assertEquals("productos_por_comercio", resolved.queryType)
     }
 
     @Test

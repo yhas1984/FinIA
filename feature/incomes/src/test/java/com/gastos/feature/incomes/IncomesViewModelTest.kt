@@ -1,5 +1,6 @@
 package com.gastos.feature.incomes
 
+import android.content.Context
 import app.cash.turbine.test
 import com.gastos.domain.model.Income
 import com.gastos.feature.backup.SheetsSyncManager
@@ -51,7 +52,8 @@ class IncomesViewModelTest {
         every { currency.defaultCurrency } returns MutableStateFlow(defaultCurrency)
         val sync = mockk<SheetsSyncManager>(relaxed = true)
         val imageStorage = mockk<InvoiceImageStorage>(relaxed = true)
-        return IncomesViewModel(repo, sync, exchange, currency, imageStorage)
+        val context = mockk<Context>()
+        return IncomesViewModel(context, repo, sync, exchange, currency, imageStorage)
     }
 
     @Test

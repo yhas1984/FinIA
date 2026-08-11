@@ -2,11 +2,14 @@ package com.gastos.feature.incomes
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.SUPPORTED_CURRENCIES
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.repository.IncomeRepository
 import com.gastos.feature.backup.SheetsSyncManager
+import com.gastos.feature.incomes.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +49,7 @@ data class EditIncomeForm(
 
 @HiltViewModel
 class EditIncomeViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val incomeRepository: IncomeRepository,
     private val sheetsSyncManager: SheetsSyncManager
 ) : ViewModel() {
@@ -127,12 +131,12 @@ class EditIncomeViewModel @Inject constructor(
                     }
                 } else {
                     _uiState.update {
-                        it.copy(isLoading = false, error = "Ingreso no encontrado")
+                        it.copy(isLoading = false, error = context.getString(R.string.income_not_found))
                     }
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = e.message ?: "Error al cargar ingreso")
+                    it.copy(isLoading = false, error = e.message ?: context.getString(R.string.load_income_error))
                 }
             }
         }
@@ -182,7 +186,7 @@ class EditIncomeViewModel @Inject constructor(
             val form = _form.value
             val monto = form.monto.toDoubleOrNull()
             if (monto == null || !monto.isFinite() || monto <= 0) {
-                _uiState.update { it.copy(saveResult = "El monto debe ser un número positivo") }
+                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_amount_positive)) }
                 return@launch
             }
             val devengado = form.totalDevengado.toDoubleOrNull()
@@ -192,22 +196,22 @@ class EditIncomeViewModel @Inject constructor(
             val invalidOptionalAmount = listOf(form.totalDevengado to devengado, form.totalNeto to neto)
                 .any { (raw, value) -> raw.isNotBlank() && (value == null || !value.isFinite() || value <= 0.0) }
             if (invalidOptionalAmount) {
-                _uiState.update { it.copy(saveResult = "Devengado y neto deben ser importes positivos") }
+                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_gross_net_positive)) }
                 return@launch
             }
             if (iva == null || !iva.isFinite() || iva !in 0.0..100.0 ||
                 irpf == null || !irpf.isFinite() || irpf !in 0.0..100.0
             ) {
-                _uiState.update { it.copy(saveResult = "Los porcentajes deben estar entre 0 y 100") }
+                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_percentages_range)) }
                 return@launch
             }
             val currency = form.moneda.trim().uppercase()
             if (currency !in SUPPORTED_CURRENCIES) {
-                _uiState.update { it.copy(saveResult = "La moneda seleccionada no está soportada") }
+                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_currency_not_supported)) }
                 return@launch
             }
             if (form.concepto.isBlank()) {
-                _uiState.update { it.copy(saveResult = "El concepto es obligatorio") }
+                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_concept_required)) }
                 return@launch
             }
 
@@ -247,14 +251,14 @@ class EditIncomeViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         isSaving = false,
-                        saveResult = "Ingreso guardado correctamente"
+                        saveResult = context.getString(R.string.saved_ok)
                     )
                 }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
                         isSaving = false,
-                        saveResult = "Error al guardar: ${e.message}"
+                        saveResult = context.getString(R.string.save_income_error_prefix, e.message.orEmpty())
                     )
                 }
             }

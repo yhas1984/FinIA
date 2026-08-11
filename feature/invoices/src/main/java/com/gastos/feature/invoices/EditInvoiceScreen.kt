@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.extension.fromDatePickerUtcMillis
 import com.gastos.extension.toDatePickerUtcMillis
+import com.gastos.feature.invoices.R
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -57,10 +59,10 @@ fun EditInvoiceScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (invoiceId > 0) "Editar Factura" else "Nueva Factura") },
+                title = { Text(if (invoiceId > 0) stringResource(R.string.edit_invoice) else stringResource(R.string.new_invoice)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
@@ -70,7 +72,7 @@ fun EditInvoiceScreen(
                             form.total.toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true &&
                             form.proveedor.isNotBlank()
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = "Guardar")
+                        Icon(Icons.Default.Save, contentDescription = stringResource(R.string.save))
                     }
                 }
             )
@@ -89,7 +91,7 @@ fun EditInvoiceScreen(
             OutlinedTextField(
                 value = form.proveedor,
                 onValueChange = { viewModel.updateProveedor(it) },
-                label = { Text("Proveedor") },
+                label = { Text(stringResource(R.string.provider)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -97,7 +99,7 @@ fun EditInvoiceScreen(
             OutlinedTextField(
                 value = form.numeroFactura,
                 onValueChange = { viewModel.updateNumeroFactura(it) },
-                label = { Text("Nº de factura") },
+                label = { Text(stringResource(R.string.invoice_number)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -106,12 +108,12 @@ fun EditInvoiceScreen(
             OutlinedTextField(
                 value = SimpleDateFormat("dd/MM/yyyy", locale).format(Date(form.fecha)),
                 onValueChange = {},
-                label = { Text("Fecha") },
+                label = { Text(stringResource(R.string.date)) },
                 modifier = Modifier.fillMaxWidth(),
                 readOnly = true,
                 trailingIcon = {
                     IconButton(onClick = { showDatePicker = true }) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = "Seleccionar fecha")
+                        Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.select_date))
                     }
                 }
             )
@@ -124,7 +126,7 @@ fun EditInvoiceScreen(
                 OutlinedTextField(
                     value = form.moneda,
                     onValueChange = {},
-                    label = { Text("Moneda") },
+                    label = { Text(stringResource(R.string.currency)) },
                     readOnly = true,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCurrencyPicker) },
                     modifier = Modifier
@@ -151,7 +153,7 @@ fun EditInvoiceScreen(
             OutlinedTextField(
                 value = form.total,
                 onValueChange = { viewModel.updateTotal(it) },
-                label = { Text("Total") },
+                label = { Text(stringResource(R.string.total)) },
                 modifier = Modifier.fillMaxWidth(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
@@ -162,7 +164,7 @@ fun EditInvoiceScreen(
                 OutlinedTextField(
                     value = form.baseImponible,
                     onValueChange = { viewModel.updateBaseImponible(it) },
-                    label = { Text("Base imponible") },
+                    label = { Text(stringResource(R.string.tax_base)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -171,7 +173,7 @@ fun EditInvoiceScreen(
                 OutlinedTextField(
                     value = form.cuotaIva,
                     onValueChange = { viewModel.updateCuotaIva(it) },
-                    label = { Text("Cuota IVA") },
+                    label = { Text(stringResource(R.string.vat_amount)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -186,11 +188,11 @@ fun EditInvoiceScreen(
                 OutlinedTextField(
                     value = when {
                         form.isCustomCategory && form.categoria.isNotBlank() -> form.categoria
-                        form.isCustomCategory -> TransactionCategories.CUSTOM_OPTION_LABEL
-                        else -> TransactionCategories.displayCategory(form.categoria)
+                         form.isCustomCategory -> TransactionCategories.currentCustomOptionLabel(locale.language)
+                         else -> TransactionCategories.displayCategory(form.categoria, locale.language)
                     },
                     onValueChange = {},
-                    label = { Text("Categoría") },
+                    label = { Text(stringResource(R.string.category)) },
                     readOnly = true,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCategoryPicker) },
                     modifier = Modifier
@@ -202,7 +204,7 @@ fun EditInvoiceScreen(
                     onDismissRequest = { showCategoryPicker = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text(TransactionCategories.UNCATEGORIZED_LABEL) },
+                         text = { Text(TransactionCategories.currentUncategorizedLabel(locale.language)) },
                         onClick = {
                             viewModel.selectCategory(value = null, isCustomCategory = false)
                             showCategoryPicker = false
@@ -210,7 +212,7 @@ fun EditInvoiceScreen(
                     )
                     uiState.availableCategories.forEach { category ->
                         DropdownMenuItem(
-                            text = { Text(category) },
+                             text = { Text(TransactionCategories.displayCategory(category, locale.language)) },
                             onClick = {
                                 viewModel.selectCategory(value = category, isCustomCategory = false)
                                 showCategoryPicker = false
@@ -218,7 +220,7 @@ fun EditInvoiceScreen(
                         )
                     }
                     DropdownMenuItem(
-                        text = { Text(TransactionCategories.CUSTOM_OPTION_LABEL) },
+                         text = { Text(TransactionCategories.currentCustomOptionLabel(locale.language)) },
                         onClick = {
                             viewModel.selectCategory(
                                 value = if (form.isCustomCategory) form.categoria else null,
@@ -234,10 +236,10 @@ fun EditInvoiceScreen(
                 OutlinedTextField(
                     value = form.categoria,
                     onValueChange = { viewModel.updateCategoria(it) },
-                    label = { Text("Categoría personalizada") },
+                    label = { Text(stringResource(R.string.custom_category)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    supportingText = { Text("Déjala vacía para guardar sin categoría.") }
+                    supportingText = { Text(stringResource(R.string.leave_empty_no_category)) }
                 )
             }
 
@@ -248,12 +250,12 @@ fun EditInvoiceScreen(
                 ) {
                     OutlinedTextField(
                         value = when {
-                            form.isCustomSubcategory -> form.subcategoria.ifBlank { TransactionCategories.CUSTOM_OPTION_LABEL }
-                            form.subcategoria.isBlank() -> TransactionCategories.UNCATEGORIZED_LABEL
+                             form.isCustomSubcategory -> form.subcategoria.ifBlank { TransactionCategories.currentCustomOptionLabel(locale.language) }
+                             form.subcategoria.isBlank() -> TransactionCategories.currentUncategorizedLabel(locale.language)
                             else -> form.subcategoria
                         },
                         onValueChange = {},
-                        label = { Text("Subcategoría") },
+                        label = { Text(stringResource(R.string.subcategory)) },
                         readOnly = true,
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showSubcategoryPicker) },
                         modifier = Modifier
@@ -265,7 +267,7 @@ fun EditInvoiceScreen(
                         onDismissRequest = { showSubcategoryPicker = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text(TransactionCategories.UNCATEGORIZED_LABEL) },
+                             text = { Text(TransactionCategories.currentUncategorizedLabel(locale.language)) },
                             onClick = {
                                 viewModel.selectSubcategory(value = null, isCustom = false)
                                 showSubcategoryPicker = false
@@ -273,7 +275,7 @@ fun EditInvoiceScreen(
                         )
                         uiState.availableSubcategories.forEach { subcategoria ->
                             DropdownMenuItem(
-                                text = { Text(subcategoria) },
+                             text = { Text(TransactionCategories.displayCategory(subcategoria, locale.language)) },
                                 onClick = {
                                     viewModel.selectSubcategory(value = subcategoria, isCustom = false)
                                     showSubcategoryPicker = false
@@ -281,7 +283,7 @@ fun EditInvoiceScreen(
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text(TransactionCategories.CUSTOM_OPTION_LABEL) },
+                             text = { Text(TransactionCategories.currentCustomOptionLabel(locale.language)) },
                             onClick = {
                                 viewModel.selectSubcategory(value = form.subcategoria, isCustom = true)
                                 showSubcategoryPicker = false
@@ -294,10 +296,10 @@ fun EditInvoiceScreen(
                     OutlinedTextField(
                         value = form.subcategoria,
                         onValueChange = { viewModel.updateSubcategoria(it) },
-                        label = { Text("Subcategoría personalizada") },
+                        label = { Text(stringResource(R.string.custom_subcategory)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        supportingText = { Text("Déjala vacía para guardar sin subcategoría.") }
+                        supportingText = { Text(stringResource(R.string.leave_empty_no_subcategory)) }
                     )
                 }
             }
@@ -307,7 +309,7 @@ fun EditInvoiceScreen(
                 OutlinedTextField(
                     value = form.ivaPercent,
                     onValueChange = { viewModel.updateIvaPercent(it) },
-                    label = { Text("IVA %") },
+                    label = { Text(stringResource(R.string.vat_percent)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true
@@ -315,7 +317,7 @@ fun EditInvoiceScreen(
                 OutlinedTextField(
                     value = form.irpfPercent,
                     onValueChange = { viewModel.updateIrpfPercent(it) },
-                    label = { Text("IRPF %") },
+                    label = { Text(stringResource(R.string.irpf_percent)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true
@@ -326,9 +328,9 @@ fun EditInvoiceScreen(
             form.recalcFiscal()?.let { fb ->
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Base Imponible: ${String.format("%.2f", fb.baseImponible)} ${form.moneda}", style = MaterialTheme.typography.bodySmall)
-                        Text("Cuota IVA: +${String.format("%.2f", fb.ivaAmount)} ${form.moneda}", style = MaterialTheme.typography.bodySmall)
-                        if (fb.irpfAmount > 0) Text("Retención IRPF: -${String.format("%.2f", fb.irpfAmount)} ${form.moneda}", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.base_vat_irpf_breakdown, String.format("%.2f", fb.baseImponible), form.moneda), style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.vat_breakdown, String.format("%.2f", fb.ivaAmount), form.moneda), style = MaterialTheme.typography.bodySmall)
+                        if (fb.irpfAmount > 0) Text(stringResource(R.string.irpf_breakdown, String.format("%.2f", fb.irpfAmount), form.moneda), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -338,28 +340,28 @@ fun EditInvoiceScreen(
             TextButton(onClick = { showAdvanced = !showAdvanced }) {
                 Icon(if (showAdvanced) Icons.Default.ExpandLess else Icons.Default.ExpandMore, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Más datos fiscales")
+                Text(stringResource(R.string.more_tax_data))
             }
             AnimatedVisibility(visible = showAdvanced) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = form.nifEmisor,
                         onValueChange = { viewModel.updateNifEmisor(it) },
-                        label = { Text("Identificación fiscal emisor") },
+                        label = { Text(stringResource(R.string.issuer_tax_id)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
                     OutlinedTextField(
                         value = form.nifReceptor,
                         onValueChange = { viewModel.updateNifReceptor(it) },
-                        label = { Text("Identificación fiscal receptor") },
+                        label = { Text(stringResource(R.string.receiver_tax_id)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
                     OutlinedTextField(
                         value = form.notas,
                         onValueChange = { viewModel.updateNotas(it) },
-                        label = { Text("Notas (opcional)") },
+                        label = { Text(stringResource(R.string.notes_optional)) },
                         modifier = Modifier.fillMaxWidth().height(100.dp),
                         minLines = 3
                     )
@@ -412,7 +414,7 @@ fun EditInvoiceScreen(
                 state = datePickerState
             )
             Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancelar") }
+                TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.cancel)) }
                 TextButton(
                     onClick = {
                         datePickerState.selectedDateMillis?.let {
@@ -420,7 +422,7 @@ fun EditInvoiceScreen(
                         }
                         showDatePicker = false
                     }
-                ) { Text("OK") }
+                ) { Text(stringResource(R.string.ok)) }
             }
         }
     }

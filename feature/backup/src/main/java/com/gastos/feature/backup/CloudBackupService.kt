@@ -35,7 +35,7 @@ class CloudBackupService @Inject constructor(
         backupMutex.withLock {
             requirePremium()
             require(archiveService.isPasswordConfigured()) {
-                "Configura una contraseña de recuperación antes de activar el backup automático."
+                context.getString(R.string.configure_recovery_password_before_auto_backup)
             }
             val drive = driveService()
             listBackups(drive).firstOrNull()?.takeIf {
@@ -133,12 +133,12 @@ class CloudBackupService @Inject constructor(
 
     private fun driveService(): Drive {
         val account = sheetsExportService.getLastSignedInAccount()
-            ?: throw IllegalStateException("Conecta tu cuenta Google primero.")
+            ?: throw IllegalStateException(context.getString(R.string.connect_google_first))
         require(sheetsExportService.isSignedIn()) {
-            "Vuelve a conectar Google para conceder el permiso de backup."
+            context.getString(R.string.reconnect_google_permission_backup)
         }
         val selectedAccount = account.account
-            ?: throw IllegalStateException("La cuenta Google seleccionada no está disponible.")
+            ?: throw IllegalStateException(context.getString(R.string.selected_google_account_unavailable))
         val credential = GoogleAccountCredential.usingOAuth2(
             context,
             listOf(DriveScopes.DRIVE_APPDATA)
@@ -150,7 +150,7 @@ class CloudBackupService @Inject constructor(
 
     private fun requirePremium() {
         check(premiumStatus.isPremium.value) {
-            "El backup automático en Google Drive requiere Premium."
+            context.getString(R.string.auto_backup_requires_premium)
         }
     }
 

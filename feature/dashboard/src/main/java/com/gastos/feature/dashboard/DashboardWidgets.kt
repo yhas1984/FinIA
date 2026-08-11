@@ -24,8 +24,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.gastos.feature.dashboard.R
 
 /**
  * Registro de widgets configurables del Dashboard.
@@ -38,17 +40,17 @@ import androidx.compose.ui.unit.dp
 enum class DashboardWidget(
     val id: String,
     val defaultOrder: Int,
-    val title: String
+    val titleRes: Int
 ) {
-    BALANCE("balance", 1, "Balance"),
-    CASHFLOW("cashflow", 2, "Flujo de caja"),
-    ANALYTICS("analytics", 3, "Estadísticas"),
-    CALENDAR("calendar", 4, "Calendario financiero"),
-    WEEKLY_CHART("weekly_chart", 5, "Últimos 7 días"),
-    WEEKLY_TOTALS("weekly_totals", 6, "Esta semana"),
-    TODAY("today", 7, "Hoy"),
-    CONVERSION("conversion", 8, "Conversión de moneda"),
-    CHAT_CTA("chat_cta", 9, "Asistente FinAI");
+    BALANCE("balance", 1, R.string.month_balance),
+    CASHFLOW("cashflow", 2, R.string.cashflow),
+    ANALYTICS("analytics", 3, R.string.analytics),
+    CALENDAR("calendar", 4, R.string.calendar_financial),
+    WEEKLY_CHART("weekly_chart", 5, R.string.last_7_days),
+    WEEKLY_TOTALS("weekly_totals", 6, R.string.this_week),
+    TODAY("today", 7, R.string.today),
+    CONVERSION("conversion", 8, R.string.conversion_currency),
+    CHAT_CTA("chat_cta", 9, R.string.chat_with_finai);
 
     companion object {
         /** Orden por defecto del producto. */
@@ -152,7 +154,7 @@ fun DashboardWidgetContainer(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = widget.title,
+                    text = stringResource(widget.titleRes),
                     style = MaterialTheme.typography.labelMedium.copy(
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -162,7 +164,7 @@ fun DashboardWidgetContainer(
                 IconButton(onClick = onMoveUp, enabled = canMoveUp) {
                     Icon(
                         imageVector = Icons.Filled.ArrowUpward,
-                        contentDescription = "Mover ${widget.title} arriba",
+                        contentDescription = stringResource(R.string.move_widget_up, stringResource(widget.titleRes)),
                         tint = if (canMoveUp) {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         } else {
@@ -173,7 +175,7 @@ fun DashboardWidgetContainer(
                 IconButton(onClick = onMoveDown, enabled = canMoveDown) {
                     Icon(
                         imageVector = Icons.Filled.ArrowDownward,
-                        contentDescription = "Mover ${widget.title} abajo",
+                        contentDescription = stringResource(R.string.move_widget_down, stringResource(widget.titleRes)),
                         tint = if (canMoveDown) {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         } else {
@@ -184,7 +186,7 @@ fun DashboardWidgetContainer(
                 IconButton(onClick = onHide) {
                     Icon(
                         imageVector = Icons.Filled.VisibilityOff,
-                        contentDescription = "Ocultar ${widget.title}",
+                        contentDescription = stringResource(R.string.hide_widget, stringResource(widget.titleRes)),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -225,7 +227,7 @@ fun DashboardWidgetContainer(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.DragHandle,
-                        contentDescription = "Arrastrar ${widget.title}",
+                        contentDescription = stringResource(R.string.drag_widget, stringResource(widget.titleRes)),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -253,21 +255,21 @@ fun EditModeToolbar(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Personaliza tu Dashboard",
+                text = stringResource(R.string.personalize_dashboard),
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "Mantén pulsado el asa para arrastrar",
+                text = stringResource(R.string.drag_handle_instruction),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         TextButton(onClick = onReset) {
-            Text("Restablecer")
+            Text(stringResource(R.string.reset_layout))
         }
         Button(onClick = onDone) {
-            Text("Hecho")
+            Text(stringResource(R.string.done))
         }
     }
 }
@@ -281,7 +283,7 @@ fun HiddenWidgetsTray(
     if (hidden.isEmpty()) return
     GlassCard {
         Text(
-            text = "Widgets ocultos",
+            text = stringResource(R.string.hidden_widgets),
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
             modifier = Modifier.padding(bottom = 8.dp)
         )
@@ -303,13 +305,13 @@ fun HiddenWidgetsTray(
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = widget.title,
+                        text = stringResource(widget.titleRes),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
                     )
                     TextButton(onClick = { onRestore(widget) }) {
-                        Text("Mostrar")
+                        Text(stringResource(R.string.show))
                     }
                 }
             }

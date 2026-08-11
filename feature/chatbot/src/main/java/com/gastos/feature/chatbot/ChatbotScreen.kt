@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -114,9 +115,9 @@ fun ChatbotScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
-                            Text("FinAI Asistente")
+                            Text(stringResource(R.string.chatbot_app_title))
                             Text(
-                                text = "En línea",
+                                text = stringResource(R.string.chatbot_online_status),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -125,12 +126,12 @@ fun ChatbotScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.chatbot_cd_back))
                     }
                 },
                 actions = {
                     IconButton(onClick = { showClearDialog = true }) {
-                        Icon(Icons.Default.DeleteSweep, contentDescription = "Limpiar chat")
+                        Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.chatbot_cd_clear_chat))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -179,7 +180,7 @@ fun ChatbotScreen(
                                 Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(16.dp))
                             }
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (uiState.isListening) "Detener" else "Voz", style = MaterialTheme.typography.labelMedium)
+                            Text(if (uiState.isListening) stringResource(R.string.chatbot_stop_voice) else stringResource(R.string.chatbot_voice), style = MaterialTheme.typography.labelMedium)
                         }
                         OutlinedButton(
                             onClick = { showScanMenu = true },
@@ -189,14 +190,14 @@ fun ChatbotScreen(
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Escanear", style = MaterialTheme.typography.labelMedium)
+                            Text(stringResource(R.string.chatbot_scan), style = MaterialTheme.typography.labelMedium)
                         }
                         DropdownMenu(
                             expanded = showScanMenu,
                             onDismissRequest = { showScanMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("📷 Hacer foto") },
+                                text = { Text(stringResource(R.string.chatbot_menu_take_photo)) },
                                 onClick = {
                                     showScanMenu = false
                                     when (PackageManager.PERMISSION_GRANTED) {
@@ -213,7 +214,7 @@ fun ChatbotScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("🖼️ Adjuntar imagen") },
+                                text = { Text(stringResource(R.string.chatbot_menu_attach_image)) },
                                 onClick = {
                                     showScanMenu = false
                                     imagePickerLauncher.launch("image/*")
@@ -231,7 +232,7 @@ fun ChatbotScreen(
                             value = textInput,
                             onValueChange = { textInput = it },
                             modifier = Modifier.weight(1f),
-                            placeholder = { Text("Escribe un comando o consulta...") },
+                            placeholder = { Text(stringResource(R.string.chatbot_input_placeholder)) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                             keyboardActions = androidx.compose.foundation.text.KeyboardActions(
@@ -261,7 +262,7 @@ fun ChatbotScreen(
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Enviar",
+                                contentDescription = stringResource(R.string.chatbot_cd_send),
                                 tint = if (textInput.isNotBlank() && !uiState.isProcessing)
                                     MaterialTheme.colorScheme.onPrimary
                                 else
@@ -294,13 +295,13 @@ fun ChatbotScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "¡Hola! Soy tu asistente FinAI",
+                        text = stringResource(R.string.chatbot_welcome_title),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Puedo ayudarte a registrar gastos, ingresos y consultar tus finanzas.",
+                        text = stringResource(R.string.chatbot_welcome_body),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -308,10 +309,10 @@ fun ChatbotScreen(
                     
                     // Quick suggestions
                     listOf(
-                        "¿Cuánto he gastado este mes?",
-                        "Registrar nómina de 2500 euros",
-                        "Gasté 50 euros en supermercado",
-                        "¿Cuál es mi balance?"
+                        stringResource(R.string.chatbot_suggestion_expenses_month),
+                        stringResource(R.string.chatbot_suggestion_salary),
+                        stringResource(R.string.chatbot_suggestion_supermarket),
+                        stringResource(R.string.chatbot_suggestion_balance)
                     ).forEach { suggestion ->
                         SuggestionChip(
                             onClick = { if (!uiState.isProcessing) viewModel.sendMessage(suggestion) },
@@ -344,7 +345,7 @@ fun ChatbotScreen(
                         (lastMessage !is ChatMessage.AI || lastMessage.text.isEmpty())
                     if (showTyping) {
                         item {
-                            AIMessageBubble("...")
+                            AIMessageBubble(stringResource(R.string.chatbot_typing_indicator))
                         }
                     }
                 }
@@ -355,13 +356,13 @@ fun ChatbotScreen(
     if (showClearDialog) {
         AlertDialog(
             onDismissRequest = { showClearDialog = false },
-            title = { Text("Borrar conversación") },
-            text = { Text("Se eliminará el historial local del chat.") },
+            title = { Text(stringResource(R.string.chatbot_clear_dialog_title)) },
+            text = { Text(stringResource(R.string.chatbot_clear_dialog_body)) },
             confirmButton = {
-                TextButton(onClick = { showClearDialog = false; viewModel.clearChat() }) { Text("Borrar") }
+                TextButton(onClick = { showClearDialog = false; viewModel.clearChat() }) { Text(stringResource(R.string.chatbot_clear_dialog_confirm)) }
             },
             dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) { Text("Cancelar") }
+                TextButton(onClick = { showClearDialog = false }) { Text(stringResource(R.string.chatbot_clear_dialog_cancel)) }
             }
         )
     }
