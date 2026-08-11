@@ -64,9 +64,80 @@ class EditIncomeViewModelTest {
                         it.concepto == "Nómina actualizada" &&
                         it.imagenUri == "content://scan/9" &&
                         it.categoria == null &&
+                        it.subcategoria == null &&
                         it.createdAt == 555L
                 })
             }
+        }
+
+    @Test
+    fun `saveIncome persiste subcategoria normalizada`() =
+        runTest(dispatcher) {
+            val repo = mockk<com.gastos.repository.IncomeRepository>()
+            val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+            every { repo.getAllIncomes() } returns flowOf(emptyList())
+            coEvery { repo.insertIncome(any()) } returns 10L
+
+            val vm = EditIncomeViewModel(repo, sync)
+            vm.updateConcepto("Ingreso")
+            vm.updateMonto("100")
+            vm.selectCategory("Ventas", isCustomCategory = false)
+            vm.selectSubcategory("  Servicios  ", isCustom = true)
+            vm.saveIncome()
+            advanceUntilIdle()
+
+            coVerify {
+                repo.insertIncome(match {
+                    it.categoria == "Ventas" &&
+                        it.subcategoria == "Servicios"
+                })
+            }
+        }
+
+    @Test
+    fun `loadIncome restaura subcategoria`() =
+        runTest(dispatcher) {
+            val repo = mockk<com.gastos.repository.IncomeRepository>()
+            val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+            val income = Income(
+                id = 7L,
+                fecha = 1L,
+                concepto = "Venta",
+                monto = 100.0,
+                categoria = "Ventas",
+                subcategoria = "Productos"
+            )
+            every { repo.getAllIncomes() } returns flowOf(listOf(income))
+            coEvery { repo.getIncomeById(7L) } returns income
+
+            val vm = EditIncomeViewModel(repo, sync)
+            vm.loadIncome(7L)
+            advanceUntilIdle()
+
+            assertEquals("Productos", vm.form.value.subcategoria)
+            assertEquals(false, vm.form.value.isCustomSubcategory)
+        }
+
+    @Test
+    fun `selectCategory actualiza subcategorias disponibles`() =
+        runTest(dispatcher) {
+            val repo = mockk<com.gastos.repository.IncomeRepository>()
+            val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+            val income = Income(
+                id = 1L,
+                fecha = 1L,
+                concepto = "Ingreso",
+                monto = 1.0,
+                categoria = "Ventas",
+                subcategoria = "Servicios"
+            )
+            every { repo.getAllIncomes() } returns flowOf(listOf(income))
+
+            val vm = EditIncomeViewModel(repo, sync)
+            vm.selectCategory("Nómina", isCustomCategory = false)
+            advanceUntilIdle()
+
+            assertEquals(listOf("Salario base", "Extras", "Pagas extra", "Servicios"), vm.uiState.value.availableSubcategories)
         }
 
     @Test

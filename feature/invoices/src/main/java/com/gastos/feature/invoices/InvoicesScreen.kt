@@ -177,6 +177,32 @@ fun InvoicesScreen(
                     }
                 }
 
+                if (uiState.selectedCategoryFilter != null &&
+                    uiState.selectedCategoryFilter != UNCATEGORIZED_FILTER &&
+                    uiState.availableSubcategories.isNotEmpty()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = uiState.selectedSubcategoryFilter == null,
+                            onClick = { viewModel.filterBySubcategory(null) },
+                            label = { Text("Todas") }
+                        )
+                        uiState.availableSubcategories.forEach { subcategory ->
+                            FilterChip(
+                                selected = uiState.selectedSubcategoryFilter == subcategory,
+                                onClick = { viewModel.filterBySubcategory(subcategory) },
+                                label = { Text(subcategory) }
+                            )
+                        }
+                    }
+                }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -297,7 +323,8 @@ private fun InvoiceCard(
                     Spacer(modifier = Modifier.height(6.dp))
                     Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant) {
                         Text(
-                            text = TransactionCategories.displayCategory(invoice.categoria),
+                            text = TransactionCategories.displayCategory(invoice.categoria) +
+                                invoice.subcategoria?.takeIf { it.isNotBlank() }?.let { " / $it" }.orEmpty(),
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             style = MaterialTheme.typography.labelLarge
                         )

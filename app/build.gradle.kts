@@ -38,6 +38,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Variante "FinAI Dev": paquete y datos aislados para probar
+            // migraciones y nuevas funciones sin tocar la app estable.
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(

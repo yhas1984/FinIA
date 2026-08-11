@@ -38,6 +38,7 @@ fun EditInvoiceScreen(
     var showCurrencyPicker by remember { mutableStateOf(false) }
     var showCountryPicker by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
+    var showSubcategoryPicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(invoiceId) {
         if (invoiceId > 0) {
@@ -209,6 +210,67 @@ fun EditInvoiceScreen(
                     singleLine = true,
                     supportingText = { Text("Déjala vacía para guardar sin categoría.") }
                 )
+            }
+
+            if (form.categoria.isNotBlank()) {
+                ExposedDropdownMenuBox(
+                    expanded = showSubcategoryPicker,
+                    onExpandedChange = { showSubcategoryPicker = it }
+                ) {
+                    OutlinedTextField(
+                        value = when {
+                            form.isCustomSubcategory -> form.subcategoria.ifBlank { TransactionCategories.CUSTOM_OPTION_LABEL }
+                            form.subcategoria.isBlank() -> TransactionCategories.UNCATEGORIZED_LABEL
+                            else -> form.subcategoria
+                        },
+                        onValueChange = {},
+                        label = { Text("Subcategoría") },
+                        readOnly = true,
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showSubcategoryPicker) },
+                        modifier = Modifier
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                            .fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = showSubcategoryPicker,
+                        onDismissRequest = { showSubcategoryPicker = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(TransactionCategories.UNCATEGORIZED_LABEL) },
+                            onClick = {
+                                viewModel.selectSubcategory(value = null, isCustom = false)
+                                showSubcategoryPicker = false
+                            }
+                        )
+                        uiState.availableSubcategories.forEach { subcategoria ->
+                            DropdownMenuItem(
+                                text = { Text(subcategoria) },
+                                onClick = {
+                                    viewModel.selectSubcategory(value = subcategoria, isCustom = false)
+                                    showSubcategoryPicker = false
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(TransactionCategories.CUSTOM_OPTION_LABEL) },
+                            onClick = {
+                                viewModel.selectSubcategory(value = form.subcategoria, isCustom = true)
+                                showSubcategoryPicker = false
+                            }
+                        )
+                    }
+                }
+
+                if (form.isCustomSubcategory) {
+                    OutlinedTextField(
+                        value = form.subcategoria,
+                        onValueChange = { viewModel.updateSubcategoria(it) },
+                        label = { Text("Subcategoría personalizada") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = { Text("Déjala vacía para guardar sin subcategoría.") }
+                    )
+                }
             }
 
             // IVA e IRPF

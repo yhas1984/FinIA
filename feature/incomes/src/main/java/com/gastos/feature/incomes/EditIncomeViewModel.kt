@@ -22,6 +22,7 @@ data class EditIncomeUiState(
     val saveResult: String? = null,
     val income: Income? = null,
     val availableCategories: List<String> = TransactionCategories.defaultIncomeCategories,
+    val availableSubcategories: List<String> = emptyList(),
     val error: String? = null
 )
 
@@ -36,6 +37,8 @@ data class EditIncomeForm(
     val fuente: String = "",
     val categoria: String = "",
     val isCustomCategory: Boolean = false,
+    val subcategoria: String = "",
+    val isCustomSubcategory: Boolean = false,
     val ivaPercent: String = "0.0",
     val irpfPercent: String = "0.0",
     val notas: String = ""
@@ -54,6 +57,7 @@ class EditIncomeViewModel @Inject constructor(
     val form: StateFlow<EditIncomeForm> = _form.asStateFlow()
 
     private var originalIncome: Income? = null
+    private var existingSubcategories: List<String?> = emptyList()
 
     init {
         loadAvailableCategories()
@@ -61,12 +65,18 @@ class EditIncomeViewModel @Inject constructor(
 
     private fun loadAvailableCategories() {
         viewModelScope.launch {
-            val existing = incomeRepository.getAllIncomes().first().map { it.categoria }
+            val existing = incomeRepository.getAllIncomes().first()
+            val existingCategories = existing.map { it.categoria }
+            existingSubcategories = existing.map { it.subcategoria }
             _uiState.update {
                 it.copy(
                     availableCategories = TransactionCategories.availableCategories(
                         defaults = TransactionCategories.defaultIncomeCategories,
-                        existing = existing
+                        existing = existingCategories
+                    ),
+                    availableSubcategories = TransactionCategories.availableSubcategories(
+                        defaults = TransactionCategories.suggestedSubcategories(_form.value.categoria, isIncome = true),
+                        existing = existingSubcategories
                     )
                 )
             }
@@ -94,12 +104,27 @@ class EditIncomeViewModel @Inject constructor(
                             isCustomCategory = income.categoria?.let {
                                 TransactionCategories.canonicalIncomeCategory(it) !in TransactionCategories.defaultIncomeCategories
                             } ?: false,
+                            subcategoria = income.subcategoria.orEmpty(),
+                            isCustomSubcategory = income.subcategoria?.let {
+                                TransactionCategories.suggestedSubcategories(income.categoria, isIncome = true).none { suggested ->
+                                    TransactionCategories.normalizeKey(suggested) == TransactionCategories.normalizeKey(it)
+                                }
+                            } ?: false,
                             ivaPercent = income.ivaPercent.toString(),
                             irpfPercent = income.irpfPercent.toString(),
                             notas = income.notas ?: ""
                         )
                     }
-                    _uiState.update { it.copy(isLoading = false, income = income) }
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            income = income,
+                            availableSubcategories = TransactionCategories.availableSubcategories(
+                                defaults = TransactionCategories.suggestedSubcategories(income.categoria, isIncome = true),
+                                existing = existingSubcategories
+                            )
+                        )
+                    }
                 } else {
                     _uiState.update {
                         it.copy(isLoading = false, error = "Ingreso no encontrado")
@@ -121,11 +146,30 @@ class EditIncomeViewModel @Inject constructor(
     fun updateMoneda(value: String) { _form.update { it.copy(moneda = value) } }
     fun updateFuente(value: String) { _form.update { it.copy(fuente = value) } }
     fun updateCategoria(value: String) { _form.update { it.copy(categoria = value) } }
+    fun updateSubcategoria(value: String) { _form.update { it.copy(subcategoria = value) } }
     fun selectCategory(value: String?, isCustomCategory: Boolean) {
         _form.update {
             it.copy(
                 categoria = value.orEmpty(),
-                isCustomCategory = isCustomCategory
+                isCustomCategory = isCustomCategory,
+                subcategoria = if (value.isNullOrBlank()) "" else it.subcategoria,
+                isCustomSubcategory = if (value.isNullOrBlank()) false else it.isCustomSubcategory
+            )
+        }
+        _uiState.update {
+            it.copy(
+                availableSubcategories = TransactionCategories.availableSubcategories(
+                    defaults = TransactionCategories.suggestedSubcategories(value, isIncome = true),
+                    existing = existingSubcategories
+                )
+            )
+        }
+    }
+    fun selectSubcategory(value: String?, isCustom: Boolean) {
+        _form.update {
+            it.copy(
+                subcategoria = value.orEmpty(),
+                isCustomSubcategory = isCustom
             )
         }
     }
@@ -183,6 +227,7 @@ class EditIncomeViewModel @Inject constructor(
                     moneda = currency,
                     fuente = form.fuente.trim().takeIf { it.isNotBlank() },
                     categoria = TransactionCategories.canonicalIncomeCategory(form.categoria),
+                    subcategoria = TransactionCategories.normalizeCategory(form.subcategoria),
                     ivaPercent = iva,
                     irpfPercent = irpf,
                     imagenUri = original?.imagenUri,
