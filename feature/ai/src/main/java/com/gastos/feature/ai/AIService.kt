@@ -343,16 +343,21 @@ class AIService @Inject constructor(
                - Si pregunta por un producto concreto, NO uses query_type="balance".
 
             2. REGISTRAR GASTO: si dice que gastó, compró o pagó algo:
-               {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0.0,"total":0.0,"moneda":"$defaultCurrency","fecha":"$today","categoria":"texto"}
-               - Si el usuario no menciona otra moneda, usa $defaultCurrency.
-               - Usa una categoría predeterminada de gasto si encaja claramente.
-               - Si el usuario menciona una categoría personalizada explícita, consérvala.
+                {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0.0,"total":0.0,"moneda":"$defaultCurrency","fecha":"$today","categoria":"texto","subcategoria":"texto"}
+                - Si el usuario no menciona otra moneda, usa $defaultCurrency.
+                - Usa una categoría predeterminada de gasto si encaja claramente.
+                - Si el usuario menciona una categoría personalizada explícita, consérvala.
+                - La subcategoría es OPCIONAL: úsala solo cuando el usuario mencione un detalle concreto
+                  (por ejemplo, "en el supermercado" -> subcategoria "Supermercado" bajo Alimentación).
+                  Si no estás seguro, omítela.
 
             3. REGISTRAR INGRESO: si menciona nómina, salario, cobro o ingreso recibido:
-               {"action":"add_income","concepto":"texto","total_devengado":0.0,"total_neto":0.0,"monto":0.0,"moneda":"$defaultCurrency","fecha":"$today","fuente":"texto","categoria":"texto"}
-               - Si el usuario no menciona otra moneda, usa $defaultCurrency.
-               - Usa una categoría predeterminada de ingreso si encaja claramente.
-               - Si es una nómina, la categoría por defecto es "Nómina".
+                {"action":"add_income","concepto":"texto","total_devengado":0.0,"total_neto":0.0,"monto":0.0,"moneda":"$defaultCurrency","fecha":"$today","fuente":"texto","categoria":"texto","subcategoria":"texto"}
+                - Si el usuario no menciona otra moneda, usa $defaultCurrency.
+                - Usa una categoría predeterminada de ingreso si encaja claramente.
+                - Si es una nómina, la categoría por defecto es "Nómina".
+                - La subcategoría es OPCIONAL: úsala solo cuando el usuario mencione un detalle concreto.
+                  Si no estás seguro, omítela.
 
             4. CONVERSACIÓN GENERAL: saludos, agradecimientos, consejos financieros, dudas
                sobre conceptos (IVA, IRPF, ahorro, inversión), o cualquier otra cosa.
@@ -407,6 +412,7 @@ class AIService @Inject constructor(
                 val irpf = json.optDouble("retencion_irpf", 0.0)
                 val fecha = parseDate(json.optString("fecha", ""))
                 val concepto = "Nómina - $empresa"
+                val subcategoria = TransactionCategories.normalizeCategory(json.optString("subcategoria"))
                 val income = Income(
                     fecha = fecha,
                     concepto = concepto,
@@ -416,6 +422,7 @@ class AIService @Inject constructor(
                     moneda = moneda,
                     fuente = empresa,
                     categoria = TransactionCategories.canonicalIncomeCategory(json.optString("categoria").ifBlank { "Nómina" }),
+                    subcategoria = subcategoria,
                     ivaPercent = 0.0,
                     irpfPercent = irpf,
                     imagenUri = imageUri,
@@ -438,6 +445,7 @@ class AIService @Inject constructor(
             val nifEmisor = json.optString("nif_emisor").ifBlank { null }
             val detectedPais = json.optString("pais", "").ifBlank { fiscalCountry }
             val esIngresoFactura = tipoDoc.contains("emitida") || json.optString("tipo", "").lowercase() == "ingreso"
+            val subcategoria = TransactionCategories.normalizeCategory(json.optString("subcategoria"))
             val invoice = Invoice(
                 fecha = parseDate(json.optString("fecha", "")),
                 proveedor = proveedor,
@@ -447,6 +455,7 @@ class AIService @Inject constructor(
                 } else {
                     TransactionCategories.canonicalExpenseCategory(json.optString("categoria"))
                 },
+                subcategoria = subcategoria,
                 moneda = moneda,
                 total = total,
                 ivaPercent = ivaPercent,
@@ -506,11 +515,13 @@ class AIService @Inject constructor(
                         defaultCurrency = getDefaultCurrency(),
                         originalCommand = originalCommand
                     )
+                    val subcategoria = TransactionCategories.normalizeCategory(json.optString("subcategoria"))
                     val invoice = Invoice(
                         fecha = parseDate(json.optString("fecha", "")),
                         proveedor = descripcion,
                         tipo = InvoiceType.GASTO,
                         categoria = TransactionCategories.canonicalExpenseCategory(json.optString("categoria")),
+                        subcategoria = subcategoria,
                         moneda = moneda,
                         total = total
                     )
@@ -527,6 +538,7 @@ class AIService @Inject constructor(
                         defaultCurrency = getDefaultCurrency(),
                         originalCommand = originalCommand
                     )
+                    val subcategoria = TransactionCategories.normalizeCategory(json.optString("subcategoria"))
                     val income = Income(
                         fecha = parseDate(json.optString("fecha", "")),
                         concepto = concepto,
@@ -535,7 +547,8 @@ class AIService @Inject constructor(
                         totalNeto = if (totalNeto > 0) totalNeto else monto,
                         moneda = moneda,
                         fuente = json.optString("fuente"),
-                        categoria = TransactionCategories.canonicalIncomeCategory(json.optString("categoria"))
+                        categoria = TransactionCategories.canonicalIncomeCategory(json.optString("categoria")),
+                        subcategoria = subcategoria
                     )
                     val displayMonto = if (totalDevengado > 0 && totalNeto > 0) {
                         "Devengado: $totalDevengado $moneda / Neto: $totalNeto $moneda"
@@ -621,11 +634,12 @@ class AIService @Inject constructor(
             PASO 3 — EXTRAE LOS CAMPOS. Para nómina usa campos de salario:
               "empresa":"...", "devengado":0.0 (bruto), "liquido":0.0 (neto),
               "categoria":"Nómina",
+              "subcategoria":"..." (opcional, solo si el documento lo detalla),
               "retencion_irpf":0.0 (% de retención aplicado),
               "base_cotizacion":0.0, "seguridad_social":0.0
 
             Para facturas/tickets/recibos usa:
-              "proveedor":"...", "categoria":"...",
+              "proveedor":"...", "categoria":"...", "subcategoria":"..." (opcional, solo si el documento lo detalla),
               "nif_emisor":"...", "nif_receptor":"...",
               "base_imponible":0.0, "tipo_iva":0.0, "cuota_iva":0.0,
               "retencion_irpf":0.0, "total":0.0,
