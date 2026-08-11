@@ -42,6 +42,15 @@ data class DayData(
     val ingresos: Double
 )
 
+/** Totales convertidos de un día del mes seleccionado. */
+data class CalendarDayData(
+    val day: Int,
+    val gastos: Double,
+    val ingresos: Double,
+    val balance: Double,
+    val count: Int
+)
+
 /** Porción del donut: una categoría con su agregación del mes. */
 data class AnalyticsSlice(
     val category: String,
@@ -117,6 +126,15 @@ data class DashboardUiState(
     val categoryDetail: CategoryDetail? = null,
     /** Movimientos de la categoría+subcategoría seleccionada. */
     val movements: List<AnalyticsMovement> = emptyList(),
+    // ---- Calendario financiero ----
+    /** Días con movimientos convertibles del mes seleccionado. */
+    val calendarDays: List<CalendarDayData> = emptyList(),
+    /** Día abierto en la hoja de detalle, o null si no hay hoja. */
+    val selectedDay: Int? = null,
+    /** Movimientos del día seleccionado. */
+    val dayMovements: List<AnalyticsMovement> = emptyList(),
+    /** Balance del día seleccionado. */
+    val selectedDayBalance: Double = 0.0,
     // ---- Widgets configurables ----
     /** Orden de widgets visibles (IDs estables, ya normalizados). */
     val widgetOrder: List<String> = emptyList(),
@@ -164,6 +182,7 @@ class DashboardViewModel @Inject constructor(
     private val analyticsType = MutableStateFlow(AnalyticsType.GASTOS)
     private val selectedCategory = MutableStateFlow<String?>(null)
     private val selectedSubcategory = MutableStateFlow<String?>(null)
+    private val selectedCalendarDay = MutableStateFlow<Int?>(null)
 
     /** Última distribución antes de un reset (para Deshacer). */
     private var lastResetLayout: DashboardLayout? = null
@@ -192,8 +211,14 @@ class DashboardViewModel @Inject constructor(
                 ) { invoices, incomes, _, target ->
                     Triple(invoices, incomes, target)
                 },
-                combine(selectedMonth, analyticsType, selectedCategory, selectedSubcategory) { month, type, category, subcategory ->
-                    DashboardSelection(month, type, category, subcategory)
+                combine(
+                    selectedMonth,
+                    analyticsType,
+                    selectedCategory,
+                    selectedSubcategory,
+                    selectedCalendarDay
+                ) { month, type, category, subcategory, day ->
+                    DashboardSelection(month, type, category, subcategory, day)
                 }
             ) { data, selection ->
                 computeState(data.first, data.second, data.third, selection)
@@ -272,11 +297,26 @@ class DashboardViewModel @Inject constructor(
 
     /** Mueve un widget visible de [from] a [to] y persiste. */
     fun moveWidget(from: Int, to: Int) {
-        val order = _uiState.value.widgetOrder.toMutableList()
-        if (from !in order.indices || to !in order.indices) return
-        val id = order.removeAt(from)
-        order.add(to, id)
-        persistLayout(order, _uiState.value.hiddenWidgets)
+        val current = _uiState.value
+        val visibleOrder = current.widgetOrder
+            .filter { it !in current.hiddenWidgets }
+            .toMutableList()
+        if (from !in visibleOrder.indices || to !in visibleOrder.indices) return
+
+        val id = visibleOrder.removeAt(from)
+        visibleOrder.add(to, id)
+
+        // Conserva las posiciones de los widgets ocultos y reordena solo los
+        // elementos que el usuario ve en pantalla.
+        var visibleIndex = 0
+        val order = current.widgetOrder.map { widgetId ->
+            if (widgetId in current.hiddenWidgets) {
+                widgetId
+            } else {
+                visibleOrder[visibleIndex++]
+            }
+        }
+        persistLayout(order, current.hiddenWidgets)
     }
 
     fun hideWidget(widgetId: String) {
@@ -325,6 +365,7 @@ class DashboardViewModel @Inject constructor(
 
     fun previousMonth() {
         selectedMonth.update { it.previous() }
+        selectedCalendarDay.update { null }
         resetDrillDown()
     }
 
@@ -333,11 +374,13 @@ class DashboardViewModel @Inject constructor(
         selectedMonth.update { month ->
             if (month == currentMonth()) month else month.next()
         }
+        selectedCalendarDay.update { null }
         resetDrillDown()
     }
 
     fun selectMonth(year: Int, month: Int) {
         selectedMonth.update { MonthRef(year, month) }
+        selectedCalendarDay.update { null }
         resetDrillDown()
     }
 
@@ -355,6 +398,16 @@ class DashboardViewModel @Inject constructor(
     /** Navega al nivel de subcategoría (label "Sin subcategoría" → null). */
     fun selectSubcategory(subcategory: String?) {
         selectedSubcategory.update { subcategory }
+    }
+
+    /** Abre el detalle de un día del calendario financiero. */
+    fun selectDay(day: Int) {
+        selectedCalendarDay.update { day }
+    }
+
+    /** Cierra el detalle del día seleccionado. */
+    fun clearSelectedDay() {
+        selectedCalendarDay.update { null }
     }
 
     /** Cierra el drill-down volviendo a la vista raíz. */
@@ -444,6 +497,12 @@ class DashboardViewModel @Inject constructor(
             incomes = monthlyIncomes,
             target = target
         )
+        val calendar = computeCalendar(
+            selection = selection,
+            expenseInvoices = monthlyExpenseInvoices,
+            incomes = monthlyIncomes,
+            target = target
+        )
 
         return DashboardUiState(
             totalGastosMes = gastosMes,
@@ -469,7 +528,11 @@ class DashboardViewModel @Inject constructor(
             selectedCategory = selection.category,
             selectedSubcategory = selection.subcategory,
             categoryDetail = analytics.categoryDetail,
-            movements = analytics.movements
+            movements = analytics.movements,
+            calendarDays = calendar.days,
+            selectedDay = selection.day,
+            dayMovements = calendar.movements,
+            selectedDayBalance = calendar.balance
         )
     }
 
@@ -481,6 +544,78 @@ class DashboardViewModel @Inject constructor(
         val categoryDetail: CategoryDetail?,
         val movements: List<AnalyticsMovement>
     )
+
+    private data class CalendarResult(
+        val days: List<CalendarDayData>,
+        val movements: List<AnalyticsMovement>,
+        val balance: Double
+    )
+
+    /** Agrega los movimientos convertibles del mes por día para el calendario. */
+    private fun computeCalendar(
+        selection: DashboardSelection,
+        expenseInvoices: List<Invoice>,
+        incomes: List<Income>,
+        target: String
+    ): CalendarResult {
+        val records = expenseInvoices.map { invoice ->
+            AnalyticsRecord(
+                id = invoice.id,
+                fecha = invoice.fecha,
+                descripcion = invoice.proveedor,
+                amount = exchangeRateProvider.convert(invoice.total, invoice.moneda, target),
+                category = categoryLabel(invoice.categoria),
+                subcategory = invoice.subcategoria,
+                isExpense = true
+            )
+        } + incomes.map { income ->
+            AnalyticsRecord(
+                id = income.id,
+                fecha = income.fecha,
+                descripcion = income.concepto,
+                amount = exchangeRateProvider.convert(income.monto, income.moneda, target),
+                category = categoryLabel(income.categoria),
+                subcategory = income.subcategoria,
+                isExpense = false
+            )
+        }
+
+        val convertible = records.filter { it.amount != null }
+        val days = convertible
+            .groupBy { dayOfMonth(it.fecha) }
+            .map { (day, rows) ->
+                val gastos = rows.filter { it.isExpense }.sumOf { it.amount!! }
+                val ingresos = rows.filterNot { it.isExpense }.sumOf { it.amount!! }
+                CalendarDayData(
+                    day = day,
+                    gastos = gastos,
+                    ingresos = ingresos,
+                    balance = ingresos - gastos,
+                    count = rows.size
+                )
+            }
+            .sortedBy { it.day }
+
+        val selectedRows = selection.day?.let { day ->
+            convertible.filter { dayOfMonth(it.fecha) == day }
+        }.orEmpty()
+        val movements = selectedRows
+            .sortedByDescending { it.fecha }
+            .map { record ->
+                AnalyticsMovement(
+                    id = record.id,
+                    fecha = record.fecha,
+                    descripcion = record.descripcion,
+                    monto = record.amount!!,
+                    isExpense = record.isExpense
+                )
+            }
+        val balance = selectedRows.sumOf {
+            if (it.isExpense) -it.amount!! else it.amount!!
+        }
+
+        return CalendarResult(days, movements, balance)
+    }
 
     /**
      * Agrega las estadísticas del mes según la selección:
@@ -503,7 +638,8 @@ class DashboardViewModel @Inject constructor(
                     descripcion = inv.proveedor,
                     amount = exchangeRateProvider.convert(inv.total, inv.moneda, target),
                     category = categoryLabel(inv.categoria),
-                    subcategory = inv.subcategoria
+                    subcategory = inv.subcategoria,
+                    isExpense = true
                 )
             }
         } else {
@@ -514,7 +650,8 @@ class DashboardViewModel @Inject constructor(
                     descripcion = inc.concepto,
                     amount = exchangeRateProvider.convert(inc.monto, inc.moneda, target),
                     category = categoryLabel(inc.categoria),
-                    subcategory = inc.subcategoria
+                    subcategory = inc.subcategoria,
+                    isExpense = false
                 )
             }
         }
@@ -593,7 +730,8 @@ class DashboardViewModel @Inject constructor(
         /** Importe convertido; null = sin tasa disponible (excluido). */
         val amount: Double?,
         val category: String,
-        val subcategory: String?
+        val subcategory: String?,
+        val isExpense: Boolean
     )
 
     private fun percentage(part: Double, total: Double): Double =
@@ -679,6 +817,10 @@ class DashboardViewModel @Inject constructor(
         return inicio to cal.timeInMillis
     }
 
+    private fun dayOfMonth(timestamp: Long): Int =
+        Calendar.getInstance().apply { timeInMillis = timestamp }
+            .get(Calendar.DAY_OF_MONTH)
+
     private fun computeDailyData(
         invoices: List<Invoice>,
         incomes: List<Income>,
@@ -734,7 +876,8 @@ class DashboardViewModel @Inject constructor(
                     month = selectedMonth.value,
                     type = analyticsType.value,
                     category = selectedCategory.value,
-                    subcategory = selectedSubcategory.value
+                    subcategory = selectedSubcategory.value,
+                    day = selectedCalendarDay.value
                 )
                 val computed = computeState(invoices, incomes, target, selection)
                 _uiState.update { current ->
@@ -757,7 +900,8 @@ class DashboardViewModel @Inject constructor(
         val month: MonthRef,
         val type: AnalyticsType,
         val category: String?,
-        val subcategory: String?
+        val subcategory: String?,
+        val day: Int?
     )
 
     companion object {

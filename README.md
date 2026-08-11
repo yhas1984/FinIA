@@ -13,7 +13,7 @@
 - 🎙️ **Comandos por voz** — registra gastos, ingresos o consulta tu balance hablando (SpeechRecognizer de Android, es-ES).
 - 💬 **Chat con streaming** — el asistente responde en tiempo real, recordando el contexto de la conversación.
 - 🛒 **Consultas inteligentes** — entiende periodos ("esta semana", "en julio"), productos concretos ("agua", "café") y aclara ambigüedades mostrando las coincidencias exactas antes de decidir.
-- 📊 **Dashboard** — resumen de ingresos, gastos, balance, actividad de los últimos 7 días y desglose por categoría del mes.
+- 📊 **Dashboard** — resumen de ingresos, gastos, balance, actividad de los últimos 7 días, desglose por categoría y calendario financiero mensual configurable.
 - 🏷️ **Categorías** — gastos e ingresos con etiquetas predeterminadas o personalizadas, propuestas automáticamente por la IA desde texto, voz y OCR. Filtran listas, alimentan el Dashboard y viajan a Sheets.
 - 🧾 **Gestión completa** de facturas/gastos, productos e ingresos (CRUD).
 - ☁️ **Google Sheets: exportación + sincronización multimoneda** — Sheet con Facturas Recibidas, Ingresos unificados, Productos y Resumen, con importes convertidos a tu moneda local.

@@ -10,6 +10,7 @@ import com.gastos.repository.DashboardLayoutPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -80,7 +81,9 @@ class DashboardViewModelTest {
         defaultCurrency: String = "EUR",
         now: Long = fixedNow,
         persistedLayout: DashboardLayout? = null,
-        layoutPref: DashboardLayoutPreference? = null
+        layoutPref: DashboardLayoutPreference? = null,
+        dashboardLayoutFlow: MutableStateFlow<DashboardLayout>? = null,
+        persistLayoutUpdates: Boolean = false
     ): DashboardViewModel {
         val invoiceRepo = mockk<InvoiceRepository>()
         every { invoiceRepo.getAllInvoices() } returns flowOf(invoices)
@@ -117,7 +120,13 @@ class DashboardViewModelTest {
         val currency = mockk<CurrencyPreference>()
         every { currency.defaultCurrency } returns MutableStateFlow(defaultCurrency)
         val layout = layoutPref ?: mockk<DashboardLayoutPreference>(relaxed = true)
-        every { layout.dashboardLayout } returns MutableStateFlow(persistedLayout ?: DashboardLayout())
+        val layoutState = dashboardLayoutFlow ?: MutableStateFlow(persistedLayout ?: DashboardLayout())
+        every { layout.dashboardLayout } returns layoutState
+        if (persistLayoutUpdates) {
+            coEvery { layout.updateDashboardLayout(any()) } coAnswers {
+                layoutState.value = firstArg()
+            }
+        }
         return DashboardViewModel(invoiceRepo, incomeRepo, exchange, currency, layout).apply {
             nowProvider = { now }
         }
@@ -319,6 +328,55 @@ class DashboardViewModelTest {
         }
     }
 
+    @Test
+    fun `calendario agrupa gastos e ingresos por dia y abre sus movimientos`() = runTest(dispatcher) {
+        val vm = newViewModel(
+            invoices = listOf(
+                invoice(1, 100.0, ts(2026, 8, 5), "Alimentación"),
+                invoice(2, 25.0, ts(2026, 8, 5), "Transporte"),
+                invoice(3, 50.0, ts(2026, 8, 7), "Vivienda", moneda = "XXX")
+            ),
+            incomes = listOf(income(1, 300.0, ts(2026, 8, 5), "Nómina"))
+        )
+
+        vm.uiState.test {
+            val state = awaitStable { it.calendarDays.isNotEmpty() }
+            val dayFive = state.calendarDays.single { it.day == 5 }
+            assertEquals(125.0, dayFive.gastos, 0.001)
+            assertEquals(300.0, dayFive.ingresos, 0.001)
+            assertEquals(175.0, dayFive.balance, 0.001)
+            assertEquals(3, dayFive.count)
+            assertTrue(state.calendarDays.none { it.day == 7 })
+
+            vm.selectDay(5)
+            val detail = awaitStable { it.selectedDay == 5 && it.dayMovements.size == 3 }
+            assertEquals(175.0, detail.selectedDayBalance, 0.001)
+            assertEquals(false, detail.dayMovements.first { !it.isExpense }.isExpense)
+            assertEquals(300.0, detail.dayMovements.first { !it.isExpense }.monto, 0.001)
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `cambiar de mes cierra el detalle del calendario`() = runTest(dispatcher) {
+        val vm = newViewModel(
+            invoices = listOf(invoice(1, 100.0, ts(2026, 8, 5), "Alimentación"))
+        )
+
+        vm.uiState.test {
+            awaitStable { it.calendarDays.isNotEmpty() }
+            vm.selectDay(5)
+            awaitStable { it.selectedDay == 5 }
+
+            vm.previousMonth()
+            val state = awaitStable { it.selectedMonth == MonthRef(2026, 7) }
+            assertNull(state.selectedDay)
+            assertTrue(state.calendarDays.isEmpty())
+            assertTrue(state.dayMovements.isEmpty())
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
     // ---- Widgets configurables ----
 
     @Test
@@ -367,6 +425,59 @@ class DashboardViewModelTest {
             assertEquals("cashflow", state.widgetOrder[0])
             assertEquals("balance", state.widgetOrder[2])
             coVerify { layoutPref.updateDashboardLayout(any()) }
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `mover widget usa indices visibles cuando hay widgets ocultos`() = runTest(dispatcher) {
+        val persisted = DashboardLayout(
+            widgetOrder = DashboardWidget.defaultOrder,
+            hiddenWidgets = setOf(DashboardWidget.CASHFLOW.id)
+        )
+        val vm = newViewModel(persistedLayout = persisted)
+
+        vm.uiState.test {
+            awaitStable { it.widgetOrder.isNotEmpty() }
+
+            // Visible: balance, analytics, calendar, ...; cashflow ocupa un
+            // slot persistido pero no debe alterar los índices de pantalla.
+            vm.moveWidget(from = 2, to = 0)
+
+            val state = awaitStable { it.widgetOrder.first() == DashboardWidget.CALENDAR.id }
+            assertEquals(DashboardWidget.CALENDAR.id, state.widgetOrder[0])
+            assertEquals(DashboardWidget.CASHFLOW.id, state.widgetOrder[1])
+            assertEquals(DashboardWidget.BALANCE.id, state.widgetOrder[2])
+            assertEquals(DashboardWidget.ANALYTICS.id, state.widgetOrder[3])
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `layout reordenado se recupera al recrear el viewmodel`() = runTest(dispatcher) {
+        val layoutState = MutableStateFlow(DashboardLayout())
+        val layoutPref = mockk<DashboardLayoutPreference>(relaxed = true)
+        val firstViewModel = newViewModel(
+            layoutPref = layoutPref,
+            dashboardLayoutFlow = layoutState,
+            persistLayoutUpdates = true
+        )
+
+        firstViewModel.uiState.test {
+            awaitStable { it.widgetOrder.isNotEmpty() }
+            firstViewModel.moveWidget(from = 0, to = 2)
+            awaitStable { it.widgetOrder[2] == DashboardWidget.BALANCE.id }
+            cancelAndConsumeRemainingEvents()
+        }
+
+        val recreatedViewModel = newViewModel(
+            layoutPref = layoutPref,
+            dashboardLayoutFlow = layoutState,
+            persistLayoutUpdates = true
+        )
+        recreatedViewModel.uiState.test {
+            val restored = awaitStable { it.widgetOrder[2] == DashboardWidget.BALANCE.id }
+            assertEquals(DashboardWidget.BALANCE.id, restored.widgetOrder[2])
             cancelAndConsumeRemainingEvents()
         }
     }

@@ -34,7 +34,6 @@ import java.text.NumberFormat
 import java.util.*
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.roundToInt
 import androidx.compose.ui.unit.Dp
 
 @Composable
@@ -68,16 +67,26 @@ fun DashboardScreen(
     var dragAccumulated by remember { mutableStateOf(0f) }
     val handleDrag by rememberUpdatedState<(String, Float) -> Unit> { widgetId, deltaY ->
         dragAccumulated += deltaY
+        val current = visibleWidgets.indexOf(widgetId)
         val draggedHeight = listState.layoutInfo.visibleItemsInfo
             .firstOrNull { it.key == widgetId }?.size?.toFloat() ?: 0f
-        if (draggedHeight > 0f && abs(dragAccumulated) >= draggedHeight) {
-            val current = visibleWidgets.indexOf(widgetId)
-            if (current >= 0) {
-                val steps = (dragAccumulated / draggedHeight).roundToInt()
-                val target = (current + steps).coerceIn(0, visibleWidgets.lastIndex)
-                if (target != current) {
+        if (current >= 0 && draggedHeight > 0f && visibleWidgets.size > 1) {
+            val direction = if (dragAccumulated > 0f) 1 else -1
+            val target = (current + direction).coerceIn(0, visibleWidgets.lastIndex)
+            if (target == current) {
+                dragAccumulated = 0f
+            } else {
+                val neighborHeight = listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.key == visibleWidgets[target] }
+                    ?.size
+                    ?.toFloat()
+                    ?: draggedHeight
+                // Cruzar la mitad de la distancia entre ambos widgets basta;
+                // no obligamos a arrastrar todo el calendario, que es alto.
+                val threshold = ((draggedHeight + neighborHeight) / 2f).coerceAtLeast(1f)
+                if (abs(dragAccumulated) >= threshold) {
                     viewModel.moveWidget(current, target)
-                    dragAccumulated -= steps * draggedHeight
+                    dragAccumulated -= direction * threshold
                 }
             }
         }
@@ -180,9 +189,15 @@ fun DashboardScreen(
                     onMoveUp = { viewModel.moveWidget(index, index - 1) },
                     onMoveDown = { viewModel.moveWidget(index, index + 1) },
                     onHide = { viewModel.hideWidget(widgetId) },
-                    onDragStart = { viewModel.onDragStart(widgetId) },
+                    onDragStart = {
+                        dragAccumulated = 0f
+                        viewModel.onDragStart(widgetId)
+                    },
                     onDragBy = { deltaY -> handleDrag(widgetId, deltaY) },
-                    onDragEnd = viewModel::onDragEnd,
+                    onDragEnd = {
+                        dragAccumulated = 0f
+                        viewModel.onDragEnd()
+                    },
                     onLongPressEdit = { viewModel.setEditMode(true) },
                     modifier = Modifier.animateItem()
                 ) {
@@ -193,7 +208,10 @@ fun DashboardScreen(
                         isEditMode = uiState.isEditMode,
                         onNavigateToChat = onNavigateToChat,
                         onTypeChange = viewModel::setAnalyticsType,
-                        onSliceClick = viewModel::selectCategory
+                        onSliceClick = viewModel::selectCategory,
+                        onDayClick = viewModel::selectDay,
+                        onPreviousMonth = viewModel::previousMonth,
+                        onNextMonth = viewModel::nextMonth
                     )
                 }
             }
@@ -277,6 +295,20 @@ fun DashboardScreen(
             onDismiss = viewModel::resetDrillDown
         )
     }
+
+    // Detalle de movimientos del día seleccionado en el calendario.
+    uiState.selectedDay?.let { day ->
+        CalendarDayDetailSheet(
+            monthLabel = uiState.selectedMonthLabel,
+            day = day,
+            dayData = uiState.calendarDays.firstOrNull { it.day == day },
+            movements = uiState.dayMovements,
+            balance = uiState.selectedDayBalance,
+            fmt = fmt,
+            onOpenMovement = onOpenMovement,
+            onDismiss = viewModel::clearSelectedDay
+        )
+    }
 }
 
 /** Contenido de cada widget según su ID estable. */
@@ -288,7 +320,10 @@ private fun DashboardWidgetContent(
     isEditMode: Boolean,
     onNavigateToChat: () -> Unit,
     onTypeChange: (AnalyticsType) -> Unit,
-    onSliceClick: (String) -> Unit
+    onSliceClick: (String) -> Unit,
+    onDayClick: (Int) -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit
 ) {
     when (widgetId) {
         DashboardWidget.BALANCE.id -> BalanceWidget(uiState = uiState, fmt = fmt)
@@ -309,6 +344,21 @@ private fun DashboardWidgetContent(
             fmt = fmt,
             onTypeChange = onTypeChange,
             onSliceClick = onSliceClick
+        )
+        DashboardWidget.CALENDAR.id -> FinancialCalendarCard(
+            month = uiState.selectedMonth,
+            monthLabel = uiState.selectedMonthLabel,
+            isCurrentMonth = uiState.isCurrentMonth,
+            days = uiState.calendarDays,
+            selectedDay = uiState.selectedDay,
+            todayDay = if (uiState.isCurrentMonth) {
+                Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
+            } else {
+                null
+            },
+            onDayClick = onDayClick,
+            onPreviousMonth = onPreviousMonth,
+            onNextMonth = onNextMonth
         )
         DashboardWidget.WEEKLY_CHART.id -> WeeklyChartWidget(uiState = uiState)
         DashboardWidget.WEEKLY_TOTALS.id -> WeeklyTotalsWidget(uiState = uiState, fmt = fmt)
