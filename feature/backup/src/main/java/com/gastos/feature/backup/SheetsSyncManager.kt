@@ -15,7 +15,8 @@ import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
 import com.gastos.repository.PremiumStatusProvider
 import com.gastos.repository.ProductRepository
-import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
@@ -32,7 +33,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -77,12 +77,12 @@ class SheetsSyncManager @Inject constructor(
     private val incomeRepository: IncomeRepository,
     private val productRepository: ProductRepository,
     private val exchangeRateProvider: ExchangeRateProvider,
-    private val currencyPreference: CurrencyPreference
+    private val currencyPreference: CurrencyPreference,
+    private val sheetsLinkStore: SheetsLinkStore,
+    private val operationCoordinator: SheetsOperationCoordinator
 ) {
     companion object {
         private const val TAG = "SheetsSyncManager"
-        private const val PREFS_NAME = "finai_sheets_sync"
-        private const val KEY_SHEET_ID = "spreadsheet_id"
         private const val KEY_SCHEMA_PREFIX = "schema_v${SheetsSchema.SCHEMA_VERSION}_"
         // Hojas AEAT (España, Orden HAC/773/2019).
         private const val SHEET_RECIBIDAS = SheetsSchema.RECIBIDAS
@@ -98,26 +98,18 @@ class SheetsSyncManager @Inject constructor(
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val syncMutex = Mutex()
-    private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val syncMutex = operationCoordinator.mutex
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences(SheetsLinkStore.PREFERENCES_NAME, Context.MODE_PRIVATE)
 
-    /** ¿Hay un sheet vinculado con el que sincronizar? */
-    fun isEnabled(): Boolean = getStoredId().isNotBlank()
+    fun isEnabled(account: GoogleSignInAccount): Boolean = getStoredId(account).isNotBlank()
 
-    fun setSpreadsheetId(id: String) {
-        prefs.edit()
-            .putString(KEY_SHEET_ID, id)
-            .putBoolean(schemaPreferenceKey(id), true)
-            .apply()
+    fun setSpreadsheetId(account: GoogleSignInAccount, id: String) {
+        sheetsLinkStore.setSpreadsheetId(account, id)
+        prefs.edit().putBoolean(schemaPreferenceKey(id), true).apply()
     }
 
-    fun clearSpreadsheetId() {
-        val currentId = getStoredId()
-        prefs.edit().remove(KEY_SHEET_ID).remove(schemaPreferenceKey(currentId)).apply()
-    }
-
-    /** Expone el ID del sheet vinculado. */
-    fun getStoredId(): String = prefs.getString(KEY_SHEET_ID, "") ?: ""
+    fun getStoredId(account: GoogleSignInAccount): String = sheetsLinkStore.getSpreadsheetId(account)
 
     // ------------------------------------------------------------------
     // API pública de sync
@@ -163,22 +155,19 @@ class SheetsSyncManager @Inject constructor(
     fun syncExpense(invoice: Invoice, products: List<Product>) {
         if (
             invoice.tipo != InvoiceType.GASTO ||
-            !premiumStatus.isPremium.value ||
-            getStoredId().isBlank()
+            !premiumStatus.isPremium.value
         ) return
-        val spreadsheetId = getStoredId()
+        val link = getActiveLink() ?: return
         scope.launch {
-            syncMutex.withLock {
-                try {
-                    val sheets = getSheetsService()
-                    if (sheets == null) {
-                        SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
-                        return@withLock
-                    }
-                    if (ensureSchemaCurrent(spreadsheetId)) return@withLock
+            try {
+                if (!isCurrentAccount(link.account)) return@launch
+                if (ensureSchemaCurrent(link)) return@launch
+                syncMutex.withLock {
+                    if (!isCurrentAccount(link.account)) return@withLock
+                    val sheets = getSheetsService(link.account)
                     upsertRowNow(
                         sheets,
-                        spreadsheetId,
+                        link.spreadsheetId,
                         SHEET_RECIBIDAS,
                         COL_ID_RECIBIDAS,
                         SheetsSchema.RECIBIDAS_LAST_COLUMN,
@@ -187,7 +176,7 @@ class SheetsSyncManager @Inject constructor(
                     )
                     val previousProductRows = findRowsByKey(
                         sheets,
-                        spreadsheetId,
+                        link.spreadsheetId,
                         SHEET_PRODUCTOS,
                         COL_ID_PRODUCTOS,
                         invoice.id
@@ -200,17 +189,19 @@ class SheetsSyncManager @Inject constructor(
                             conversion = conversionSnapshot()
                         )
                     }
-                    appendRowsNow(sheets, spreadsheetId, SHEET_PRODUCTOS, productRows)
+                    appendRowsNow(sheets, link.spreadsheetId, SHEET_PRODUCTOS, productRows)
                     // Añadir primero las nuevas líneas evita borrar las antiguas
                     // si la red falla a mitad de la escritura. Las filas previas
                     // se eliminan por su posición original, sin tocar las nuevas.
                     deleteKnownRowsNow(
                         sheets,
-                        spreadsheetId,
+                        link.spreadsheetId,
                         mapOf(SHEET_PRODUCTOS to previousProductRows)
                     )
-                    refreshSummaryNow(sheets, spreadsheetId)
-                } catch (e: Exception) {
+                    refreshSummaryNow(sheets, link.spreadsheetId)
+                }
+            } catch (e: Exception) {
+                if (!recoverStaleLink(link, e)) {
                     SafeLog.e(TAG, "syncExpense FALLO id=${invoice.id}", e)
                 }
             }
@@ -279,24 +270,24 @@ class SheetsSyncManager @Inject constructor(
             SafeLog.d(TAG, "sync OMITIDO — Sheets es función Premium")
             return
         }
-        val sheetId = getStoredId()
-        if (sheetId.isBlank()) {
+        val link = getActiveLink()
+        if (link == null) {
             SafeLog.w(TAG, "sync OMITIDO — sheetId vacío")
             return
         }
-        SafeLog.d(TAG, "upsert → hoja='$sheet' id=$key valores=$values sheetId=${sheetId.take(8)}…")
+        SafeLog.d(TAG, "upsert → hoja='$sheet' id=$key valores=$values sheetId=${link.spreadsheetId.take(8)}…")
         scope.launch {
-            syncMutex.withLock {
-                try {
-                    val sheets = getSheetsService()
-                    if (sheets == null) {
-                        SafeLog.w(TAG, "sync OMITIDO — cuenta Google no autenticada")
-                        return@withLock
-                    }
-                    if (ensureSchemaCurrent(sheetId)) return@withLock
-                    upsertRowNow(sheets, sheetId, sheet, keyCol, lastCol, key, values)
-                    refreshSummaryNow(sheets, sheetId)
-                } catch (e: Exception) {
+            try {
+                if (!isCurrentAccount(link.account)) return@launch
+                if (ensureSchemaCurrent(link)) return@launch
+                syncMutex.withLock {
+                    if (!isCurrentAccount(link.account)) return@withLock
+                    val sheets = getSheetsService(link.account)
+                    upsertRowNow(sheets, link.spreadsheetId, sheet, keyCol, lastCol, key, values)
+                    refreshSummaryNow(sheets, link.spreadsheetId)
+                }
+            } catch (e: Exception) {
+                if (!recoverStaleLink(link, e)) {
                     SafeLog.e(TAG, "upsert FALLO hoja='$sheet' id=$key", e)
                     SafeLog.d(TAG, "upsert FALLO valores=$values")
                 }
@@ -330,29 +321,29 @@ class SheetsSyncManager @Inject constructor(
     }
 
     /** Re-exporta el sheet una vez al detectar un esquema anterior. */
-    private suspend fun ensureSchemaCurrent(spreadsheetId: String): Boolean {
-        val preferenceKey = schemaPreferenceKey(spreadsheetId)
+    private suspend fun ensureSchemaCurrent(link: ActiveSheetLink): Boolean {
+        val preferenceKey = schemaPreferenceKey(link.spreadsheetId)
         if (prefs.getBoolean(preferenceKey, false)) return false
-
-        val account = sheetsExportService.getLastSignedInAccount()
-        if (account == null || !sheetsExportService.isSignedIn()) {
-            SafeLog.w(TAG, "sync OMITIDO — falta sesión Google para migrar schema v${SheetsSchema.SCHEMA_VERSION}")
-            return true
+        return operationCoordinator.migrationMutex.withLock {
+            if (prefs.getBoolean(preferenceKey, false)) return@withLock false
+            if (!isCurrentAccount(link.account) || !sheetsExportService.isSignedIn()) {
+                SafeLog.w(TAG, "sync OMITIDO — falta sesión Google para migrar schema v${SheetsSchema.SCHEMA_VERSION}")
+                return@withLock true
+            }
+            val invoices = invoiceRepository.getAllInvoices().first()
+            val incomes = incomeRepository.getAllIncomes().first()
+            val products = productRepository.getAllProducts().first()
+            sheetsExportService.exportToSheets(
+                account = link.account,
+                invoices = invoices,
+                incomes = incomes,
+                products = products,
+                existingSpreadsheetId = link.spreadsheetId
+            )
+            prefs.edit().putBoolean(preferenceKey, true).apply()
+            SafeLog.d(TAG, "schema v${SheetsSchema.SCHEMA_VERSION} aplicado mediante reexportación completa")
+            true
         }
-
-        val invoices = invoiceRepository.getAllInvoices().first()
-        val incomes = incomeRepository.getAllIncomes().first()
-        val products = productRepository.getAllProducts().first()
-        sheetsExportService.exportToSheets(
-            account = account,
-            invoices = invoices,
-            incomes = incomes,
-            products = products,
-            existingSpreadsheetId = spreadsheetId
-        )
-        prefs.edit().putBoolean(preferenceKey, true).apply()
-        SafeLog.d(TAG, "schema v${SheetsSchema.SCHEMA_VERSION} aplicado mediante reexportación completa")
-        return true
     }
 
     /**
@@ -367,24 +358,24 @@ class SheetsSyncManager @Inject constructor(
             SafeLog.d(TAG, "sync OMITIDO — Sheets es función Premium")
             return
         }
-        val sheetId = getStoredId()
-        if (sheetId.isBlank()) {
+        val link = getActiveLink()
+        if (link == null) {
             SafeLog.w(TAG, "delete OMITIDO — sheetId vacío")
             return
         }
-        SafeLog.d(TAG, "delete → hojas=${sheetKeyCols.keys} id=$key sheetId=${sheetId.take(8)}…")
+        SafeLog.d(TAG, "delete → hojas=${sheetKeyCols.keys} id=$key sheetId=${link.spreadsheetId.take(8)}…")
         scope.launch {
-            syncMutex.withLock {
-                try {
-                    val sheets = getSheetsService()
-                    if (sheets == null) {
-                        SafeLog.w(TAG, "delete OMITIDO — cuenta Google no autenticada")
-                        return@withLock
-                    }
-                    if (ensureSchemaCurrent(sheetId)) return@withLock
-                    deleteRowsNow(sheets, sheetId, sheetKeyCols, key)
-                    refreshSummaryNow(sheets, sheetId)
-                } catch (e: Exception) {
+            try {
+                if (!isCurrentAccount(link.account)) return@launch
+                if (ensureSchemaCurrent(link)) return@launch
+                syncMutex.withLock {
+                    if (!isCurrentAccount(link.account)) return@withLock
+                    val sheets = getSheetsService(link.account)
+                    deleteRowsNow(sheets, link.spreadsheetId, sheetKeyCols, key)
+                    refreshSummaryNow(sheets, link.spreadsheetId)
+                }
+            } catch (e: Exception) {
+                if (!recoverStaleLink(link, e)) {
                     SafeLog.e(TAG, "delete FALLO id=$key", e)
                 }
             }
@@ -472,14 +463,53 @@ class SheetsSyncManager @Inject constructor(
         return rows
     }
 
-    private fun getSheetsService(): Sheets? {
-        val account = GoogleSignIn.getLastSignedInAccount(context) ?: return null
+    private fun getSheetsService(account: GoogleSignInAccount): Sheets {
         val credential = GoogleAccountCredential.usingOAuth2(
             context, listOf(DriveScopes.DRIVE_FILE)
         ).setSelectedAccount(account.account)
         return Sheets.Builder(NetHttpTransport(), GsonFactory.getDefaultInstance(), credential)
             .setApplicationName("FinAI Sync")
             .build()
+    }
+
+    private fun getActiveLink(): ActiveSheetLink? {
+        val account = sheetsExportService.getLastSignedInAccount() ?: return null
+        if (!sheetsExportService.isSignedIn()) return null
+        val spreadsheetId = sheetsLinkStore.getSpreadsheetId(account)
+        if (spreadsheetId.isBlank()) return null
+        return ActiveSheetLink(account, spreadsheetId)
+    }
+
+    private fun isCurrentAccount(account: GoogleSignInAccount): Boolean {
+        val currentAccount = sheetsExportService.getLastSignedInAccount() ?: return false
+        return SheetsLinkStore.getAccountPreferenceKey(currentAccount.id, currentAccount.email) ==
+            SheetsLinkStore.getAccountPreferenceKey(account.id, account.email)
+    }
+
+    private suspend fun recoverStaleLink(link: ActiveSheetLink, error: Exception): Boolean {
+        if (error !is GoogleJsonResponseException || error.statusCode !in setOf(401, 403, 404)) return false
+        if (!isCurrentAccount(link.account)) return true
+        return try {
+            operationCoordinator.migrationMutex.withLock {
+                if (!isCurrentAccount(link.account)) return@withLock true
+                val currentId = sheetsLinkStore.getSpreadsheetId(link.account)
+                if (currentId.isNotBlank() && currentId != link.spreadsheetId) return@withLock true
+                val invoices = invoiceRepository.getAllInvoices().first()
+                val incomes = incomeRepository.getAllIncomes().first()
+                val products = productRepository.getAllProducts().first()
+                val (_, spreadsheetId) = sheetsExportService.exportToSheets(
+                    account = link.account,
+                    invoices = invoices,
+                    incomes = incomes,
+                    products = products
+                )
+                setSpreadsheetId(link.account, spreadsheetId)
+                true
+            }
+        } catch (recoveryError: Exception) {
+            SafeLog.e(TAG, "No se pudo recuperar el vínculo de Sheets", recoveryError)
+            false
+        }
     }
 
     private suspend fun refreshSummaryNow(sheets: Sheets, spreadsheetId: String) {
@@ -508,4 +538,9 @@ class SheetsSyncManager @Inject constructor(
         )
 
     private fun schemaPreferenceKey(spreadsheetId: String): String = "$KEY_SCHEMA_PREFIX$spreadsheetId"
+
+    private data class ActiveSheetLink(
+        val account: GoogleSignInAccount,
+        val spreadsheetId: String
+    )
 }

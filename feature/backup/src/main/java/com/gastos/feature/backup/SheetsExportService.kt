@@ -17,10 +17,13 @@ import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
+import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
+import com.google.api.services.drive.model.File as DriveFile
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.model.AddSheetRequest
 import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest
@@ -39,6 +42,8 @@ import com.google.api.services.sheets.v4.model.UpdateCellsRequest
 import com.google.api.services.sheets.v4.model.ValueRange
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -63,12 +68,18 @@ class SheetsExportService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val premiumStatus: PremiumStatusProvider,
     private val exchangeRateProvider: ExchangeRateProvider,
-    private val currencyPreference: CurrencyPreference
+    private val currencyPreference: CurrencyPreference,
+    private val sheetsLinkStore: SheetsLinkStore,
+    private val operationCoordinator: SheetsOperationCoordinator
 ) {
     companion object {
         // drive.file también autoriza la API de Sheets para archivos creados por FinAI.
         private val DRIVE_FILE_SCOPE = Scope(DriveScopes.DRIVE_FILE)
         private val DRIVE_APPDATA_SCOPE = Scope(DriveScopes.DRIVE_APPDATA)
+        private const val SPREADSHEET_MIME_TYPE = "application/vnd.google-apps.spreadsheet"
+        private const val FINAI_SHEET_PROPERTY = "finaiSpreadsheet"
+        private const val FINAI_SHEET_PROPERTY_VALUE = "true"
+        private const val LEGACY_SHEET_NAME = "FinAI - Exportación"
     }
 
     /** Cliente de Google Sign-In con los scopes de Sheets. */
@@ -112,7 +123,8 @@ class SheetsExportService @Inject constructor(
         incomes: List<Income>,
         products: List<Product>,
         existingSpreadsheetId: String = ""
-    ): Pair<String, String> = withContext(Dispatchers.IO) {
+    ): Pair<String, String> = operationCoordinator.mutex.withLock {
+        withContext(Dispatchers.IO) {
         // Función Premium: la exportación a Google Sheets requiere suscripción.
         if (!premiumStatus.isPremium.value) {
             throw IllegalStateException("La exportación a Google Sheets es una función Premium.")
@@ -130,6 +142,13 @@ class SheetsExportService @Inject constructor(
         )
             .setApplicationName("FinAI")
             .build()
+        val driveService = Drive.Builder(
+            NetHttpTransport(),
+            GsonFactory.getDefaultInstance(),
+            credential
+        )
+            .setApplicationName("FinAI")
+            .build()
 
         val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
 
@@ -140,9 +159,20 @@ class SheetsExportService @Inject constructor(
             SheetsSchema.PRODUCTOS,
             SheetsSchema.RESUMEN
         )
-        if (existingSpreadsheetId.isNotBlank()) {
+        val linkedSpreadsheetId = existingSpreadsheetId.ifBlank {
+            sheetsLinkStore.getSpreadsheetId(account)
+        }
+        val accountEmail = account.email
+            ?: error("No se pudo identificar el correo de la cuenta Google conectada")
+        val reusableSpreadsheet = findReusableSpreadsheet(
+            drive = driveService,
+            linkedSpreadsheetId = linkedSpreadsheetId,
+            legacySpreadsheetId = sheetsLinkStore.getLegacySpreadsheetId(),
+            accountEmail = accountEmail
+        )
+        if (reusableSpreadsheet != null) {
             // Reutilizar spreadsheet existente — limpiar hojas y reescribir.
-            spreadsheetId = existingSpreadsheetId
+            spreadsheetId = reusableSpreadsheet.id
             clearSheets(sheetsService, spreadsheetId, sheetTitles)
             // Crear las hojas AEAT que falten en el sheet viejo (que
             // puede tener "Gastos/Ingresos" de versiones anteriores).
@@ -161,9 +191,14 @@ class SheetsExportService @Inject constructor(
                 )
             val created: Spreadsheet = sheetsService.spreadsheets().create(spreadsheet).execute()
             spreadsheetId = created.spreadsheetId
+            markAsFinAiSpreadsheet(driveService, spreadsheetId)
 
             // Añadir las hojas restantes.
             ensureSheetsExist(sheetsService, spreadsheetId, sheetTitles)
+        }
+        sheetsLinkStore.setSpreadsheetId(account, spreadsheetId)
+        if (reusableSpreadsheet?.adoptedLegacyId == true) {
+            sheetsLinkStore.clearLegacySpreadsheetId()
         }
         deleteLegacySheets(
             sheets = sheetsService,
@@ -203,7 +238,94 @@ class SheetsExportService @Inject constructor(
 
         val url = "https://docs.google.com/spreadsheets/d/$spreadsheetId/edit"
         Pair(url, spreadsheetId)
+        }
     }
+
+    private suspend fun findReusableSpreadsheet(
+        drive: Drive,
+        linkedSpreadsheetId: String,
+        legacySpreadsheetId: String,
+        accountEmail: String
+    ): SpreadsheetResolution? {
+        if (
+            linkedSpreadsheetId.isNotBlank() &&
+            isUsableSpreadsheet(drive, linkedSpreadsheetId, requiredOwnerEmail = accountEmail)
+        ) {
+            markAsFinAiSpreadsheet(drive, linkedSpreadsheetId)
+            return SpreadsheetResolution(linkedSpreadsheetId)
+        }
+        if (
+            legacySpreadsheetId.isNotBlank() &&
+            isUsableSpreadsheet(drive, legacySpreadsheetId, requiredOwnerEmail = accountEmail)
+        ) {
+            markAsFinAiSpreadsheet(drive, legacySpreadsheetId)
+            return SpreadsheetResolution(legacySpreadsheetId, adoptedLegacyId = true)
+        }
+        val markedFiles = listSpreadsheets(
+            drive = drive,
+            extraQuery = "appProperties has { key='$FINAI_SHEET_PROPERTY' and value='$FINAI_SHEET_PROPERTY_VALUE' }"
+        )
+        val markedSpreadsheetId = selectNewestOwnedSpreadsheetId(markedFiles, accountEmail)
+        if (markedSpreadsheetId != null) return SpreadsheetResolution(markedSpreadsheetId)
+        val legacyFiles = listSpreadsheets(
+            drive = drive,
+            extraQuery = "name contains '$LEGACY_SHEET_NAME'"
+        )
+        return selectNewestOwnedSpreadsheetId(legacyFiles, accountEmail)?.let {
+            markAsFinAiSpreadsheet(drive, it)
+            SpreadsheetResolution(it)
+        }
+    }
+
+    private suspend fun isUsableSpreadsheet(
+        drive: Drive,
+        spreadsheetId: String,
+        requiredOwnerEmail: String? = null
+    ): Boolean {
+        return try {
+            val file = runInterruptible {
+                drive.files().get(spreadsheetId)
+                    .setFields("id,mimeType,trashed,owners(emailAddress)")
+                    .execute()
+            }
+            val hasRequiredOwner = requiredOwnerEmail == null || file.owners.orEmpty().any {
+                it.emailAddress.equals(requiredOwnerEmail, ignoreCase = true)
+            }
+            file.trashed != true && file.mimeType == SPREADSHEET_MIME_TYPE && hasRequiredOwner
+        } catch (error: GoogleJsonResponseException) {
+            if (error.statusCode in setOf(401, 403, 404)) false else throw error
+        }
+    }
+
+    private suspend fun listSpreadsheets(drive: Drive, extraQuery: String): List<DriveFile> = runInterruptible {
+        drive.files().list()
+            .setSpaces("drive")
+            .setQ("mimeType='$SPREADSHEET_MIME_TYPE' and trashed=false and $extraQuery")
+            .setOrderBy("createdTime desc")
+            .setPageSize(100)
+            .setFields("files(id,createdTime,owners(emailAddress))")
+            .execute()
+            .files
+            .orEmpty()
+    }
+
+    private suspend fun markAsFinAiSpreadsheet(drive: Drive, spreadsheetId: String) {
+        runInterruptible {
+            drive.files().update(
+                spreadsheetId,
+                DriveFile().setAppProperties(
+                    mapOf(FINAI_SHEET_PROPERTY to FINAI_SHEET_PROPERTY_VALUE)
+                )
+            )
+                .setFields("id")
+                .execute()
+        }
+    }
+
+    private data class SpreadsheetResolution(
+        val id: String,
+        val adoptedLegacyId: Boolean = false
+    )
 
     /**
      * Escribe la hoja "Facturas Recibidas" (gastos del usuario como
@@ -483,3 +605,18 @@ class SheetsExportService @Inject constructor(
         }
     }
 }
+
+internal fun selectNewestSpreadsheetId(files: List<DriveFile>): String? = files
+    .asSequence()
+    .filter { !it.id.isNullOrBlank() }
+    .maxByOrNull { it.createdTime?.value ?: Long.MIN_VALUE }
+    ?.id
+
+internal fun selectNewestOwnedSpreadsheetId(files: List<DriveFile>, ownerEmail: String): String? =
+    selectNewestSpreadsheetId(
+        files.filter { file ->
+            file.owners.orEmpty().any { owner ->
+                owner.emailAddress.equals(ownerEmail, ignoreCase = true)
+            }
+        }
+    )

@@ -45,7 +45,15 @@ fun DashboardScreen(
     val fmt = { amt: Double -> com.gastos.domain.model.formatMoney(amt, defaultCurrency) }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        floatingActionButton = {
+            FloatingActionButton(onClick = onNavigateToChat) {
+                Icon(
+                    imageVector = Icons.Filled.SmartToy,
+                    contentDescription = "Abrir asistente de IA"
+                )
+            }
+        }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -70,13 +78,6 @@ fun DashboardScreen(
                         )
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        IconButton(onClick = onNavigateToChat) {
-                            Icon(
-                                Icons.Filled.SmartToy,
-                                contentDescription = "Chat",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
                         IconButton(onClick = onNavigateToBackup) {
                             Icon(
                                 Icons.Filled.CloudUpload,

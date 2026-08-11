@@ -54,7 +54,7 @@ fun InvoicesScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Facturas") },
+                title = { Text("Gastos") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -438,13 +438,11 @@ private fun openTrustedUrl(
         return
     }
     val intent = Intent(Intent.ACTION_VIEW, uri)
-    if (intent.resolveActivity(context.packageManager) == null) {
-        onError("No hay ninguna aplicación disponible para abrir este enlace.")
-        return
-    }
     try {
         context.startActivity(intent)
     } catch (_: ActivityNotFoundException) {
+        onError("No hay ninguna aplicación disponible para abrir este enlace.")
+    } catch (_: SecurityException) {
         onError("No se pudo abrir el enlace solicitado.")
     }
 }
