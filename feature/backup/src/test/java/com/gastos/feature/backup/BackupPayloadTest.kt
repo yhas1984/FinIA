@@ -1,5 +1,8 @@
 package com.gastos.feature.backup
 
+import com.gastos.repository.FloatingButtonEdge
+import com.gastos.repository.FloatingButtonIds
+import com.gastos.repository.FloatingButtonPosition
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -61,7 +64,18 @@ class BackupPayloadTest {
             ),
             fiscalConfigs = emptyList(),
             chatMessages = listOf(ChatMessageDto(3, "model", "Hola", "contexto", true, 17)),
-            settings = RestorableSettingsDto("sé conciso", "USD", "MX", "dark")
+            settings = RestorableSettingsDto(
+                systemInstructions = "sé conciso",
+                defaultCurrency = "USD",
+                defaultCountry = "MX",
+                darkMode = "dark",
+                floatingButtonPositions = mapOf(
+                    FloatingButtonIds.DASHBOARD_AI to FloatingButtonPositionDto(
+                        edge = FloatingButtonEdge.LEFT.name,
+                        verticalFraction = 0.4f
+                    )
+                )
+            )
         )
 
         val decoded = json.decodeFromString<BackupPayloadDto>(json.encodeToString(payload))
@@ -73,6 +87,10 @@ class BackupPayloadTest {
         assertEquals(4L, dataset.incomes.single().id)
         assertEquals("contexto", dataset.chatMessages.single().contextText)
         assertEquals("USD", decoded.settings.toDomain().defaultCurrency)
+        assertEquals(
+            FloatingButtonPosition(FloatingButtonEdge.LEFT, 0.4f),
+            decoded.settings.toDomain().floatingButtonPositions[FloatingButtonIds.DASHBOARD_AI]
+        )
         assertEquals(setOf("invoice_7.jpg"), decoded.imageFileNames)
     }
 

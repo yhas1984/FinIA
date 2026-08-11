@@ -31,7 +31,8 @@ internal data class RestoreJournalSettings(
     val defaultCountry: String,
     val darkMode: String,
     val dashboardWidgetOrder: List<String> = emptyList(),
-    val dashboardHiddenWidgets: List<String> = emptyList()
+    val dashboardHiddenWidgets: List<String> = emptyList(),
+    val floatingButtonPositions: Map<String, FloatingButtonPositionDto> = emptyMap()
 ) {
     fun toDomain(): RestorableSettings = RestorableSettings(
         systemInstructions = systemInstructions,
@@ -39,7 +40,10 @@ internal data class RestoreJournalSettings(
         defaultCountry = defaultCountry,
         darkMode = darkMode,
         dashboardWidgetOrder = dashboardWidgetOrder,
-        dashboardHiddenWidgets = dashboardHiddenWidgets
+        dashboardHiddenWidgets = dashboardHiddenWidgets,
+        floatingButtonPositions = floatingButtonPositions.mapNotNull { (id, position) ->
+            position.toDomain()?.let { id to it }
+        }.toMap()
     )
 
     companion object {
@@ -49,7 +53,10 @@ internal data class RestoreJournalSettings(
             defaultCountry = settings.defaultCountry,
             darkMode = settings.darkMode,
             dashboardWidgetOrder = settings.dashboardWidgetOrder,
-            dashboardHiddenWidgets = settings.dashboardHiddenWidgets
+            dashboardHiddenWidgets = settings.dashboardHiddenWidgets,
+            floatingButtonPositions = settings.floatingButtonPositions.mapValues { (_, position) ->
+                FloatingButtonPositionDto.from(position)
+            }
         )
     }
 }

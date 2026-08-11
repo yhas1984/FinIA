@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.feature.ai.AIService
 import com.gastos.repository.ExchangeRateProvider
+import com.gastos.repository.FloatingButtonPosition
 import com.android.billingclient.api.ProductDetails
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,7 +39,8 @@ data class SettingsUiState(
     val isDebug: Boolean = false,
     val ratesAsOf: Long? = null,
     val ratesCount: Int = 0,
-    val isRefreshingRates: Boolean = false
+    val isRefreshingRates: Boolean = false,
+    val floatingButtonPositions: Map<String, FloatingButtonPosition> = emptyMap()
 )
 
 @HiltViewModel
@@ -57,6 +59,7 @@ class SettingsViewModel @Inject constructor(
         loadSettings()
         observeBilling()
         observeRates()
+        observeFloatingButtonPositions()
     }
 
     /** Estado de las tasas de cambio para la tarjeta de Ajustes. */
@@ -71,6 +74,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             exchangeRateProvider.lastUpdated.collect { asOf ->
                 _uiState.update { it.copy(ratesAsOf = asOf) }
+            }
+        }
+    }
+
+    private fun observeFloatingButtonPositions() {
+        viewModelScope.launch {
+            settingsRepository.floatingButtonPositions.collect { positions ->
+                _uiState.update { it.copy(floatingButtonPositions = positions) }
             }
         }
     }
@@ -222,6 +233,23 @@ class SettingsViewModel @Inject constructor(
 
     fun updateDarkMode(mode: String) {
         viewModelScope.launch { settingsRepository.updateDarkMode(mode) }
+    }
+
+    fun updateFloatingButtonPosition(id: String, position: FloatingButtonPosition) {
+        val normalized = position.normalized()
+        _uiState.update {
+            it.copy(floatingButtonPositions = it.floatingButtonPositions + (id to normalized))
+        }
+        viewModelScope.launch {
+            settingsRepository.updateFloatingButtonPosition(id, normalized)
+        }
+    }
+
+    fun resetFloatingButtonPositions() {
+        _uiState.update { it.copy(floatingButtonPositions = emptyMap()) }
+        viewModelScope.launch {
+            settingsRepository.replaceFloatingButtonPositions(emptyMap())
+        }
     }
 
     // ---------------- Premium / Billing ----------------

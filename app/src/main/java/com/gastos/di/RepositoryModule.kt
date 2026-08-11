@@ -50,4 +50,8 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindDashboardLayoutPreference(impl: SettingsRepository): DashboardLayoutPreference
+
+    @Binds
+    @Singleton
+    abstract fun bindFloatingButtonPositionPreference(impl: SettingsRepository): FloatingButtonPositionPreference
 }

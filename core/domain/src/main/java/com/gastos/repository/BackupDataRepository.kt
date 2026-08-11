@@ -20,7 +20,8 @@ data class RestorableSettings(
     val defaultCountry: String = "ES",
     val darkMode: String = "system",
     val dashboardWidgetOrder: List<String> = emptyList(),
-    val dashboardHiddenWidgets: List<String> = emptyList()
+    val dashboardHiddenWidgets: List<String> = emptyList(),
+    val floatingButtonPositions: Map<String, FloatingButtonPosition> = emptyMap()
 )
 
 interface BackupDataRepository {

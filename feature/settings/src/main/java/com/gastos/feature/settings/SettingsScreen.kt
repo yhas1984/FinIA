@@ -386,6 +386,27 @@ fun SettingsScreen(
                 }
             }
 
+            SettingsSection(
+                title = "Botones flotantes",
+                icon = Icons.Outlined.OpenWith
+            ) {
+                Text(
+                    text = "Mantén pulsado un botón flotante para moverlo. Cada pantalla recuerda su posición.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = viewModel::resetFloatingButtonPositions,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = uiState.floatingButtonPositions.isNotEmpty()
+                ) {
+                    Icon(Icons.Default.RestartAlt, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Restablecer posiciones")
+                }
+            }
+
             // Sección Datos
             SettingsSection(
                 title = "Datos",

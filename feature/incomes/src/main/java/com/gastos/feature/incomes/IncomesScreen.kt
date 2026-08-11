@@ -42,11 +42,6 @@ fun IncomesScreen(
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { onNavigateToEdit(0L) }) {
-                Icon(Icons.Default.Add, contentDescription = "Nuevo ingreso")
-            }
         }
     ) { padding ->
         if (uiState.isLoading) {

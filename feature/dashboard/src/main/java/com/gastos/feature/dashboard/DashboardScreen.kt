@@ -85,15 +85,7 @@ fun DashboardScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            FloatingActionButton(onClick = onNavigateToChat) {
-                Icon(
-                    imageVector = Icons.Filled.SmartToy,
-                    contentDescription = "Abrir asistente de IA"
-                )
-            }
-        }
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         LazyColumn(
             state = listState,
