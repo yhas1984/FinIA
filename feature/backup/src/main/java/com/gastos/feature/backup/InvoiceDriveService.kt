@@ -34,7 +34,8 @@ class InvoiceDriveService @Inject constructor(
     @ApplicationContext private val context: Context,
     private val sheetsExportService: SheetsExportService,
     private val invoiceRepository: InvoiceRepository,
-    private val premiumStatus: PremiumStatusProvider
+    private val premiumStatus: PremiumStatusProvider,
+    private val remoteSyncOutbox: RemoteSyncOutboxRepository
 ) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -91,6 +92,32 @@ class InvoiceDriveService @Inject constructor(
                 uploaded = false,
                 message = friendlyMessage(error)
             )
+        }
+    }
+
+    suspend fun enqueueDelete(invoice: Invoice) {
+        val remoteFileId = invoice.driveFileId?.takeIf(String::isNotBlank) ?: return
+        remoteSyncOutbox.enqueue(
+            target = RemoteSyncTarget.INVOICE_DRIVE,
+            recordId = invoice.id,
+            action = RemoteSyncAction.DELETE,
+            remoteFileId = remoteFileId
+        )
+    }
+
+    suspend fun delete(remoteFileId: String): Boolean = withContext(Dispatchers.IO) {
+        val account = sheetsExportService.getLastSignedInAccount() ?: return@withContext false
+        val selectedAccount = account.account ?: return@withContext false
+        try {
+            val drive = createDriveService(selectedAccount)
+            runInterruptible { drive.files().delete(remoteFileId).execute() }
+            true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: GoogleJsonResponseException) {
+            if (error.statusCode == 404) true else false
+        } catch (_: Exception) {
+            false
         }
     }
 

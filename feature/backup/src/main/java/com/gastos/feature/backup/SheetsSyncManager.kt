@@ -29,12 +29,9 @@ import com.google.api.services.sheets.v4.model.DimensionRange
 import com.google.api.services.sheets.v4.model.Request
 import com.google.api.services.sheets.v4.model.ValueRange
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -96,7 +93,6 @@ class SheetsSyncManager @Inject constructor(
         private const val COL_ID_PRODUCTOS = SheetsSchema.PRODUCTOS_PARENT_COLUMN
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val syncMutex = operationCoordinator.mutex
     private val prefs: SharedPreferences =
         context.getSharedPreferences(SheetsLinkStore.PREFERENCES_NAME, Context.MODE_PRIVATE)
@@ -121,17 +117,17 @@ class SheetsSyncManager @Inject constructor(
      *   IVA % | Cuota | Recargo Eq. | IRPF | Total | Moneda | Notas |
      *   ID | Foto Drive
      */
-    fun upsertExpense(invoice: Invoice) {
+    suspend fun upsertExpense(invoice: Invoice) {
         if (invoice.tipo != InvoiceType.GASTO) return
-        scope.launch { remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT) }
+        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT)
     }
 
     private fun expenseValues(invoice: Invoice, locale: SheetsSchema.LocaleCode): List<Any> =
         SheetsSchema.expenseRow(invoice, conversionSnapshot(locale))
 
     /** Alta o edición de cualquier ingreso en la hoja unificada. */
-    fun upsertIncome(income: Income) {
-        scope.launch { remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INCOME_SHEETS, income.id, RemoteSyncAction.UPSERT) }
+    suspend fun upsertIncome(income: Income) {
+        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INCOME_SHEETS, income.id, RemoteSyncAction.UPSERT)
     }
 
     /**
@@ -139,22 +135,22 @@ class SheetsSyncManager @Inject constructor(
      * crítica. Así una edición de proveedor o productos no deja filas antiguas
      * ni compite con otros upserts lanzados al mismo tiempo.
      */
-    fun syncExpense(invoice: Invoice, products: List<Product>) {
+    suspend fun syncExpense(invoice: Invoice, products: List<Product>) {
         if (invoice.tipo != InvoiceType.GASTO) return
-        scope.launch { remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT) }
+        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT)
     }
 
     /**
      * Borrado de un gasto: elimina su fila de "Facturas Recibidas" y
      * todas las filas de "Productos" con el mismo InvoiceID.
      */
-    fun deleteExpense(invoiceId: Long) {
-        scope.launch { remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoiceId, RemoteSyncAction.DELETE) }
+    suspend fun deleteExpense(invoiceId: Long) {
+        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoiceId, RemoteSyncAction.DELETE)
     }
 
     /** Borrado de un ingreso en la hoja unificada. */
-    fun deleteIncome(incomeId: Long) {
-        scope.launch { remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INCOME_SHEETS, incomeId, RemoteSyncAction.DELETE) }
+    suspend fun deleteIncome(incomeId: Long) {
+        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INCOME_SHEETS, incomeId, RemoteSyncAction.DELETE)
     }
 
     suspend fun performExpenseSync(invoiceId: Long): Boolean {
@@ -236,42 +232,6 @@ class SheetsSyncManager @Inject constructor(
      * la añade al final. [lastCol] delimita el rango escrito de forma
      * independiente para poder añadir columnas después de la clave.
      */
-    private fun upsertRow(
-        sheet: String,
-        keyCol: String,
-        lastCol: String,
-        key: Long,
-        values: List<Any>
-    ) {
-        if (!premiumStatus.isPremium.value) {
-            SafeLog.d(TAG, "sync OMITIDO — Sheets es función Premium")
-            return
-        }
-        val link = getActiveLink()
-        if (link == null) {
-            SafeLog.w(TAG, "sync OMITIDO — sheetId vacío")
-            return
-        }
-        SafeLog.d(TAG, "upsert → hoja='$sheet' id=$key valores=$values sheetId=${link.spreadsheetId.take(8)}…")
-        scope.launch {
-            try {
-                if (!isCurrentAccount(link.account)) return@launch
-                if (ensureSchemaCurrent(link)) return@launch
-                syncMutex.withLock {
-                    if (!isCurrentAccount(link.account)) return@withLock
-                    val sheets = getSheetsService(link.account)
-                    upsertRowNow(sheets, link.spreadsheetId, sheet, keyCol, lastCol, key, values)
-                    refreshSummaryNow(sheets, link.spreadsheetId)
-                }
-            } catch (e: Exception) {
-                if (!recoverStaleLink(link, e)) {
-                    SafeLog.e(TAG, "upsert FALLO hoja='$sheet' id=$key", e)
-                    SafeLog.d(TAG, "upsert FALLO valores=$values")
-                }
-            }
-        }
-    }
-
     private fun upsertRowNow(
         sheets: Sheets,
         spreadsheetId: String,

@@ -25,6 +25,20 @@ class BackupDataRepositoryImpl @Inject constructor(
     }
 
     override suspend fun replaceAll(dataset: BackupDataset) {
+        replaceAllSnapshot(dataset, restoreId = null)
+    }
+
+    override suspend fun replaceAllWithRestoreMarker(dataset: BackupDataset, restoreId: String) {
+        replaceAllSnapshot(dataset, restoreId)
+    }
+
+    override suspend fun committedRestoreId(): String? = dao.restoreMarker()?.restoreId
+
+    override suspend fun clearRestoreMarker(restoreId: String) {
+        dao.clearRestoreMarker(restoreId)
+    }
+
+    private suspend fun replaceAllSnapshot(dataset: BackupDataset, restoreId: String?) {
         dao.replaceAll(
             BackupEntitySnapshot(
                 invoices = dataset.invoices.map { it.toEntity() },
@@ -32,7 +46,8 @@ class BackupDataRepositoryImpl @Inject constructor(
                 incomes = dataset.incomes.map { it.toEntity() },
                 fiscalConfigs = dataset.fiscalConfigs.map { it.toEntity() },
                 chatMessages = dataset.chatMessages.map { it.toEntity() }
-            )
+            ),
+            restoreId
         )
     }
 }

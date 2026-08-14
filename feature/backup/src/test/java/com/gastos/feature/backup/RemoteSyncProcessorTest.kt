@@ -22,11 +22,14 @@ class RemoteSyncProcessorTest {
         val drive = mockk<InvoiceDriveService>(relaxed = true)
         val sheets = mockk<SheetsSyncManager>()
         coEvery { incomeRepo.getIncomeById(7) } returns income()
+        coEvery { outbox.withCurrent<Boolean>(any(), any()) } coAnswers {
+            secondArg<suspend () -> Boolean>().invoke()
+        }
         coEvery { sheets.performIncomeUpsert(7) } returns true
         val processor = RemoteSyncProcessor(outbox, invoiceRepo, incomeRepo, drive, sheets)
         val outcome = processor.process(RemoteSyncOutboxEntity("INCOME_SHEETS:7", RemoteSyncTarget.INCOME_SHEETS, 7, RemoteSyncAction.UPSERT))
         assertEquals(RemoteSyncOutcome.SUCCESS, outcome)
-        coVerify(exactly = 1) { outbox.delete("INCOME_SHEETS:7") }
+        coVerify(exactly = 1) { outbox.delete(match { it.targetKey == "INCOME_SHEETS:7" }) }
         coVerify(exactly = 1) { sheets.performIncomeUpsert(7) }
     }
 
@@ -38,11 +41,14 @@ class RemoteSyncProcessorTest {
         val drive = mockk<InvoiceDriveService>(relaxed = true)
         val sheets = mockk<SheetsSyncManager>()
         coEvery { incomeRepo.getIncomeById(7) } returns null
+        coEvery { outbox.withCurrent<Boolean>(any(), any()) } coAnswers {
+            secondArg<suspend () -> Boolean>().invoke()
+        }
         coEvery { sheets.performIncomeDelete(7) } returns true
         val processor = RemoteSyncProcessor(outbox, invoiceRepo, incomeRepo, drive, sheets)
         val outcome = processor.process(RemoteSyncOutboxEntity("INCOME_SHEETS:7", RemoteSyncTarget.INCOME_SHEETS, 7, RemoteSyncAction.DELETE))
         assertEquals(RemoteSyncOutcome.SUCCESS, outcome)
-        coVerify(exactly = 1) { outbox.delete("INCOME_SHEETS:7") }
+        coVerify(exactly = 1) { outbox.delete(match { it.targetKey == "INCOME_SHEETS:7" }) }
         coVerify(exactly = 1) { sheets.performIncomeDelete(7) }
     }
 
@@ -54,7 +60,11 @@ class RemoteSyncProcessorTest {
         val drive = mockk<InvoiceDriveService>()
         val sheets = mockk<SheetsSyncManager>(relaxed = true)
         coEvery { invoiceRepo.getInvoiceById(3) } returns Invoice(id = 3, fecha = 0, proveedor = "p", tipo = GASTO, moneda = "EUR", total = 1.0, ivaPercent = 0.0, irpfPercent = 0.0, paisCodigo = "ES", imagenUri = "content://x", driveUploadPending = true)
-        coEvery { drive.upload(any()) } returns InvoiceDriveUploadResult(invoice = Invoice(id = 3, fecha = 0, proveedor = "p", tipo = GASTO, moneda = "EUR", total = 1.0, ivaPercent = 0.0, irpfPercent = 0.0, paisCodigo = "ES", imagenUri = "content://x", driveUploadPending = true), uploaded = false, message = "x")
+        val uploadResult = InvoiceDriveUploadResult(invoice = Invoice(id = 3, fecha = 0, proveedor = "p", tipo = GASTO, moneda = "EUR", total = 1.0, ivaPercent = 0.0, irpfPercent = 0.0, paisCodigo = "ES", imagenUri = "content://x", driveUploadPending = true), uploaded = false, message = "x")
+        coEvery { outbox.withCurrent<InvoiceDriveUploadResult>(any(), any()) } coAnswers {
+            secondArg<suspend () -> InvoiceDriveUploadResult>().invoke()
+        }
+        coEvery { drive.upload(any()) } returns uploadResult
         val processor = RemoteSyncProcessor(outbox, invoiceRepo, incomeRepo, drive, sheets)
         assertEquals(RemoteSyncOutcome.RETRY, processor.process(RemoteSyncOutboxEntity("INVOICE_DRIVE:3", RemoteSyncTarget.INVOICE_DRIVE, 3, RemoteSyncAction.UPSERT)))
         coVerify(exactly = 0) { outbox.delete(any()) }

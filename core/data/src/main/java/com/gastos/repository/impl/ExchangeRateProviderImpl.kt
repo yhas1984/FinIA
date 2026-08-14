@@ -90,7 +90,7 @@ class ExchangeRateProviderImpl @Inject constructor(
             _lastUpdated.value = asOf
             SafeLog.d(TAG, "Refrescadas ${parsed.size} tasas (asOf=$asOf)")
         }.onFailure { e ->
-            SafeLog.w(TAG, "No se pudo refrescar tasas (se conserva caché): ${e.message}")
+            SafeLog.w(TAG, "No se pudo refrescar tasas (se conserva caché)", e)
         }
         Unit
     }
@@ -135,7 +135,7 @@ class ExchangeRateProviderImpl @Inject constructor(
             }
             _rates.value = map + (USD to 1.0)
             _lastUpdated.value = asOf
-        }.onFailure { SafeLog.w(TAG, "Lectura de caché de tasas falló: ${it.message}") }
+        }.onFailure { SafeLog.w(TAG, "Lectura de caché de tasas falló", it) }
     }
 
     private suspend fun persist(rates: Map<String, Double>, asOf: Long) {

@@ -24,6 +24,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import androidx.compose.ui.unit.dp
 import java.util.Calendar
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -33,6 +34,19 @@ class DashboardViewModelTest {
 
     /** Mediodía del 11 de agosto de 2026: mes actual = agosto 2026. */
     private val fixedNow: Long = ts(2026, 8, 11, 12)
+
+    @Test
+    fun `analytics header stacks on compact widths`() {
+        assertTrue(shouldStackAnalyticsHeader(320.dp, 1.0f))
+        assertTrue(shouldStackAnalyticsHeader(419.dp, 1.0f))
+        assertFalse(shouldStackAnalyticsHeader(420.dp, 1.0f))
+    }
+
+    @Test
+    fun `analytics header stacks when font scale is enlarged`() {
+        assertTrue(shouldStackAnalyticsHeader(600.dp, 1.16f))
+        assertFalse(shouldStackAnalyticsHeader(600.dp, 1.15f))
+    }
 
     private fun ts(year: Int, month: Int, day: Int, hour: Int = 12): Long {
         val cal = Calendar.getInstance()

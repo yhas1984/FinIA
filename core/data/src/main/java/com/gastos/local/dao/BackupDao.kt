@@ -10,6 +10,7 @@ import com.gastos.data.local.entity.CountryFiscalConfigEntity
 import com.gastos.data.local.entity.IncomeEntity
 import com.gastos.data.local.entity.InvoiceEntity
 import com.gastos.data.local.entity.ProductEntity
+import com.gastos.data.local.entity.RestoreMarkerEntity
 
 internal data class BackupEntitySnapshot(
     val invoices: List<InvoiceEntity>,
@@ -51,6 +52,15 @@ abstract class BackupDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     internal abstract suspend fun insertChatMessages(values: List<ChatMessageEntity>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    internal abstract suspend fun upsertRestoreMarker(marker: RestoreMarkerEntity)
+
+    @Query("SELECT * FROM restore_markers WHERE id = 1 LIMIT 1")
+    internal abstract suspend fun restoreMarker(): RestoreMarkerEntity?
+
+    @Query("DELETE FROM restore_markers WHERE id = 1 AND restoreId = :restoreId")
+    internal abstract suspend fun clearRestoreMarker(restoreId: String)
+
     @Query("DELETE FROM products")
     internal abstract suspend fun clearProducts()
 
@@ -76,7 +86,7 @@ abstract class BackupDao {
     )
 
     @Transaction
-    internal open suspend fun replaceAll(snapshot: BackupEntitySnapshot) {
+    internal open suspend fun replaceAll(snapshot: BackupEntitySnapshot, restoreId: String?) {
         clearProducts()
         clearInvoices()
         clearIncomes()
@@ -88,5 +98,6 @@ abstract class BackupDao {
         insertIncomes(snapshot.incomes)
         insertFiscalConfigs(snapshot.fiscalConfigs)
         insertChatMessages(snapshot.chatMessages)
+        if (restoreId != null) upsertRestoreMarker(RestoreMarkerEntity(restoreId = restoreId))
     }
 }

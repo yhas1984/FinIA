@@ -12,6 +12,50 @@ android {
 
     defaultConfig {
         minSdk = 24
+
+        fun buildConfigString(value: String): String =
+            "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\""
+
+        buildConfigField(
+            "String",
+            "BILLING_BACKEND_URL",
+            buildConfigString(providers.environmentVariable("FINAI_BILLING_BACKEND_URL").orElse("").get())
+        )
+        buildConfigField("String", "BILLING_PACKAGE_NAME", buildConfigString("com.gastos.ingresos"))
+        buildConfigField(
+            "String",
+            "BILLING_ENTITLEMENT_PUBLIC_KEY_PEM",
+            buildConfigString(providers.environmentVariable("FINAI_BILLING_ENTITLEMENT_PUBLIC_KEY_PEM").orElse("").get())
+        )
+        buildConfigField(
+            "String",
+            "BILLING_ENTITLEMENT_ISSUER",
+            buildConfigString(providers.environmentVariable("FINAI_BILLING_ENTITLEMENT_ISSUER").orElse("").get())
+        )
+        buildConfigField(
+            "String",
+            "BILLING_ENTITLEMENT_KEY_ID",
+            buildConfigString(providers.environmentVariable("FINAI_BILLING_ENTITLEMENT_KEY_ID").orElse("").get())
+        )
+    }
+
+    buildTypes {
+        debug {
+            buildConfigField("Boolean", "BILLING_BACKEND_REQUIRED", "false")
+            buildConfigField("Boolean", "BILLING_PLAY_INTEGRITY_ENABLED", "false")
+        }
+        release {
+            buildConfigField(
+                "Boolean",
+                "BILLING_BACKEND_REQUIRED",
+                providers.environmentVariable("FINAI_BILLING_BACKEND_REQUIRED").orElse("true").get().toBoolean().toString()
+            )
+            buildConfigField(
+                "Boolean",
+                "BILLING_PLAY_INTEGRITY_ENABLED",
+                providers.environmentVariable("FINAI_BILLING_PLAY_INTEGRITY_ENABLED").orElse("false").get().toBoolean().toString()
+            )
+        }
     }
 
     compileOptions {
@@ -21,6 +65,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -52,6 +97,11 @@ dependencies {
 
     // Billing (Google Play)
     implementation(libs.billing)
+    implementation("com.google.android.play:integrity:1.6.0")
+    implementation(libs.okhttp)
+    implementation(libs.work.runtime.ktx)
+    implementation(libs.hilt.work)
+    ksp(libs.hilt.work.compiler)
 
     // Project modules
     implementation(project(":core:domain"))

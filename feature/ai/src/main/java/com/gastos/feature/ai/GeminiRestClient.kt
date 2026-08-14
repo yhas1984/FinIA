@@ -72,19 +72,27 @@ class GeminiRestClient @Inject constructor() {
             val body = requireNotNull(httpResponse.body) { "Respuesta vacía de Gemini." }
             val context = currentCoroutineContext()
             var eventBuffer = StringBuilder()
+            var emittedText = false
             body.charStream().buffered().useLines { lines ->
                 lines.forEach { line ->
                     context.ensureActive()
                     when {
                         line.isBlank() -> {
-                            emitSseChunk(eventBuffer.toString())?.let { emit(it) }
+                            emitSseChunk(eventBuffer.toString())?.let {
+                                emittedText = true
+                                emit(it)
+                            }
                             eventBuffer = StringBuilder()
                         }
                         line.startsWith(DATA_PREFIX) -> eventBuffer.append(line.removePrefix(DATA_PREFIX).trim())
                     }
                 }
             }
-            emitSseChunk(eventBuffer.toString())?.let { emit(it) }
+            emitSseChunk(eventBuffer.toString())?.let {
+                emittedText = true
+                emit(it)
+            }
+            check(emittedText) { "Gemini devolvió una respuesta vacía." }
         }
     }
 
@@ -92,6 +100,8 @@ class GeminiRestClient @Inject constructor() {
         val response = executeHttpRequest(request, stream)
         response.use { httpResponse ->
             return parseCandidateText(httpResponse.body?.string().orEmpty())
+                .takeIf(String::isNotBlank)
+                ?: error("Gemini devolvió una respuesta vacía.")
         }
     }
 

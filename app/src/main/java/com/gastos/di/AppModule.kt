@@ -229,6 +229,33 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `restore_markers` (
+                `id` INTEGER NOT NULL,
+                `restoreId` TEXT NOT NULL,
+                `committedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+    }
+}
+
+val MIGRATION_REMOTE_SYNC_OUTBOX_1_2 = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN operationId TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+val MIGRATION_REMOTE_SYNC_OUTBOX_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN remoteFileId TEXT")
+    }
+}
+
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class RemoteSyncBindingsModule {
@@ -260,7 +287,8 @@ object AppModule {
                 MIGRATION_6_7,
                 MIGRATION_7_8,
                 MIGRATION_8_9,
-                MIGRATION_9_10
+                MIGRATION_9_10,
+                MIGRATION_10_11
             )
             .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()
@@ -295,7 +323,9 @@ object AppModule {
     @Provides
     @Singleton
     fun provideRemoteSyncOutboxDatabase(@ApplicationContext context: Context): RemoteSyncOutboxDatabase =
-        Room.databaseBuilder(context, RemoteSyncOutboxDatabase::class.java, "finai_remote_sync.db").build()
+        Room.databaseBuilder(context, RemoteSyncOutboxDatabase::class.java, "finai_remote_sync.db")
+            .addMigrations(MIGRATION_REMOTE_SYNC_OUTBOX_1_2, MIGRATION_REMOTE_SYNC_OUTBOX_2_3)
+            .build()
 
     @Provides
     fun provideRemoteSyncOutboxDao(database: RemoteSyncOutboxDatabase): RemoteSyncOutboxDao = database.dao()

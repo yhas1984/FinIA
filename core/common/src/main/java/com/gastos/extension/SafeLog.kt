@@ -36,12 +36,24 @@ object SafeLog {
     /** Misma firma que `Log.w` (siempre imprime, para errores sin payload). */
     fun w(tag: String, message: String) = Log.w(tag, message)
 
-    /** Misma firma que `Log.w` con throwable. */
-    fun w(tag: String, message: String, throwable: Throwable) = Log.w(tag, message, throwable)
+    /** Incluye la traza completa solo en debug; producción conserva solo el tipo. */
+    fun w(tag: String, message: String, throwable: Throwable) {
+        if (BuildConfig.DEBUG) {
+            Log.w(tag, message, throwable)
+        } else {
+            Log.w(tag, "$message (${throwable::class.java.simpleName})")
+        }
+    }
 
     /** Misma firma que `Log.e` (siempre imprime, para errores sin payload). */
     fun e(tag: String, message: String) = Log.e(tag, message)
 
-    /** Misma firma que `Log.e` con throwable. */
-    fun e(tag: String, message: String, throwable: Throwable) = Log.e(tag, message, throwable)
+    /** Incluye la traza completa solo en debug; producción conserva solo el tipo. */
+    fun e(tag: String, message: String, throwable: Throwable) {
+        if (BuildConfig.DEBUG) {
+            Log.e(tag, message, throwable)
+        } else {
+            Log.e(tag, "$message (${throwable::class.java.simpleName})")
+        }
+    }
 }

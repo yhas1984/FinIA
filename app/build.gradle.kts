@@ -14,7 +14,7 @@ android {
         applicationId = "com.gastos.ingresos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
+        versionCode = 14
         versionName = "1.6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -46,6 +46,7 @@ android {
         }
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

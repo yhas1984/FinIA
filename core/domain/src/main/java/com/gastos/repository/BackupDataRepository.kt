@@ -27,6 +27,9 @@ data class RestorableSettings(
 interface BackupDataRepository {
     suspend fun snapshot(): BackupDataset
     suspend fun replaceAll(dataset: BackupDataset)
+    suspend fun replaceAllWithRestoreMarker(dataset: BackupDataset, restoreId: String)
+    suspend fun committedRestoreId(): String?
+    suspend fun clearRestoreMarker(restoreId: String)
 }
 
 interface BackupSettingsProvider {

@@ -122,14 +122,20 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             stickyHeader {
-                MonthSelectorRow(
-                    label = selectedMonthLabel,
-                    isCurrentMonth = uiState.isCurrentMonth,
-                    onPrevious = viewModel::previousMonth,
-                    onNext = viewModel::nextMonth,
-                    onPick = { showMonthPicker = true },
-                    modifier = Modifier.padding(top = 12.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
+                        .padding(top = 12.dp, bottom = 4.dp)
+                ) {
+                    MonthSelectorRow(
+                        label = selectedMonthLabel,
+                        isCurrentMonth = uiState.isCurrentMonth,
+                        onPrevious = viewModel::previousMonth,
+                        onNext = viewModel::nextMonth,
+                        onPick = { showMonthPicker = true }
+                    )
+                }
             }
 
             item {

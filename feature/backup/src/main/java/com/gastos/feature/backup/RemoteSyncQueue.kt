@@ -21,7 +21,7 @@ open class RemoteSyncQueue @Inject constructor(@ApplicationContext context: Cont
             .setConstraints(networkConstraints())
             .setBackoffCriteria(androidx.work.BackoffPolicy.EXPONENTIAL, 30, java.util.concurrent.TimeUnit.MINUTES)
             .build()
-        workManager.enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.KEEP, request)
+        workManager.enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, request)
     }
 
     private fun networkConstraints() = Constraints.Builder()
