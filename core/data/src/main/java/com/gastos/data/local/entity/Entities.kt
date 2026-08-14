@@ -102,3 +102,10 @@ data class ChatMessageEntity(
     @ColumnInfo(defaultValue = "1") val includeInContext: Boolean = true,
     val createdAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "restore_markers")
+data class RestoreMarkerEntity(
+    @PrimaryKey val id: Int = 1,
+    val restoreId: String,
+    val committedAt: Long = System.currentTimeMillis()
+)

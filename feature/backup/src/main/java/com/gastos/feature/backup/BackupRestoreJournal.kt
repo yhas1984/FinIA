@@ -18,9 +18,24 @@ internal enum class RestoreJournalPhase {
 }
 
 @Serializable
+internal data class RestoreJournalRemoteFile(
+    val recordId: Long,
+    val remoteFileId: String
+)
+
+@Serializable
+internal data class RestoreJournalSheetRow(
+    val target: String,
+    val recordId: Long
+)
+
+@Serializable
 internal data class RestoreJournalEntry(
     val phase: String,
     val previousSettings: RestoreJournalSettings,
+    val restoreId: String = "",
+    val sheetRowsToDelete: List<RestoreJournalSheetRow> = emptyList(),
+    val remoteFilesToDelete: List<RestoreJournalRemoteFile> = emptyList(),
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -73,12 +88,24 @@ class BackupRestoreJournal @Inject constructor(
         return runCatching { json.decodeFromString<RestoreJournalEntry>(file.readText()) }.getOrNull()
     }
 
-    internal fun write(phase: RestoreJournalPhase, previousSettings: RestorableSettings) {
+    internal fun write(
+        phase: RestoreJournalPhase,
+        previousSettings: RestorableSettings,
+        restoreId: String = "",
+        sheetRowsToDelete: List<RestoreJournalSheetRow> = emptyList(),
+        remoteFilesToDelete: List<RestoreJournalRemoteFile> = emptyList()
+    ) {
         val entry = RestoreJournalEntry(
             phase = phase.name,
-            previousSettings = RestoreJournalSettings.from(previousSettings)
+            previousSettings = RestoreJournalSettings.from(previousSettings),
+            restoreId = restoreId,
+            sheetRowsToDelete = sheetRowsToDelete,
+            remoteFilesToDelete = remoteFilesToDelete
         )
-        file.writeText(json.encodeToString(entry))
+        val temporary = File(file.parentFile, "${file.name}.tmp")
+        temporary.delete()
+        temporary.writeText(json.encodeToString(entry))
+        check(temporary.renameTo(file)) { "No se pudo guardar el journal de restauración." }
     }
 
     internal fun clear() {

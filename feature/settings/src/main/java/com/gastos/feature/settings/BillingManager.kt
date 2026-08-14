@@ -20,12 +20,22 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class BillingManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val acknowledgeScheduler: BillingAcknowledgeScheduler,
+    private val entitlementClient: BillingEntitlementClient
 ) : PurchasesUpdatedListener, BillingClientStateListener, PremiumStatusProvider {
     companion object {
         private const val TAG = "BillingManager"
@@ -70,7 +80,8 @@ class BillingManager @Inject constructor(
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val isDebugBuild: Boolean = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     private val legacyPremium = prefs.getBoolean(KEY_IS_PREMIUM, false)
-    private var playEntitled: Boolean = prefs.getBoolean(KEY_PLAY_PREMIUM, legacyPremium)
+    private var playEntitled: Boolean = prefs.getBoolean(KEY_PLAY_PREMIUM, legacyPremium) &&
+        (!entitlementClient.isRequired || entitlementClient.isEnabled)
     private var debugOverride: Boolean = prefs.getBoolean(KEY_DEBUG_PREMIUM, if (isDebugBuild) legacyPremium else false)
     private var isStartingConnection: Boolean = false
     private var lastAutomaticRefreshAt: Long = 0L
@@ -87,10 +98,16 @@ class BillingManager @Inject constructor(
     private val _billingNotice = MutableStateFlow<String?>(null)
     val billingNotice: StateFlow<String?> = _billingNotice.asStateFlow()
     private var billingClient: BillingClient? = null
+    private val entitlementScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var verificationGeneration = 0L
+    private var verificationToken: String? = null
 
     init {
         refreshBillingNotice(hasFailure = false)
         startConnection()
+        prefs.getString(KEY_ACK_TOKEN, null)?.let {
+            acknowledgeScheduler.schedule(prefs.getLong(KEY_ACK_NEXT_AT, 0L) - System.currentTimeMillis())
+        }
     }
 
     fun startConnection() {
@@ -241,12 +258,31 @@ class BillingManager @Inject constructor(
     private fun handlePurchase(purchase: Purchase) {
         when (purchase.purchaseState) {
             Purchase.PurchaseState.PENDING -> {
+                invalidateVerification()
                 setPendingPurchase(true)
                 setPlayEntitled(false, verified = false)
             }
             Purchase.PurchaseState.PURCHASED -> {
                 setPendingPurchase(false)
-                setPlayEntitled(true, verified = true)
+                val generation = ++verificationGeneration
+                verificationToken = purchase.purchaseToken
+                if (entitlementClient.isEnabled) {
+                    setPlayEntitled(false, verified = false)
+                    entitlementScope.launch {
+                        if (entitlementClient.verifyPurchase(PREMIUM_SKU, purchase.purchaseToken)) {
+                            if (isCurrentVerification(generation, purchase.purchaseToken)) {
+                                setPlayEntitled(true, verified = true)
+                            }
+                        } else if (isCurrentVerification(generation, purchase.purchaseToken)) {
+                            _purchaseError.value = "No se pudo verificar Premium con el servidor."
+                        }
+                    }
+                } else if (entitlementClient.isRequired) {
+                    setPlayEntitled(false, verified = false)
+                    _purchaseError.value = "Premium no está disponible hasta configurar el servidor de verificación."
+                } else {
+                    setPlayEntitled(true, verified = true)
+                }
                 if (purchase.isAcknowledged) {
                     clearAckRetryState()
                     refreshBillingNotice(hasFailure = false)
@@ -294,11 +330,20 @@ class BillingManager @Inject constructor(
     }
 
     private fun revokePremium() {
+        invalidateVerification()
         clearAckRetryState()
         setPendingPurchase(false)
         setPlayEntitled(false, verified = false)
         refreshBillingNotice(hasFailure = false)
     }
+
+    private fun invalidateVerification() {
+        verificationGeneration += 1
+        verificationToken = null
+    }
+
+    private fun isCurrentVerification(generation: Long, purchaseToken: String): Boolean =
+        verificationGeneration == generation && verificationToken == purchaseToken
 
     private fun setPlayEntitled(value: Boolean, verified: Boolean) {
         playEntitled = value
@@ -325,6 +370,54 @@ class BillingManager @Inject constructor(
             .putLong(KEY_ACK_NEXT_AT, nextAt)
             .apply()
         _billingNotice.value = "La compra está activa, pero Google Play aún no la ha confirmado. FinAI lo reintentará automáticamente."
+        acknowledgeScheduler.schedule(nextAt - System.currentTimeMillis())
+    }
+
+    internal suspend fun processPendingAcknowledge() {
+        val token = prefs.getString(KEY_ACK_TOKEN, null) ?: return
+        val client = awaitBillingClient() ?: run {
+            val attempt = prefs.getInt(KEY_ACK_ATTEMPT, 0)
+            scheduleAckRetry(token, attempt + 1, System.currentTimeMillis() + nextAckDelayMillis(attempt))
+            return
+        }
+        val result = withTimeoutOrNull(20_000L) {
+            suspendCancellableCoroutine<BillingResult> { continuation ->
+                client.acknowledgePurchase(
+                    AcknowledgePurchaseParams.newBuilder().setPurchaseToken(token).build()
+                ) { billingResult ->
+                    if (continuation.isActive) continuation.resume(billingResult)
+                }
+                continuation.invokeOnCancellation { }
+            }
+        } ?: run {
+            val attempt = prefs.getInt(KEY_ACK_ATTEMPT, 0)
+            scheduleAckRetry(token, attempt + 1, System.currentTimeMillis() + nextAckDelayMillis(attempt))
+            return
+        }
+        when (result.responseCode) {
+            BillingClient.BillingResponseCode.OK -> {
+                clearAckRetryState()
+                refreshBillingNotice(hasFailure = false)
+            }
+            BillingClient.BillingResponseCode.ITEM_NOT_OWNED -> {
+                clearAckRetryState()
+                queryPurchases()
+            }
+            else -> {
+                val attempt = prefs.getInt(KEY_ACK_ATTEMPT, 0)
+                scheduleAckRetry(token, attempt + 1, System.currentTimeMillis() + nextAckDelayMillis(attempt))
+            }
+        }
+    }
+
+    private suspend fun awaitBillingClient(): BillingClient? {
+        if (billingClient?.isReady == true) return billingClient
+        startConnection()
+        repeat(30) {
+            if (billingClient?.isReady == true) return billingClient
+            delay(500L)
+        }
+        return null
     }
 
     private fun clearAckRetryState() {

@@ -216,6 +216,7 @@ class InvoicesViewModel @Inject constructor(
             try {
                 invoiceRepository.deleteInvoice(invoice)
                 invoiceImageStorage.delete(invoice.imagenUri)
+                invoiceDriveService.enqueueDelete(invoice)
                 // Propaga el borrado al Sheet (fila del gasto + sus productos).
                 sheetsSyncManager.deleteExpense(invoice.id)
             } catch (e: Exception) {

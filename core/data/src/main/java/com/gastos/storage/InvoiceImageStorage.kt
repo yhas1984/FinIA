@@ -19,6 +19,7 @@ class InvoiceImageStorage @Inject constructor(
     private val imageDir = File(context.filesDir, DIRECTORY_NAME)
     private val stagedImageDir = File(context.filesDir, "$DIRECTORY_NAME.restore_new")
     private val oldImageDir = File(context.filesDir, "$DIRECTORY_NAME.restore_old")
+    private val restoreSwapMarker = File(context.filesDir, "$DIRECTORY_NAME.restore_swap")
     private val cameraDir = File(context.cacheDir, CAMERA_DIRECTORY_NAME)
 
     suspend fun persist(source: Uri): Uri = withContext(Dispatchers.IO) {
@@ -87,7 +88,7 @@ class InvoiceImageStorage @Inject constructor(
         }
 
     suspend fun stageRestoreFiles(files: Map<String, File>): Map<String, String> = withContext(Dispatchers.IO) {
-        discardRestoreStage()
+        if (hasRestoreSwapStarted()) rollbackRestoreStage() else discardRestoreStage()
         stagedImageDir.mkdirs()
         files.mapValues { (fileName, source) ->
             require(
@@ -103,10 +104,12 @@ class InvoiceImageStorage @Inject constructor(
     }
 
     fun activateRestoreStage() {
+        restoreSwapMarker.writeText(SWAP_STARTED)
         discardOldRestore()
         if (imageDir.exists() && !imageDir.renameTo(oldImageDir)) {
             throw IllegalStateException("No se pudo preservar las imágenes actuales.")
         }
+        restoreSwapMarker.writeText(OLD_IMAGES_PRESERVED)
         if (!stagedImageDir.exists()) {
             throw IllegalStateException("No existe una restauración preparada.")
         }
@@ -114,21 +117,26 @@ class InvoiceImageStorage @Inject constructor(
             if (oldImageDir.exists()) oldImageDir.renameTo(imageDir)
             throw IllegalStateException("No se pudo activar las imágenes restauradas.")
         }
+        restoreSwapMarker.writeText(NEW_IMAGES_ACTIVE)
     }
 
     fun rollbackRestoreStage() {
-        if (imageDir.exists() && imageDir.canonicalPath != stagedImageDir.canonicalPath) {
-            imageDir.deleteRecursively()
-        }
         if (oldImageDir.exists()) {
+            if (imageDir.exists()) imageDir.deleteRecursively()
             check(oldImageDir.renameTo(imageDir)) { "No se pudo restaurar las imágenes anteriores." }
+        } else if (restoreSwapMarker.exists() && imageDir.exists()) {
+            // The process may have died before the old directory was renamed.
+            // In that case imageDir still contains the user's original files.
+            if (restoreSwapMarker.readText() == NEW_IMAGES_ACTIVE) imageDir.deleteRecursively()
         }
         discardRestoreStage()
+        restoreSwapMarker.delete()
     }
 
     fun finalizeRestoreStage() {
         discardOldRestore()
         discardRestoreStage()
+        restoreSwapMarker.delete()
     }
 
     fun discardRestoreStage() {
@@ -142,6 +150,8 @@ class InvoiceImageStorage @Inject constructor(
     ).toString()
 
     fun hasRestoreSwapPending(): Boolean = oldImageDir.exists() || stagedImageDir.exists()
+
+    fun hasRestoreSwapStarted(): Boolean = restoreSwapMarker.exists()
 
     fun pruneManagedFiles(keepFileNames: Set<String>) {
         imageDir.listFiles().orEmpty()
@@ -168,6 +178,9 @@ class InvoiceImageStorage @Inject constructor(
     companion object {
         private const val DIRECTORY_NAME = "invoice_images"
         private const val CAMERA_DIRECTORY_NAME = "camera"
+        private const val SWAP_STARTED = "started"
+        private const val OLD_IMAGES_PRESERVED = "old_preserved"
+        private const val NEW_IMAGES_ACTIVE = "new_active"
         private val SUPPORTED_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "heic", "heif")
         private val SAFE_FILE_NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]*")
     }

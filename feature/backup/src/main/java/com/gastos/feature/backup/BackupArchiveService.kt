@@ -25,6 +25,7 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -43,7 +44,8 @@ class BackupArchiveService @Inject constructor(
     private val settingsProvider: BackupSettingsProvider,
     private val imageStorage: InvoiceImageStorage,
     private val keyStore: BackupKeyStore,
-    private val restoreJournal: BackupRestoreJournal
+    private val restoreJournal: BackupRestoreJournal,
+    private val remoteSyncOutbox: RemoteSyncOutboxRepository
 ) {
     private val json = Json {
         encodeDefaults = true
@@ -70,25 +72,52 @@ class BackupArchiveService @Inject constructor(
     }
 
     suspend fun recoverInterruptedRestore() = withContext(Dispatchers.IO) {
-        val journal = restoreJournal.read() ?: return@withContext
+        val journal = restoreJournal.read()
+        val committedRestoreId = dataRepository.committedRestoreId()
+        if (journal == null) {
+            if (committedRestoreId != null) {
+                completeCommittedRestore(committedRestoreId, emptyList(), emptyList())
+            } else if (imageStorage.hasRestoreSwapStarted()) {
+                imageStorage.rollbackRestoreStage()
+            }
+            return@withContext
+        }
         val phase = runCatching { RestoreJournalPhase.valueOf(journal.phase) }.getOrNull() ?: run {
             restoreJournal.clear()
             return@withContext
         }
+        val restoreId = journal.restoreId.takeIf(String::isNotBlank)
+        val databaseCommitted = phase == RestoreJournalPhase.DB_RESTORED ||
+            (restoreId != null && committedRestoreId == restoreId)
         when (phase) {
             RestoreJournalPhase.STAGED -> {
-                imageStorage.discardRestoreStage()
+                if (imageStorage.hasRestoreSwapStarted()) {
+                    imageStorage.rollbackRestoreStage()
+                } else {
+                    imageStorage.discardRestoreStage()
+                }
                 restoreJournal.clear()
             }
             RestoreJournalPhase.IMAGES_SWAPPED,
             RestoreJournalPhase.SETTINGS_RESTORED -> {
-                imageStorage.rollbackRestoreStage()
-                settingsProvider.restoreSettings(journal.previousSettings.toDomain())
-                restoreJournal.clear()
+                if (databaseCommitted) {
+                    completeCommittedRestore(
+                        restoreId,
+                        journal.sheetRowsToDelete,
+                        journal.remoteFilesToDelete
+                    )
+                } else {
+                    imageStorage.rollbackRestoreStage()
+                    settingsProvider.restoreSettings(journal.previousSettings.toDomain())
+                    restoreJournal.clear()
+                }
             }
             RestoreJournalPhase.DB_RESTORED -> {
-                imageStorage.finalizeRestoreStage()
-                restoreJournal.clear()
+                completeCommittedRestore(
+                    restoreId,
+                    journal.sheetRowsToDelete,
+                    journal.remoteFilesToDelete
+                )
             }
         }
     }
@@ -218,15 +247,28 @@ class BackupArchiveService @Inject constructor(
             require(missingImages.isEmpty()) { "El backup no contiene todas las imágenes declaradas." }
             check(beginCommit()) { "Restauración cancelada." }
             val previousSettings = settingsProvider.snapshotSettings()
+            val previousDataset = dataRepository.snapshot()
+            val restoreId = UUID.randomUUID().toString()
+            val sheetRowsToDelete = sheetRowsToDelete(previousDataset, restored.payload)
+            val remoteFilesToDelete = remoteFilesToDelete(previousDataset, restored.payload)
             val restoredUris = imageStorage.stageRestoreFiles(restored.images)
-            restoreJournal.write(RestoreJournalPhase.STAGED, previousSettings)
+            restoreJournal.write(
+                phase = RestoreJournalPhase.STAGED,
+                previousSettings = previousSettings,
+                restoreId = restoreId,
+                sheetRowsToDelete = sheetRowsToDelete,
+                remoteFilesToDelete = remoteFilesToDelete
+            )
             withContext(NonCancellable) {
                 executeCommittedRestore(
                     header = header,
                     dataKey = dataKey,
                     previousSettings = previousSettings,
                     restored = restored,
-                    restoredUris = restoredUris
+                    restoredUris = restoredUris,
+                    restoreId = restoreId,
+                    sheetRowsToDelete = sheetRowsToDelete,
+                    remoteFilesToDelete = remoteFilesToDelete
                 )
             }
         } finally {
@@ -251,24 +293,51 @@ class BackupArchiveService @Inject constructor(
         dataKey: ByteArray,
         previousSettings: RestorableSettings,
         restored: RestoredArchive,
-        restoredUris: Map<String, String>
+        restoredUris: Map<String, String>,
+        restoreId: String,
+        sheetRowsToDelete: List<RestoreJournalSheetRow>,
+        remoteFilesToDelete: List<RestoreJournalRemoteFile>
     ): BackupRestoreResult {
+        var databaseCommitted = false
         try {
             imageStorage.activateRestoreStage()
-            restoreJournal.write(RestoreJournalPhase.IMAGES_SWAPPED, previousSettings)
+            restoreJournal.write(
+                phase = RestoreJournalPhase.IMAGES_SWAPPED,
+                previousSettings = previousSettings,
+                restoreId = restoreId,
+                sheetRowsToDelete = sheetRowsToDelete,
+                remoteFilesToDelete = remoteFilesToDelete
+            )
             settingsProvider.restoreSettings(restored.payload.settings.toDomain())
-            restoreJournal.write(RestoreJournalPhase.SETTINGS_RESTORED, previousSettings)
-            dataRepository.replaceAll(restored.payload.toDataset(restoredUris))
-            restoreJournal.write(RestoreJournalPhase.DB_RESTORED, previousSettings)
-            runCatching { imageStorage.finalizeRestoreStage() }
-                .onFailure { SafeLog.w(TAG, "No se pudo limpiar el directorio antiguo tras restaurar", it) }
+            restoreJournal.write(
+                phase = RestoreJournalPhase.SETTINGS_RESTORED,
+                previousSettings = previousSettings,
+                restoreId = restoreId,
+                sheetRowsToDelete = sheetRowsToDelete,
+                remoteFilesToDelete = remoteFilesToDelete
+            )
+            dataRepository.replaceAllWithRestoreMarker(restored.payload.toDataset(restoredUris), restoreId)
+            databaseCommitted = true
+            restoreJournal.write(
+                phase = RestoreJournalPhase.DB_RESTORED,
+                previousSettings = previousSettings,
+                restoreId = restoreId,
+                sheetRowsToDelete = sheetRowsToDelete,
+                remoteFilesToDelete = remoteFilesToDelete
+            )
+            remoteSyncOutbox.reconcile(
+                dataset = restored.payload.toDataset(restoredUris),
+                sheetDeletes = sheetRowsToDelete.map { it.toRemoteSyncDelete() },
+                driveDeletes = remoteFilesToDelete.map { it.toRemoteSyncDelete() }
+            )
+            imageStorage.finalizeRestoreStage()
+            dataRepository.clearRestoreMarker(restoreId)
             restoreJournal.clear()
             runCatching { keyStore.remember(header, dataKey) }
                 .onFailure { SafeLog.w(TAG, "No se pudo recordar la clave del backup restaurado", it) }
             return BackupRestoreResult(header.toPreview(), restoredUris.size)
         } catch (error: Exception) {
-            val phase = restoreJournal.read()?.phase
-            if (phase == RestoreJournalPhase.DB_RESTORED.name) {
+            if (databaseCommitted || dataRepository.committedRestoreId() == restoreId) {
                 throw error
             }
             runCatching { imageStorage.rollbackRestoreStage() }
@@ -277,6 +346,57 @@ class BackupArchiveService @Inject constructor(
             throw error
         }
     }
+
+    private suspend fun completeCommittedRestore(
+        restoreId: String?,
+        sheetRowsToDelete: List<RestoreJournalSheetRow>,
+        remoteFilesToDelete: List<RestoreJournalRemoteFile>
+    ) {
+        remoteSyncOutbox.reconcile(
+            dataset = dataRepository.snapshot(),
+            sheetDeletes = sheetRowsToDelete.map { it.toRemoteSyncDelete() },
+            driveDeletes = remoteFilesToDelete.map { it.toRemoteSyncDelete() }
+        )
+        imageStorage.finalizeRestoreStage()
+        if (!restoreId.isNullOrBlank()) dataRepository.clearRestoreMarker(restoreId)
+        restoreJournal.clear()
+    }
+
+    private fun remoteFilesToDelete(
+        previous: com.gastos.repository.BackupDataset,
+        restored: BackupPayloadDto
+    ): List<RestoreJournalRemoteFile> {
+        val restoredById = restored.invoices.associateBy { it.id }
+        return previous.invoices.mapNotNull { invoice ->
+            val remoteFileId = invoice.driveFileId?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            if (restoredById[invoice.id]?.driveFileId == remoteFileId) return@mapNotNull null
+            RestoreJournalRemoteFile(invoice.id, remoteFileId)
+        }
+    }
+
+    private fun sheetRowsToDelete(
+        previous: com.gastos.repository.BackupDataset,
+        restored: BackupPayloadDto
+    ): List<RestoreJournalSheetRow> {
+        val restoredExpenseIds = restored.invoices
+            .filter { it.tipo == com.gastos.domain.model.InvoiceType.GASTO.name }
+            .mapTo(mutableSetOf()) { it.id }
+        val restoredIncomeIds = restored.incomes.mapTo(mutableSetOf()) { it.id }
+        return buildList {
+            previous.invoices
+                .filter { it.tipo == com.gastos.domain.model.InvoiceType.GASTO && it.id !in restoredExpenseIds }
+                .forEach { add(RestoreJournalSheetRow(RemoteSyncTarget.EXPENSE_SHEETS.name, it.id)) }
+            previous.incomes
+                .filter { it.id !in restoredIncomeIds }
+                .forEach { add(RestoreJournalSheetRow(RemoteSyncTarget.INCOME_SHEETS.name, it.id)) }
+        }
+    }
+
+    private fun RestoreJournalRemoteFile.toRemoteSyncDelete(): RemoteSyncDriveDelete =
+        RemoteSyncDriveDelete(recordId = recordId, remoteFileId = remoteFileId)
+
+    private fun RestoreJournalSheetRow.toRemoteSyncDelete(): RemoteSyncSheetDelete =
+        RemoteSyncSheetDelete(target = RemoteSyncTarget.valueOf(target), recordId = recordId)
 
     private suspend fun readEncryptedPayload(
         input: InputStream,

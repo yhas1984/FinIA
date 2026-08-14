@@ -199,6 +199,7 @@ class AIService @Inject constructor(
                         emit(chunk)
                     }
                 }
+                check(collected.isNotBlank()) { "Gemini devolvió una respuesta vacía." }
                 recordTurn(userMsg, collected.toString())
             }
         }.catch { error ->
@@ -286,6 +287,7 @@ class AIService @Inject constructor(
                     contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(queryExtractionPrompt(query)))))
                 )
             )
+            check(responseText.isNotBlank()) { "Gemini devolvió una respuesta vacía." }
             AIResult(success = true, message = context.getString(R.string.ai_query_processed), queryResult = responseText)
         } catch (error: CancellationException) {
             throw error
@@ -771,6 +773,9 @@ class AIService @Inject constructor(
 
     private fun parseCommandResponse(responseText: String, originalCommand: String): AIResult {
         val trimmed = responseText.trim()
+        if (trimmed.isBlank()) {
+            return AIResult(success = false, message = context.getString(R.string.ai_friendly_api_generic))
+        }
         if (!trimmed.startsWith("{")) return AIResult(success = true, message = trimmed)
         return try {
             val json = extractJsonFromResponse(responseText)

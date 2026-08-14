@@ -1,6 +1,7 @@
 package com.gastos.feature.backup
 
 import android.content.Context
+import com.gastos.repository.BackupDataset
 import com.gastos.repository.BackupDataRepository
 import com.gastos.repository.BackupSettingsProvider
 import com.gastos.storage.InvoiceImageStorage
@@ -39,7 +40,10 @@ class LegacyBackupRestoreTest {
             every { packageName } returns "com.gastos.ingresos"
         }
         val dataRepository: BackupDataRepository = mockk {
-            coEvery { replaceAll(any()) } just Runs
+            coEvery { snapshot() } returns BackupDataset(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+            coEvery { replaceAllWithRestoreMarker(any(), any()) } just Runs
+            coEvery { committedRestoreId() } returns null
+            coEvery { clearRestoreMarker(any()) } just Runs
         }
         val settingsProvider: BackupSettingsProvider = mockk {
             coEvery { snapshotSettings() } returns com.gastos.repository.RestorableSettings()
@@ -55,9 +59,12 @@ class LegacyBackupRestoreTest {
             every { remember(any(), any()) } just Runs
         }
         val restoreJournal: BackupRestoreJournal = mockk {
-            every { write(any(), any()) } just Runs
+            every { write(any(), any(), any(), any(), any()) } just Runs
             every { clear() } just Runs
             every { read() } returns null
+        }
+        val remoteSyncOutbox: RemoteSyncOutboxRepository = mockk {
+            coEvery { reconcile(any(), any(), any()) } just Runs
         }
         val service = BackupArchiveService(
             context,
@@ -65,7 +72,8 @@ class LegacyBackupRestoreTest {
             settingsProvider,
             imageStorage,
             keyStore,
-            restoreJournal
+            restoreJournal,
+            remoteSyncOutbox
         )
         val password: CharArray = "frase-segura-v1".toCharArray()
         val archive: ByteArray = createLegacyArchive(password.copyOf())
@@ -76,7 +84,7 @@ class LegacyBackupRestoreTest {
         )
 
         assertEquals(0, result.restoredImages)
-        coVerify(exactly = 1) { dataRepository.replaceAll(match { it.invoices.isEmpty() }) }
+        coVerify(exactly = 1) { dataRepository.replaceAllWithRestoreMarker(match { it.invoices.isEmpty() }, any()) }
         coVerify(exactly = 1) { settingsProvider.restoreSettings(any()) }
         verify(exactly = 1) { keyStore.remember(any(), any()) }
         cacheDirectory.deleteRecursively()

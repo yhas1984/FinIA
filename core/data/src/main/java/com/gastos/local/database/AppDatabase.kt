@@ -12,9 +12,10 @@ import com.gastos.local.dao.*
         ProductEntity::class,
         IncomeEntity::class,
         CountryFiscalConfigEntity::class,
-        ChatMessageEntity::class
+        ChatMessageEntity::class,
+        RestoreMarkerEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -29,6 +30,6 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "gastos_ingresos_db"
-        const val DATABASE_VERSION = 10
+        const val DATABASE_VERSION = 11
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gastos.domain.model.TransactionCategories
@@ -49,6 +50,9 @@ private val AnalyticsPalette = listOf(
     Color(0xFFCE93D8), // púrpura
     Color(0xFFFFE082)  // miel
 )
+
+private val AnalyticsHeaderStackWidth = 420.dp
+private const val AnalyticsHeaderStackFontScale = 1.15f
 
 /** Color estable para una categoría; "Sin categoría" siempre neutral. */
 fun categoryColor(category: String): Color {
@@ -76,18 +80,7 @@ fun InteractiveAnalyticsCard(
     modifier: Modifier = Modifier
 ) {
     GlassCard(modifier = modifier) {
-        // Cabecera: título + toggle segmentado.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(R.string.analytics),
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium)
-            )
-            AnalyticsTypeToggle(type = type, onTypeChange = onTypeChange)
-        }
+        AnalyticsHeader(type = type, onTypeChange = onTypeChange)
         Text(
             text = monthLabel,
             style = MaterialTheme.typography.bodySmall,
@@ -126,17 +119,80 @@ fun InteractiveAnalyticsCard(
 }
 
 @Composable
-private fun AnalyticsTypeToggle(
+private fun AnalyticsHeader(
     type: AnalyticsType,
     onTypeChange: (AnalyticsType) -> Unit
 ) {
-    SingleChoiceSegmentedButtonRow {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val stackHeader: Boolean = shouldStackAnalyticsHeader(maxWidth, LocalDensity.current.fontScale)
+        if (stackHeader) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                AnalyticsHeaderTitle()
+                AnalyticsTypeToggle(
+                    type = type,
+                    onTypeChange = onTypeChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    fillWidth = true
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AnalyticsHeaderTitle(modifier = Modifier.weight(1f))
+                AnalyticsTypeToggle(type = type, onTypeChange = onTypeChange)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnalyticsHeaderTitle(modifier: Modifier = Modifier) {
+    Text(
+        text = stringResource(R.string.analytics),
+        modifier = modifier,
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+
+internal fun shouldStackAnalyticsHeader(maxWidth: androidx.compose.ui.unit.Dp, fontScale: Float): Boolean =
+    maxWidth < AnalyticsHeaderStackWidth || fontScale > AnalyticsHeaderStackFontScale
+
+@Composable
+private fun AnalyticsTypeToggle(
+    type: AnalyticsType,
+    onTypeChange: (AnalyticsType) -> Unit,
+    modifier: Modifier = Modifier,
+    fillWidth: Boolean = false
+) {
+    SingleChoiceSegmentedButtonRow(modifier = modifier) {
         AnalyticsType.entries.forEachIndexed { index, option ->
             SegmentedButton(
+                modifier = if (fillWidth) Modifier.weight(1f) else Modifier,
                 selected = type == option,
                 onClick = { onTypeChange(option) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = AnalyticsType.entries.size),
-                label = { Text(if (option == AnalyticsType.GASTOS) stringResource(R.string.expenses) else stringResource(R.string.income)) }
+                label = {
+                    Text(
+                        text = if (option == AnalyticsType.GASTOS) {
+                            stringResource(R.string.expenses)
+                        } else {
+                            stringResource(R.string.income)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        softWrap = false,
+                        textAlign = TextAlign.Center
+                    )
+                }
             )
         }
     }
@@ -261,6 +317,7 @@ private fun AnalyticsLegendRow(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
         Text(
