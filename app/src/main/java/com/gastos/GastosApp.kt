@@ -36,8 +36,8 @@ class GastosApp : Application(), Configuration.Provider {
             runCatching { fiscalConfigRepository.insertDefaultConfigs() }
             runCatching { backupArchiveService.recoverInterruptedRestore() }
             runCatching { backupArchiveService.cleanupTemporaryFiles(startupTime) }
-            remoteSyncQueue.schedule()
         }
         cloudBackupScheduler.reconcile()
+        remoteSyncQueue.schedule()
     }
 }
