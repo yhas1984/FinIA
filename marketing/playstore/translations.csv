@@ -1,0 +1,71 @@
+locale,app name,short description,full description
+en-US,FinAI: Expense Tracker,"Track expenses and income, scan invoices, manage your budget, and save with AI.","FinAI: Expense Tracker — your personal finance app with AI. Forget spreadsheets: track your daily expenses, scan invoices, and understand your money by talking to the app like a financial advisor. Built for freelancers and small businesses that need to manage daily expenses and income and keep their budget under control.
+
+📷 SCAN INVOICES WITH YOUR CAMERA
+Take a photo of any invoice or receipt to scan its data instantly. The AI automatically extracts vendor, date, invoice number, total, tax base, VAT, tax ID, and products with prices. Supports expenses and income: paychecks, sales invoices, and receipts. No typing needed.
+
+🤖 AI ASSISTANT
+Powered by Gemini 3.6 Flash to track your expenses naturally. Say ""I spent $20 on coffee"" or ""I got paid my salary"" and it's recorded instantly. Ask ""How much did I spend this month?"" or ""What's my balance?"" and get the answer right away. The AI remembers the conversation context and suggests categories and subcategories automatically.
+
+🎙️ VOICE COMMANDS
+Dictate your transactions while driving or cooking: speech becomes text and the AI processes it instantly.
+
+📊 FINANCIAL DASHBOARD
+Monthly balance, income, expenses, and weekly activity at a glance. Interactive statistics with percentages, a monthly financial calendar, and reorderable widgets to see only what matters. Understand where your money goes, adjust your budget… and save more.
+
+📋 COMPLETE EXPENSE & INCOME MANAGEMENT
+Invoices with vendor, invoice number, date, VAT, tax ID, and photo. Income with concept, gross, net, currency, and source. Products with quantity, unit price, and subtotal. Custom categories and subcategories, with country-specific tax configuration: Spain, Mexico, Argentina, Colombia, Chile, Peru, and more.
+
+☁️ GOOGLE SHEETS EXPORT
+Export your data to a Google Sheet with 4 tabs: Expenses, Income, Products, and Summary with automatic formulas. Once linked, every new expense or income syncs automatically.
+
+💾 GOOGLE DRIVE BACKUP
+Encrypted (AES-256) backup of your database to your personal Drive, with previous versions and restore. Export to CSV or PDF to share via email or WhatsApp.
+
+🔒 PRIVACY & SECURITY
+Your financial data is stored exclusively on your device. No ads, no trackers. Google Sheets and Drive require your explicit OAuth authorization and only access files created by the app. No registration required.
+
+⭐ PREMIUM — one-time purchase
+• Google Sheets export & sync.
+• Automatic Google Drive backup.
+• Extended AI chat memory (10 turns).
+
+REQUIREMENTS
+Android 8.0+. Internet required for the AI assistant (messages are sent to the Gemini API). Free Gemini API key configurable in Settings. Camera and microphone optional.
+
+Download FinAI for free and take control of your money: track, scan invoices, and save every month."
+es-419,FinAI: Control de Gastos,"Controla tus gastos e ingresos, escanea facturas y ahorra con IA.","FinAI: Control de Gastos — tu gestor de gastos e ingresos con inteligencia artificial. Olvídate de las hojas de cálculo: registra tus gastos diarios, escanea facturas y entiende tus finanzas personales hablando con la app, como con un asesor financiero. Pensada para freelancers y pequeños negocios que necesitan el control de sus gastos e ingresos del día a día y mantener su presupuesto bajo control.
+
+📷 ESCANEA FACTURAS CON LA CÁMARA
+Toma una foto de cualquier factura o ticket para escanear sus datos al instante. La IA extrae automáticamente proveedor, fecha, número de factura, total, base imponible, IVA, identificación fiscal y productos con precios. Soporta gastos e ingresos: sueldos, facturas de venta y tickets. Sin escribir ni un solo dato a mano.
+
+🤖 ASISTENTE DE IA
+Integra Gemini 3.6 Flash para controlar tus gastos de forma natural. Di ""gasté 200 pesos en café"" o ""cobré mi sueldo"" y se registra al instante. Pregunta ""¿cuánto gasté este mes?"", ""¿cuál es mi balance?"" o ""¿cuánto gasté en supermercado?"" y obtén la respuesta al momento. La IA recuerda el contexto de la conversación y sugiere categorías y subcategorías automáticamente.
+
+🎙️ COMANDOS POR VOZ
+Dicta tus transacciones mientras conduces o cocinas: la voz se convierte en texto y la IA la procesa al instante.
+
+📊 PANEL FINANCIERO
+Balance del mes, ingresos, egresos y actividad semanal de un vistazo. Estadísticas interactivas con porcentajes, calendario financiero mensual y widgets reordenables para ver solo lo que te importa. Entiende en qué gastas, ajusta tu presupuesto… y ahorra más.
+
+📋 GESTIÓN COMPLETA
+Facturas con proveedor, número de factura, fecha, IVA, identificación fiscal e imagen. Ingresos con concepto, devengado, neto, moneda y fuente. Productos con cantidad, precio unitario y subtotal. Categorías y subcategorías personalizables, con configuración fiscal por país: México, Argentina, Colombia, Chile, Perú, España y más.
+
+☁️ EXPORTACIÓN A GOOGLE SHEETS
+Exporta tus datos a un Google Sheet con 4 hojas: Gastos, Ingresos, Productos y Resumen con fórmulas automáticas. Una vez vinculado, cada alta, edición o borrado se sincroniza automáticamente.
+
+💾 COPIA DE SEGURIDAD EN GOOGLE DRIVE
+Copia de seguridad cifrada (AES-256) de tu base de datos en tu Drive personal, con versiones anteriores y restauración. También exporta a CSV o PDF para compartir por correo o WhatsApp.
+
+🔒 PRIVACIDAD Y SEGURIDAD
+Tus datos financieros se almacenan exclusivamente en tu dispositivo. Sin publicidad ni rastreadores. Google Sheets y Drive requieren tu autorización OAuth explícita y solo acceden a los archivos que crea la app. Sin registro ni cuenta obligatoria.
+
+⭐ PREMIUM — compra única
+• Exportación y sincronización con Google Sheets.
+• Copia de seguridad automática en Google Drive.
+• Chat IA con memoria extendida (10 turnos).
+
+REQUISITOS
+Android 8.0+. Internet necesario para el asistente IA (los mensajes se envían a la API de Gemini). API key gratuita de Gemini configurable en Ajustes. Cámara y micrófono opcionales.
+
+Descarga FinAI gratis y toma el control de tu dinero: registra, escanea facturas y ahorra cada mes."

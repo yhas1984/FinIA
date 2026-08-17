@@ -22,3 +22,6 @@ google-services.json
 # Keystore / release keys
 *.keystore
 *.jks
+
+# Configuración local del backend de billing (no commitear)
+scripts/.env
