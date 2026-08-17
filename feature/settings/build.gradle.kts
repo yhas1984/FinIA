@@ -69,6 +69,34 @@ android {
     }
 }
 
+// Guard: evita publicar un release "fail-closed" por olvidar las env vars del
+// backend de verificación. Se evalúa solo si se pide un release de la app.
+val releaseRequested = gradle.startParameter.taskNames.any { name ->
+    name == "bundleRelease" || name == "assembleRelease" ||
+        name.endsWith(":bundleRelease") || name.endsWith(":assembleRelease")
+}
+if (releaseRequested) {
+    val required = providers.environmentVariable("FINAI_BILLING_BACKEND_REQUIRED").orElse("true").get().toBooleanStrictOrNull() ?: true
+    if (required) {
+        val url = providers.environmentVariable("FINAI_BILLING_BACKEND_URL").orElse("").get()
+        val issuer = providers.environmentVariable("FINAI_BILLING_ENTITLEMENT_ISSUER").orElse("").get()
+        val keyId = providers.environmentVariable("FINAI_BILLING_ENTITLEMENT_KEY_ID").orElse("").get()
+        val publicKey = providers.environmentVariable("FINAI_BILLING_ENTITLEMENT_PUBLIC_KEY_PEM").orElse("").get()
+        val missing = buildList {
+            if (url.isBlank()) add("FINAI_BILLING_BACKEND_URL")
+            if (issuer.isBlank()) add("FINAI_BILLING_ENTITLEMENT_ISSUER")
+            if (keyId.isBlank()) add("FINAI_BILLING_ENTITLEMENT_KEY_ID")
+            if (publicKey.isBlank()) add("FINAI_BILLING_ENTITLEMENT_PUBLIC_KEY_PEM")
+        }
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "Release con BILLING_BACKEND_REQUIRED=true exige configurar: ${missing.joinToString(", ")}. " +
+                    "Sino, usa FINAI_BILLING_BACKEND_REQUIRED=false para el fallback local."
+            )
+        }
+    }
+}
+
 dependencies {
     // Compose
     implementation(platform(libs.compose.bom))

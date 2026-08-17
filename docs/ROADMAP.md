@@ -26,6 +26,14 @@ Crecimiento incremental sin romper: Dashboard · Gastos · Ingresos.
 - Detalle inferior con movimientos del día y acceso a su edición.
 - Compatible con layouts personalizados y backups anteriores: el widget nuevo se añade al final de layouts existentes.
 
+## Fase 4 — Notificaciones
+- Recordatorio configurable para registrar los gastos del día (hora y frecuencia).
+- Avisos de copia de seguridad y sincronización: completada, fallida o pendiente (Drive/Sheets).
+- Avisos de suscripción Premium: renovación próxima, caducidad o revocación.
+- Permiso `POST_NOTIFICATIONS` (API 33+) y un canal de notificación por tipo.
+- Basado en WorkManager (ya presente) y respetuoso con el modo no molestar.
+- Opciones en Ajustes para activar o desactivar cada tipo de notificación.
+
 ## No copiar de la app de referencia
 - Cuadrícula 3x3 genérica, PC Manager, calculadora suelta, anuncios.
 - Nombres/colores/orden de categorías ajenos.
