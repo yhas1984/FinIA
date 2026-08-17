@@ -2,7 +2,7 @@
 
 **Asistente financiero personal para Android** con inteligencia artificial integrada (Gemini), escaneo de facturas desde el chat, comandos por voz y chat conversacional. Pensado para gestión de gastos, ingresos y facturación, con orientación por defecto a España (EUR, IVA 21%, IRPF, NIF) pero con extracción multi-país (MX, AR, CO, CL, PE, US…).
 
-> **Nota:** La app está en **español**.
+> 🌐 **Idiomas** — La app está disponible en **español** e **inglés** y sigue el idioma del sistema. | Read this in [**English**](README.en.md).
 
 ---
 
