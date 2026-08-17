@@ -2,3 +2,5 @@ User-agent: *
 Allow: /
 
 Sitemap: https://finai.leadpilot.es/sitemap.xml
+
+# Build trigger: 2026-08-17 (forzar rebuild de Pages)
