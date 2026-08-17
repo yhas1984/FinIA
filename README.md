@@ -178,6 +178,25 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest
 ```
 
+### Release con verificación de compras (billing)
+
+El release compila en modo *fail-closed*: exige las variables de entorno del
+backend de verificación (`FINAI_BILLING_BACKEND_URL`,
+`FINAI_BILLING_ENTITLEMENT_ISSUER`, `FINAI_BILLING_ENTITLEMENT_KEY_ID`,
+`FINAI_BILLING_ENTITLEMENT_PUBLIC_KEY_PEM`). Si faltan, `bundleRelease` falla
+con un error claro para evitar publicar un AAB sin verificación.
+
+El flujo recomendado usa el script preparado (lee `scripts/.env`, plantilla en
+`scripts/.env.example`):
+
+```bash
+cp scripts/.env.example scripts/.env   # rellena los valores reales (URL, issuer, key id, clave pública)
+./scripts/build_release.sh             # valida las env vars y compila el AAB
+```
+
+> La clave pública se deriva de `finai-entitlement-private-key` (Secret Manager,
+> proyecto `finai-501616`) con `openssl pkey -pubout`. Nunca se commitea.
+
 ### Validación funcional reciente
 
 La build de desarrollo se ha validado con:
@@ -194,13 +213,33 @@ La build de desarrollo se ha validado con:
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-La suite instrumentada actual pasa **6/6 tests**. También se ha comprobado en el dispositivo el registro de gastos e ingresos por lenguaje natural, consultas de productos y filtros de categoría/subcategoría, además del OCR de una factura real desde la galería. Room utiliza el esquema v10 con migración desde v9.
+La suite instrumentada actual pasa **10/10 tests**. También se ha comprobado en el dispositivo el registro de gastos e ingresos por lenguaje natural, consultas de productos y filtros de categoría/subcategoría, además del OCR de una factura real desde la galería. Room utiliza el esquema v11 (con migraciones desde v9/v10) y el outbox de sincronización remota está en v3.
 
 El lint dirigido no presenta incidencias propias en `feature:ai`; `feature:chatbot` y `feature:invoices` solo muestran avisos procedentes de `google-http-client` (`TrustAllX509TrustManager`).
 
 > El `signingConfigs.release` lee credenciales de variables de entorno (`FINAI_KEYSTORE_FILE`, `FINAI_KEYSTORE_PASSWORD`, `FINAI_KEY_ALIAS`, `FINAI_KEY_PASSWORD`) o de `gradle.properties`; nunca se hardcodean en el repo.
 >
 > Si usas Android Studio, abre el proyecto y pulsa **Run ▶**. Asegúrate de tener el **Android SDK** configurado (`local.properties` con `sdk.dir`).
+
+---
+
+## 💎 Premium y verificación de compras
+
+El estado Premium se valida contra un backend propio desplegado en **Cloud Run**
+(`backend/billing/`), además de Google Play Billing:
+
+- El cliente solicita una compra (`finai_premium`) y envía el *purchase token* al
+  backend (`POST /v1/entitlements:verify`), que lo valida contra la API de
+  Google Play Android Publisher, reconoce la compra y devuelve un JWT firmado
+  con RSA (issuer `finai-billing`, key ID `2026-01`).
+- La app verifica ese JWT con la clave pública embebida antes de activar
+  Premium (revocaciones persistentes vía `/v1/entitlements:reconcile` con Cloud
+  Scheduler y OIDC).
+- **Play Integrity** está implementado pero desactivado
+  (`FINAI_BILLING_PLAY_INTEGRITY_ENABLED=false`) hasta validar el vínculo
+  extremo a extremo con Play Console.
+- Los builds de debug conservan el flag local `debugSetPremium` y no exigen el
+  backend; los de release fallan si la configuración del backend falta.
 
 ---
 
@@ -222,6 +261,13 @@ FinAI/
 │   ├── ai/                   # Servicio IA (Gemini): prompts, parseo, OCR
 │   ├── settings/             # Ajustes, API key (cifrada), Premium/Billing
 │   └── backup/               # Backup cifrado manual/Drive, CSV/PDF y Sheets
+├── backend/
+│   └── billing/              # Cloud Run de verificación de compras + runbook
+├── marketing/
+│   └── playstore/            # Textos ASO (es-ES/en-US/es-419), checklist, storyboard
+├── scripts/
+│   ├── build_release.sh      # Compila el AAB con la config de billing (.env)
+│   └── .env.example          # Plantilla de variables del backend (no commitear .env)
 ├── gradle/
 │   └── libs.versions.toml    # Catálogo de versiones
 └── settings.gradle.kts       # Definición de módulos
@@ -248,4 +294,4 @@ Proyecto privado. Todos los derechos reservados.
 
 ---
 
-**FinAI** · v1.6.0 · Hecho con ❤️ en Kotlin + Jetpack Compose
+**FinAI** · v1.6.0 (build 15) · Hecho con ❤️ en Kotlin + Jetpack Compose
