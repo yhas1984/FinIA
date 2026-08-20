@@ -73,7 +73,7 @@ Arquitectura **modular multi-módulo** en 3 capas (clean-ish), con inyección de
 
 ## 🤖 Inteligencia Artificial (Gemini)
 
-FinAI usa **Gemini** a través de la **API gratuita de Google AI Studio**.
+FinAI usa **Gemini 3.7 Flash** a través de la **API gratuita de Google AI Studio**. El nivel de *thinking* se ajusta por tarea: **bajo** en chat y consultas (respuestas rápidas e interactivas) y **medio** en el OCR de documentos (precisión equilibrada en la extracción fiscal).
 
 ### Configuración
 1. Obtén una API key gratuita en **[Google AI Studio](https://aistudio.google.com/apikey)**.

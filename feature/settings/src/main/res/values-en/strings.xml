@@ -2,10 +2,10 @@
     <string name="settings_title">Settings</string>
     <string name="back">Back</string>
     <string name="settings_ai_section">Artificial Intelligence</string>
-    <string name="settings_ai_description">FinAI uses Gemini 3.6 Flash through Google AI Studio’s free API.</string>
+    <string name="settings_ai_description">FinAI uses Gemini 3.7 Flash through Google AI Studio’s free API.</string>
     <string name="settings_api_key_validating">Validating API key…</string>
     <string name="settings_api_key_not_configured">API key not configured</string>
-    <string name="settings_api_key_configured">API key configured (Gemini 3.6 Flash)</string>
+    <string name="settings_api_key_configured">API key configured (Gemini 3.7 Flash)</string>
     <string name="settings_configure_api_key">Configure API Key</string>
     <string name="settings_change_api_key">Change API Key</string>
     <string name="settings_delete_api_key">Delete API Key</string>
@@ -49,7 +49,7 @@
     <string name="api_key_help_title">How to get your free API key:</string>
     <string name="api_key_help_steps">1. Open Google AI Studio (button below)\n2. Sign in with your Google account\n3. Tap &quot;Create API key&quot;\n4. Copy the key and paste it here</string>
     <string name="open_google_ai_studio">Open Google AI Studio</string>
-    <string name="gemini_note">💡 Gemini 3.6 Flash has a free plan that is enough for personal use (about 10 requests/min and 1500/day). Check exact limits in AI Studio.</string>
+    <string name="gemini_note">💡 Gemini 3.7 Flash has a free plan that is enough for personal use (about 10 requests/min and 1500/day). Check exact limits in AI Studio.</string>
     <string name="api_key_label">API Key</string>
     <string name="api_key_valid">API key valid</string>
     <string name="api_key_saving">Validating…</string>
@@ -87,7 +87,7 @@
     <string name="settings_api_key_help_title">How to get your free API key:</string>
     <string name="settings_api_key_help_steps">1. Open Google AI Studio (button below)\n2. Sign in with your Google account\n3. Tap &quot;Create API key&quot;\n4. Copy the key and paste it here</string>
     <string name="settings_open_google_ai_studio">Open Google AI Studio</string>
-    <string name="settings_gemini_note">💡 Gemini 3.6 Flash has a free plan that is enough for personal use (about 10 requests/min and 1500/day). Check exact limits in AI Studio.</string>
+    <string name="settings_gemini_note">💡 Gemini 3.7 Flash has a free plan that is enough for personal use (about 10 requests/min and 1500/day). Check exact limits in AI Studio.</string>
     <string name="settings_api_key_label">API Key</string>
     <string name="settings_api_key_valid">API key valid</string>
     <string name="settings_api_key_validating_short">Validating...</string>

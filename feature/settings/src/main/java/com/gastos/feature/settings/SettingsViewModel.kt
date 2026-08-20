@@ -3,7 +3,6 @@ package com.gastos.feature.settings
 import android.app.Activity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.annotation.StringRes
 import com.gastos.feature.ai.AIService
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.FloatingButtonPosition
@@ -22,7 +21,7 @@ import javax.inject.Inject
 sealed class ApiKeyValidation {
     data object None : ApiKeyValidation()
     data object Valid : ApiKeyValidation()
-    data class Invalid(@StringRes val messageRes: Int) : ApiKeyValidation()
+    data class Invalid(val message: String) : ApiKeyValidation()
 }
 
 data class SettingsUiState(
@@ -187,15 +186,15 @@ class SettingsViewModel @Inject constructor(
             it.copy(isApiKeyValidating = true, apiKeyValidation = ApiKeyValidation.None)
         }
         viewModelScope.launch {
-            val result = aiService.validateApiKey(apiKey)
-            if (result.isSuccess) {
+            val errorMessage = aiService.validateApiKey(apiKey)
+            if (errorMessage == null) {
                 settingsRepository.updateGeminiApiKey(apiKey)
                 _uiState.update {
                     it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.Valid)
                 }
             } else {
                 _uiState.update {
-                    it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.Invalid(R.string.api_key_invalid_message))
+                    it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.Invalid(errorMessage))
                 }
             }
         }

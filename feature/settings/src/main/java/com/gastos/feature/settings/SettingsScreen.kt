@@ -583,7 +583,7 @@ fun SettingsScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    stringResource(v.messageRes),
+                                    v.message,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error
                                 )
