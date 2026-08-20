@@ -149,8 +149,8 @@ class AIService @Inject constructor(
 
     fun isConfigured(): Boolean = currentApiKey.isNotBlank()
 
-    suspend fun validateApiKey(apiKey: String): Result<Unit> = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank()) return@withContext Result.failure(Exception(context.getString(R.string.ai_api_key_empty)))
+    suspend fun validateApiKey(apiKey: String): String? = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) return@withContext context.getString(R.string.ai_api_key_empty)
         try {
             geminiRestClient.generateContent(
                 GeminiGenerateRequest(
@@ -159,11 +159,12 @@ class AIService @Inject constructor(
                     contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart("ping"))))
                 )
             )
-            Result.success(Unit)
+            null
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            Result.failure(error)
+            SafeLog.e(TAG, "Error validando API key", error)
+            friendlyError(error)
         }
     }
 
@@ -284,7 +285,8 @@ class AIService @Inject constructor(
                 GeminiGenerateRequest(
                     apiKey = currentApiKey,
                     systemInstruction = buildSystemPrompt(systemInstructions),
-                    contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(queryExtractionPrompt(query)))))
+                    contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(queryExtractionPrompt(query))))),
+                    generationConfig = GeminiGenerationConfig(thinkingLevel = QUERY_THINKING_LEVEL)
                 )
             )
             check(responseText.isNotBlank()) { "Gemini devolvió una respuesta vacía." }
@@ -314,7 +316,8 @@ class AIService @Inject constructor(
     private fun buildRequest(newContents: List<GeminiContent>): GeminiGenerateRequest = GeminiGenerateRequest(
         apiKey = currentApiKey,
         systemInstruction = buildSystemPrompt(systemInstructions),
-        contents = chatHistory.toList() + newContents
+        contents = chatHistory.toList() + newContents,
+        generationConfig = GeminiGenerationConfig(thinkingLevel = CHAT_THINKING_LEVEL)
     )
 
     private fun sanitizeRole(role: String): String = if (role == ROLE_MODEL) ROLE_MODEL else ROLE_USER
@@ -899,6 +902,8 @@ class AIService @Inject constructor(
         private const val IMAGE_COMPRESSION_QUALITY = 88
         private const val MIME_TYPE_JPEG = "image/jpeg"
         private const val OCR_THINKING_LEVEL = "medium"
+        private const val CHAT_THINKING_LEVEL = "low"
+        private const val QUERY_THINKING_LEVEL = "low"
         private const val OCR_RESPONSE_MIME_TYPE = "application/json"
         private const val OCR_MEDIA_RESOLUTION = "MEDIA_RESOLUTION_HIGH"
         private const val ROLE_USER = "user"

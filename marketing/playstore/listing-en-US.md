@@ -21,7 +21,7 @@ FinAI: Expense Tracker — your personal finance app with AI. Forget spreadsheet
 Take a photo of any invoice or receipt to scan its data instantly. The AI automatically extracts vendor, date, invoice number, total, tax base, VAT, tax ID, and products with prices. Supports expenses and income: paychecks, sales invoices, and receipts. No typing needed.
 
 🤖 AI ASSISTANT
-Powered by Gemini 3.6 Flash to track your expenses naturally. Say "I spent $20 on coffee" or "I got paid my salary" and it's recorded instantly. Ask "How much did I spend this month?" or "What's my balance?" and get the answer right away. The AI remembers the conversation context and suggests categories and subcategories automatically.
+Powered by Gemini 3.7 Flash to track your expenses naturally. Say "I spent $20 on coffee" or "I got paid my salary" and it's recorded instantly. Ask "How much did I spend this month?" or "What's my balance?" and get the answer right away. The AI remembers the conversation context and suggests categories and subcategories automatically.
 
 🎙️ VOICE COMMANDS
 Dictate your transactions while driving or cooking: speech becomes text and the AI processes it instantly.

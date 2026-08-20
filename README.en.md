@@ -73,7 +73,7 @@
 
 ## 🤖 Artificial Intelligence (Gemini)
 
-FinAI uses **Gemini** through the **free Google AI Studio API**.
+FinAI uses **Gemini 3.7 Flash** through the **free Google AI Studio API**. The thinking level is tuned per task: **low** for chat and queries (fast, interactive responses) and **medium** for document OCR (balanced accuracy in fiscal extraction).
 
 ### Setup
 1. Get a free API key at **[Google AI Studio](https://aistudio.google.com/apikey)**.

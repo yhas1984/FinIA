@@ -208,7 +208,7 @@ class GeminiRestClient @Inject constructor() {
 
     private companion object {
         private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
-        private const val MODEL_NAME = "gemini-3.6-flash"
+        private const val MODEL_NAME = "gemini-3.7-flash"
         private const val HEADER_API_KEY = "x-goog-api-key"
         private const val HEADER_CONTENT_TYPE = "Content-Type"
         private const val MEDIA_TYPE_JSON = "application/json"

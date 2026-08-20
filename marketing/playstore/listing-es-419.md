@@ -24,7 +24,7 @@ FinAI: Control de Gastos — tu gestor de gastos e ingresos con inteligencia art
 Toma una foto de cualquier factura o ticket para escanear sus datos al instante. La IA extrae automáticamente proveedor, fecha, número de factura, total, base imponible, IVA, identificación fiscal y productos con precios. Soporta gastos e ingresos: sueldos, facturas de venta y tickets. Sin escribir ni un solo dato a mano.
 
 🤖 ASISTENTE DE IA
-Integra Gemini 3.6 Flash para controlar tus gastos de forma natural. Di "gasté 200 pesos en café" o "cobré mi sueldo" y se registra al instante. Pregunta "¿cuánto gasté este mes?", "¿cuál es mi balance?" o "¿cuánto gasté en supermercado?" y obtén la respuesta al momento. La IA recuerda el contexto de la conversación y sugiere categorías y subcategorías automáticamente.
+Integra Gemini 3.7 Flash para controlar tus gastos de forma natural. Di "gasté 200 pesos en café" o "cobré mi sueldo" y se registra al instante. Pregunta "¿cuánto gasté este mes?", "¿cuál es mi balance?" o "¿cuánto gasté en supermercado?" y obtén la respuesta al momento. La IA recuerda el contexto de la conversación y sugiere categorías y subcategorías automáticamente.
 
 🎙️ COMANDOS POR VOZ
 Dicta tus transacciones mientras conduces o cocinas: la voz se convierte en texto y la IA la procesa al instante.
