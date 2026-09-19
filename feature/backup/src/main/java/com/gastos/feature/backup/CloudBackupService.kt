@@ -43,7 +43,7 @@ class CloudBackupService @Inject constructor(
             }?.let { return@withLock it }
             val temporary = File(context.cacheDir, "cloud_backup_${System.nanoTime()}.$BACKUP_FILE_EXTENSION")
             try {
-                val preview = archiveService.createArchive(temporary)
+                val preview = archiveService.createArchive(temporary, BackupMode.DATA_ONLY)
                 val name = "finai_backup_${preview.createdAt}.$BACKUP_FILE_EXTENSION"
                 val metadata = DriveFile()
                     .setName(name)
@@ -163,7 +163,8 @@ class CloudBackupService @Inject constructor(
         "invoiceCount" to invoiceCount.toString(),
         "productCount" to productCount.toString(),
         "incomeCount" to incomeCount.toString(),
-        "imageCount" to imageCount.toString()
+        "imageCount" to imageCount.toString(),
+        "mode" to mode.name
     )
 
     private fun DriveFile.toCloudBackupInfo(): CloudBackupInfo {
@@ -180,7 +181,8 @@ class CloudBackupService @Inject constructor(
                 invoiceCount = properties.getValue("invoiceCount").toInt(),
                 productCount = properties.getValue("productCount").toInt(),
                 incomeCount = properties.getValue("incomeCount").toInt(),
-                imageCount = properties.getValue("imageCount").toInt()
+                imageCount = properties.getValue("imageCount").toInt(),
+                mode = runCatching { BackupMode.valueOf(properties["mode"].orEmpty()) }.getOrDefault(BackupMode.COMPLETE)
             )
         )
     }

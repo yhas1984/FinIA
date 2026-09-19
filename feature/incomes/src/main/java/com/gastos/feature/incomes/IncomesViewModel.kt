@@ -1,5 +1,8 @@
 package com.gastos.feature.incomes
 
+import com.gastos.domain.model.ConversionSummary
+import com.gastos.domain.model.moneyRecord
+import com.gastos.domain.model.summarize
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
@@ -25,6 +28,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class IncomesUiState(
+    val conversion: ConversionSummary? = null,
     val incomes: List<Income> = emptyList(),
     val hasAnyIncomes: Boolean = false,
     val selectedCategoryFilter: String? = null,
@@ -48,6 +52,7 @@ class IncomesViewModel @Inject constructor(
     private val sheetsSyncManager: SheetsSyncManager,
     private val exchangeRateProvider: ExchangeRateProvider,
     private val currencyPreference: CurrencyPreference,
+    private val invoiceDriveService: com.gastos.feature.backup.InvoiceDriveService,
     private val invoiceImageStorage: InvoiceImageStorage
 ) : ViewModel() {
 
@@ -117,7 +122,8 @@ class IncomesViewModel @Inject constructor(
                             hasAnyIncomes = data.hasAnyIncomes,
                             isLoading = false,
                             error = null,
-                            totalIngresosConvertido = data.total,
+                            totalIngresosConvertido = data.total.amount,
+                            conversion = data.total,
                             defaultCurrency = data.targetCurrency,
                             selectedCategoryFilter = data.categoryFilter,
                             availableCategories = data.availableCategories,
@@ -145,15 +151,16 @@ class IncomesViewModel @Inject constructor(
      * Si falta la tasa de alguna moneda, su importe se excluye del total
      * (no se suma como si fuera la moneda por defecto).
      */
-    private fun recomputeTotal(incomes: List<Income>, target: String): Double? {
-        if (incomes.isEmpty()) return 0.0
-        val converted = incomes.sumOf { income ->
-            exchangeRateProvider.convert(income.monto, income.moneda, target) ?: 0.0
+    private fun recomputeTotal(incomes: List<Income>, target: String): ConversionSummary =
+        exchangeRateProvider.summarize(incomes.map { it.moneyRecord() }, target)
+
+    fun refreshRates() {
+        viewModelScope.launch {
+            try { exchangeRateProvider.refresh() }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { _uiState.update { it.copy(error = error.message) } }
         }
-        val allMissing = incomes.all {
-            exchangeRateProvider.convert(it.monto, it.moneda, target) == null
-        }
-        return if (allMissing) null else converted
+
     }
 
     private fun filterIncomesByCategory(
@@ -170,11 +177,12 @@ class IncomesViewModel @Inject constructor(
         return byCategory.filter { TransactionCategories.matchesCategory(it.subcategoria, subcategoryFilter) }
     }
 
-    fun deleteIncome(income: Income) {
+    fun deleteIncome(income: Income, deleteRemoteImage: Boolean = false) {
         viewModelScope.launch {
             try {
                 incomeRepository.deleteIncome(income)
                 invoiceImageStorage.delete(income.imagenUri)
+                if (deleteRemoteImage) invoiceDriveService.enqueueDelete(income, consent = true)
                 // Propaga el borrado a la hoja unificada "Ingresos".
                 sheetsSyncManager.deleteIncome(income.id)
             } catch (e: Exception) {
@@ -189,7 +197,7 @@ class IncomesViewModel @Inject constructor(
 private data class IncomesDisplayData(
     val incomes: List<Income>,
     val targetCurrency: String,
-    val total: Double?,
+    val total: ConversionSummary,
     val categoryFilter: String?,
     val subcategoryFilter: String?,
     val availableCategories: List<String>,

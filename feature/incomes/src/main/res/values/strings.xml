@@ -31,8 +31,8 @@
     <string name="net_amount">Líquido (neto)</string>
     <string name="calculated_net">Líquido calculado: %1$s %2$s</string>
     <string name="source_optional">Fuente (opcional)</string>
-    <string name="vat_percent">IVA %%</string>
-    <string name="irpf_percent">IRPF %%</string>
+    <string name="vat_percent" formatted="false">IVA %</string>
+    <string name="irpf_percent" formatted="false">IRPF %</string>
     <string name="notes_optional">Notas (opcional)</string>
     <string name="edit_income">Editar Ingreso</string>
     <string name="new_income">Nuevo Ingreso</string>
@@ -49,4 +49,7 @@
     <string name="source_label">Fuente: %1$s</string>
     <string name="income_type_label">Ingreso</string>
     <string name="delete_income_error">Error al eliminar ingreso</string>
+    <string name="total_partial">Total parcial</string>
+    <string name="partial_charts_notice">Los balances, gráficos y comparaciones solo incluyen movimientos con tasa disponible. Excluidos:</string>
+    <string name="refresh_exchange_rates">Actualizar tasas</string>
 </resources>

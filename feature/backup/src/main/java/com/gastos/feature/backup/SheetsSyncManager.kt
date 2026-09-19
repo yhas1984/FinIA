@@ -119,7 +119,11 @@ class SheetsSyncManager @Inject constructor(
      */
     suspend fun upsertExpense(invoice: Invoice) {
         if (invoice.tipo != InvoiceType.GASTO) return
-        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT)
+        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT,
+            documentUuid = invoice.documentUuid)
+        if (!invoice.imagenUri.isNullOrBlank() && (invoice.driveUploadPending || invoice.driveFileId.isNullOrBlank()))
+            remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INVOICE_DRIVE, invoice.id, RemoteSyncAction.UPSERT,
+                documentUuid = invoice.documentUuid)
     }
 
     private fun expenseValues(invoice: Invoice, locale: SheetsSchema.LocaleCode): List<Any> =
@@ -127,7 +131,11 @@ class SheetsSyncManager @Inject constructor(
 
     /** Alta o edición de cualquier ingreso en la hoja unificada. */
     suspend fun upsertIncome(income: Income) {
-        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INCOME_SHEETS, income.id, RemoteSyncAction.UPSERT)
+        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INCOME_SHEETS, income.id, RemoteSyncAction.UPSERT,
+            documentUuid = income.documentUuid)
+        if (!income.imagenUri.isNullOrBlank() && (income.driveUploadPending || income.driveFileId.isNullOrBlank()))
+            remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INCOME_DRIVE, income.id, RemoteSyncAction.UPSERT,
+                documentUuid = income.documentUuid)
     }
 
     /**
@@ -137,7 +145,11 @@ class SheetsSyncManager @Inject constructor(
      */
     suspend fun syncExpense(invoice: Invoice, products: List<Product>) {
         if (invoice.tipo != InvoiceType.GASTO) return
-        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT)
+        remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT,
+            documentUuid = invoice.documentUuid)
+        if (!invoice.imagenUri.isNullOrBlank() && (invoice.driveUploadPending || invoice.driveFileId.isNullOrBlank()))
+            remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INVOICE_DRIVE, invoice.id, RemoteSyncAction.UPSERT,
+                documentUuid = invoice.documentUuid)
     }
 
     /**
@@ -457,6 +469,8 @@ class SheetsSyncManager @Inject constructor(
             reportCurrency = conversion.targetCurrency,
             totals = SheetsSchema.summaryTotals(invoices, incomes, conversion)
         )
+        sheets.spreadsheets().values().clear(spreadsheetId, "'${descriptor.resumenTitle}'!A:C",
+            com.google.api.services.sheets.v4.model.ClearValuesRequest()).execute()
         sheets.spreadsheets().values()
             .update(
                 spreadsheetId,

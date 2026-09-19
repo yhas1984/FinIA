@@ -92,4 +92,9 @@
     <string name="percent_format">%1$.1f%%</string>
     <string name="count_movements_format">%1$d mov. · %2$s</string>
 
+    <string name="total_partial">Total parcial</string>
+    <string name="total_unavailable">No disponible</string>
+    <string name="partial_charts_notice">Los balances, gráficos y comparaciones solo incluyen movimientos con tasa disponible. Excluidos:</string>
+    <string name="refresh_exchange_rates">Actualizar tasas</string>
+    <string name="rate_missing_short">N/D</string>
 </resources>

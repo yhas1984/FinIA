@@ -190,4 +190,51 @@ class EditInvoiceViewModelTest {
         ))
         assert(vm.uiState.value.availableSubcategories.contains("Supermercado"))
     }
+    @Test fun `invalid VAT preserves fields and never succeeds`() = runTest(dispatcher) {
+        val repo = mockk<com.gastos.repository.InvoiceRepository>(relaxed = true)
+        every { repo.getAllInvoices() } returns flowOf(emptyList())
+        val vm = EditInvoiceViewModel(mockContext(), repo, mockk(relaxed = true), mockk(relaxed = true))
+        vm.updateProveedor("Acme")
+        vm.updateTotal("12,50")
+        vm.updateIvaPercent("150")
+        vm.saveInvoice(java.util.Locale.forLanguageTag("es-ES"))
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.saveState is com.gastos.common.SaveState.Error)
+        assertTrue(vm.form.value.total == "12,50" && vm.form.value.ivaPercent == "150")
+        coVerify(exactly = 0) { repo.insertInvoice(any()) }
+    }
+
+    @Test fun `local success survives sync failure and a second save does not duplicate it`() = runTest(dispatcher) {
+        val repo = mockk<com.gastos.repository.InvoiceRepository>(relaxed = true)
+        every { repo.getAllInvoices() } returns flowOf(emptyList())
+        coEvery { repo.insertInvoice(any()) } returns 8L
+        val products = mockk<com.gastos.repository.ProductRepository>()
+        every { products.getProductsByInvoiceId(8L) } returns flowOf(emptyList())
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>()
+        coEvery { sync.syncExpense(any(), any()) } throws java.io.IOException("offline")
+        val vm = EditInvoiceViewModel(mockContext(), repo, products, sync)
+        vm.updateProveedor("Acme")
+        vm.updateTotal("12,50")
+        vm.saveInvoice(java.util.Locale.forLanguageTag("es-ES"))
+        vm.saveInvoice()
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.saveState == com.gastos.common.SaveState.Success)
+        coVerify(exactly = 1) { repo.insertInvoice(match { it.total == 12.5 && it.ivaPercent == 0.0 }) }
+    }
+
+    @Test fun `changing stored VAT recalculates base and retains manual choice on reload`() = runTest(dispatcher) {
+        val original = Invoice(id = 9, fecha = 1, proveedor = "A", tipo = InvoiceType.GASTO,
+            total = 104.0, ivaPercent = 10.0, baseImponible = 94.55, cuotaIva = 9.45)
+        val repo = mockk<com.gastos.repository.InvoiceRepository>()
+        every { repo.getAllInvoices() } returns flowOf(listOf(original))
+        coEvery { repo.getInvoiceById(9) } returns original
+        val vm = EditInvoiceViewModel(mockContext(), repo, mockk(relaxed = true), mockk(relaxed = true))
+        vm.loadInvoice(9)
+        assertTrue(vm.form.value.recalcFiscal()!!.ivaPercent == 10.0)
+        vm.updateIvaPercent("4")
+        vm.loadInvoice(9)
+        val fiscal = vm.form.value.recalcFiscal()!!
+        assertTrue(fiscal.ivaPercent == 4.0 && fiscal.baseImponible == 100.0 && fiscal.ivaAmount == 4.0)
+    }
+
 }

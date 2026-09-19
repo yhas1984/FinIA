@@ -2,6 +2,8 @@ package com.gastos.feature.chatbot
 
 import android.content.Context
 import android.net.Uri
+import com.gastos.domain.model.sumAvailable
+import com.gastos.domain.model.MoneyRecord
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.gastos.domain.model.Income
@@ -381,6 +383,7 @@ internal object FinancialQueryResolver {
 data class ChatbotUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isProcessing: Boolean = false,
+    val canRetryIncomplete: Boolean = false,
     val isListening: Boolean = false
 )
 
@@ -408,6 +411,9 @@ class ChatbotViewModel @Inject constructor(
     val uiState: StateFlow<ChatbotUiState> = _uiState.asStateFlow()
     private var pendingProductClarification: PendingProductClarification? = null
     private var hasRestoredMessages = false
+    private var incompletePrompt: String? = null
+    private var replacingIncomplete = false
+    private var lastFinancialQuery: (suspend () -> ExecutedFinancialQuery)? = null
 
     init {
         viewModelScope.launch {
@@ -428,8 +434,9 @@ class ChatbotViewModel @Inject constructor(
     private suspend fun restoreChat() {
         val messages = chatMessageRepository.getMessages()
         if (!hasRestoredMessages) {
+            incompletePrompt = messages.lastOrNull()?.takeIf { it.role == "model_incomplete" }?.contextText
             _uiState.update {
-                it.copy(messages = messages.toUiMessages().takeLast(200), isProcessing = false)
+                it.copy(messages = messages.toUiMessages().takeLast(200), isProcessing = false, canRetryIncomplete = incompletePrompt != null)
             }
             hasRestoredMessages = true
         }
@@ -439,7 +446,7 @@ class ChatbotViewModel @Inject constructor(
     private fun List<com.gastos.domain.model.ChatMessageRecord>.toUiMessages(): List<ChatMessage> = mapNotNull { it.toUiMessage() }
     private fun com.gastos.domain.model.ChatMessageRecord.toUiMessage(): ChatMessage? = when (role) {
         "user" -> ChatMessage.User(visibleText, createdAt)
-        "model" -> ChatMessage.AI(visibleText, createdAt)
+        "model", "model_incomplete" -> ChatMessage.AI(visibleText, createdAt)
         else -> ChatMessage.System(visibleText, createdAt)
     }
 
@@ -456,10 +463,17 @@ class ChatbotViewModel @Inject constructor(
             contextText = contextText,
             includeInContext = includeInContext
         )
-        chatMessageRepository.addMessage(message)
+        if (replacingIncomplete && role in setOf("model", "model_incomplete")) {
+            chatMessageRepository.replaceLastIncomplete(message)
+            replacingIncomplete = false
+        } else chatMessageRepository.addMessage(message)
     }
 
-    fun sendMessage(text: String) {
+    fun retryIncompleteResponse() {
+        incompletePrompt?.let { sendMessage(it, replaceIncomplete = true) }
+    }
+
+    fun sendMessage(text: String, replaceIncomplete: Boolean = false) {
         if (text.isBlank() || _uiState.value.isProcessing) return
 
         val pending = pendingProductClarification
@@ -476,7 +490,10 @@ class ChatbotViewModel @Inject constructor(
             pendingProductClarification = null
         }
 
-        _uiState.update { it.copy(messages = it.messages + ChatMessage.User(text), isProcessing = true) }
+        replacingIncomplete = replaceIncomplete
+        incompletePrompt = null
+        _uiState.update { it.copy(messages = if (replaceIncomplete) it.messages.dropLast(1) else it.messages + ChatMessage.User(text),
+            isProcessing = true, canRetryIncomplete = false) }
 
         // Sin API key: mensaje guía en lugar de llamar al servicio.
         if (!aiService.isConfigured()) {
@@ -491,11 +508,11 @@ class ChatbotViewModel @Inject constructor(
 
         viewModelScope.launch {
             var responseMode = ChatResponseMode.FREE_COMPLETE
+            val collected = StringBuilder()
             try {
-                persistMessage("user", text)
+                if (!replaceIncomplete) persistMessage("user", text)
                 responseMode = chatResponseMode(premiumStatusProvider.isPremium.value)
                 if (responseMode == ChatResponseMode.PREMIUM_STREAM) {
-                    val collected = StringBuilder()
                     appendPlaceholder()
                     aiService.processCommandStreaming(text).collect { chunk ->
                         collected.append(chunk)
@@ -511,11 +528,25 @@ class ChatbotViewModel @Inject constructor(
                     val result = aiService.processCommand(text)
                     handleAIResult(result, text)
                 }
+            } catch (cancelled: CancellationException) {
+                if (collected.isNotEmpty()) {
+                    val partial = collected.toString() + "\n\n" + context.getString(R.string.chatbot_response_incomplete)
+                    replacePlaceholder(partial)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                        persistMessage("model_incomplete", partial, text, includeInContext = false)
+                    }
+                } else _uiState.update { it.copy(isProcessing = false) }
+                throw cancelled
             } catch (e: Exception) {
-                SafeLog.e(TAG, "Error processing message", e)
+                SafeLog.w(TAG, "Message processing interrupted")
                 val message = context.getString(R.string.chatbot_processing_error, e.message ?: "")
                 if (responseMode == ChatResponseMode.PREMIUM_STREAM) {
-                    replacePlaceholder(message)
+                    val partial = collected.toString().takeIf { it.isNotBlank() }
+                    val visible = partial?.let { it + "\n\n" + context.getString(R.string.chatbot_response_incomplete) } ?: message
+                    replacePlaceholder(visible)
+                    incompletePrompt = text
+                    _uiState.update { it.copy(canRetryIncomplete = true) }
+                    persistMessage("model_incomplete", visible, text, includeInContext = false)
                 } else {
                     _uiState.update {
                         it.copy(messages = it.messages + ChatMessage.AI(message), isProcessing = false)
@@ -572,7 +603,8 @@ class ChatbotViewModel @Inject constructor(
         originalQuestion: String? = null,
         streaming: Boolean = false,
         includeInContext: Boolean = true,
-        contextTextOverride: String? = null
+        contextTextOverride: String? = null,
+        onLocalSaved: () -> Unit = {}
     ) {
         suspend fun showResult(
             text: String,
@@ -609,6 +641,7 @@ class ChatbotViewModel @Inject constructor(
                     driveUploadPending = result.invoice!!.imagenUri != null
                 )
                 val invoiceId = saveInvoiceUseCase(invoice, result.products)
+                onLocalSaved()
                 val savedInvoice = invoice.copy(id = invoiceId)
                 showResult(
                     context.getString(R.string.chatbot_expense_saved, invoice.proveedor, invoice.total.toString(), invoice.moneda),
@@ -623,7 +656,8 @@ class ChatbotViewModel @Inject constructor(
                     fuente = invoice.nifEmisor ?: invoice.proveedor
                 )
                 val incomeId = saveIncomeUseCase(income)
-                sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
+                onLocalSaved()
+                syncIncomeInBackground(income.copy(id = incomeId))
                 showResult(
                     context.getString(R.string.chatbot_income_saved, income.concepto, income.monto.toString(), income.moneda),
                     shouldIncludeInContext = false
@@ -633,7 +667,8 @@ class ChatbotViewModel @Inject constructor(
             result.income != null -> {
                 val income = result.income!!
                 val incomeId = saveIncomeUseCase(income)
-                sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
+                onLocalSaved()
+                syncIncomeInBackground(income.copy(id = incomeId))
                 val display = if (income.totalDevengado > 0 && income.totalNeto > 0) {
                     context.getString(
                         R.string.chatbot_income_breakdown,
@@ -697,6 +732,14 @@ class ChatbotViewModel @Inject constructor(
                 remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INVOICE_DRIVE, invoice.id, RemoteSyncAction.UPSERT)
             }
             remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT)
+        }
+    }
+
+    private fun syncIncomeInBackground(income: Income) {
+        viewModelScope.launch {
+            try { sheetsSyncManager.upsertIncome(income) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { SafeLog.w(TAG, "Income sync pending reconciliation") }
         }
     }
 
@@ -843,6 +886,7 @@ class ChatbotViewModel @Inject constructor(
         matchMode: String?,
         originalQuestion: String?
     ): ExecutedFinancialQuery {
+        lastFinancialQuery = { executeQuery(queryType, periodo, categoria, subcategoria, provider, item, matchMode, originalQuestion) }
         val (start, end) = getDateRange(periodo)
         val target = currencyPreference.defaultCurrency.value
         val fmt = java.text.NumberFormat.getCurrencyInstance(activeLocale()).apply {
@@ -900,15 +944,35 @@ class ChatbotViewModel @Inject constructor(
             append("; subcategoria=${normalizedSubcategory ?: "ninguna"}")
             append("; producto=${resolvedQuery.item ?: "ninguno"}.")
         }
-        fun result(text: String): ExecutedFinancialQuery = ExecutedFinancialQuery(text, contextText)
-        fun convertedInvoiceAmount(invoice: com.gastos.domain.model.Invoice): Double =
-            exchangeRateProvider.convert(invoice.total, invoice.moneda, target) ?: 0.0
-        fun convertedIncomeAmount(income: Income): Double =
-            exchangeRateProvider.convert(income.monto, income.moneda, target) ?: 0.0
-        fun convertedProductAmount(product: com.gastos.domain.model.Product): Double {
-            val currency = invoiceById[product.invoiceId]?.moneda ?: return 0.0
-            return exchangeRateProvider.convert(product.subtotal, currency, target) ?: 0.0
+        val exclusions = linkedMapOf<String, MoneyRecord>()
+        fun tracked(id: String, label: String, amount: Double, currency: String): Double? {
+            val converted = exchangeRateProvider.convert(amount, currency, target)
+            if (converted == null) exclusions[id] = MoneyRecord(id, label, amount, currency)
+            return converted
         }
+        fun result(text: String): ExecutedFinancialQuery {
+            val relevant = exclusions.values.filter { row -> when (resolvedQueryType) {
+                "gastos" -> row.id.startsWith("GASTO:")
+                "ingresos" -> row.id.startsWith("INGRESO:")
+                "producto", "productos", "productos_por_comercio" -> row.id.startsWith("PRODUCT:")
+                else -> true
+            } }
+            val warning = if (relevant.isEmpty()) "" else buildString {
+                appendLine(context.getString(R.string.total_partial))
+                relevant.groupBy { it.currency }.forEach { (currency, rows) ->
+                    appendLine("${rows.size} · ${rows.sumOf { it.amount }} $currency")
+                }
+                relevant.forEach { appendLine("${it.description}: ${it.amount} ${it.currency}") }
+                appendLine(context.getString(R.string.refresh_exchange_rates))
+            }
+            return ExecutedFinancialQuery(warning + text, contextText + "\n" + warning)
+        }
+        fun convertedInvoiceAmount(invoice: com.gastos.domain.model.Invoice): Double? =
+            tracked("${invoice.tipo}:${invoice.documentUuid}", invoice.proveedor, invoice.total, invoice.moneda)
+        fun convertedIncomeAmount(income: Income): Double? =
+            tracked("INGRESO:${income.documentUuid}", income.concepto, income.monto, income.moneda)
+        fun convertedProductAmount(product: com.gastos.domain.model.Product): Double? =
+            tracked("PRODUCT:${product.id}", product.descripcion, product.subtotal, invoiceById[product.invoiceId]?.moneda.orEmpty())
         if (resolvedQueryType == "productos_por_comercio") {
             if (periodProducts.isEmpty() && resolvedProvider != null) {
                 val fallback = lookupOutsideRange(
@@ -934,11 +998,9 @@ class ChatbotViewModel @Inject constructor(
         }
         val totalGastos = filteredInvoices
             .filter { it.tipo == InvoiceType.GASTO }
-            .sumOf(::convertedInvoiceAmount)
-        val totalIngresos = filteredInvoices
-                .filter { it.tipo == InvoiceType.INGRESO }
-                .sumOf(::convertedInvoiceAmount) +
-            filteredIncomes.sumOf(::convertedIncomeAmount)
+            .sumAvailable(::convertedInvoiceAmount)
+        val totalIngresos = (filteredInvoices.filter { it.tipo == InvoiceType.INGRESO }.map(::convertedInvoiceAmount) +
+            filteredIncomes.map(::convertedIncomeAmount)).sumAvailable { it }
         val countGastos = filteredInvoices.count { it.tipo == InvoiceType.GASTO }
         val countIngresos = filteredInvoices.count { it.tipo == InvoiceType.INGRESO } + filteredIncomes.size
         return when (resolvedQueryType) {
@@ -960,18 +1022,18 @@ class ChatbotViewModel @Inject constructor(
                 }
                 val sb = StringBuilder(title)
                  sb.append("\n")
-                     .append(context.getString(R.string.chatbot_report_total_line, fmt.format(totalGastos)))
+                     .append(context.getString(R.string.chatbot_report_total_line, fmt.money(totalGastos)))
                      .append("\n")
                 sb.append("\n").append(if (resolvedProvider != null) context.getString(R.string.chatbot_report_count_purchases, countGastos) else context.getString(R.string.chatbot_report_count_transactions, countGastos)).append("\n")
                 if (resolvedProvider == null && filteredInvoices.isNotEmpty()) {
                     val byProvider = filteredInvoices.filter { it.tipo == InvoiceType.GASTO }
                         .groupBy { it.proveedor }
-                        .mapValues { (_, values) -> values.sumOf(::convertedInvoiceAmount) }
+                        .mapValues { (_, values) -> values.sumAvailable(::convertedInvoiceAmount) }
                         .toList().sortedByDescending { it.second }.take(5)
                     if (byProvider.isNotEmpty()) {
                         sb.append("\n").append(context.getString(R.string.chatbot_report_top_providers)).append("\n")
                         byProvider.forEach { (name, total) ->
-                            sb.append(context.getString(R.string.chatbot_report_breakdown_line, name, fmt.format(total)))
+                            sb.append(context.getString(R.string.chatbot_report_breakdown_line, name, fmt.money(total)))
                                 .append('\n')
                         }
                     }
@@ -980,16 +1042,16 @@ class ChatbotViewModel @Inject constructor(
             }
             "ingresos" -> {
                 val sb = StringBuilder(context.getString(R.string.chatbot_report_income_title, scopeLabel)).append("\n")
-                sb.append(context.getString(R.string.chatbot_report_total_line, fmt.format(totalIngresos))).append("\n")
+                sb.append(context.getString(R.string.chatbot_report_total_line, fmt.money(totalIngresos))).append("\n")
                 sb.append(context.getString(R.string.chatbot_report_income_count, countIngresos)).append("\n")
                 if (filteredIncomes.isNotEmpty()) {
                     val bySource = filteredIncomes.groupBy { it.fuente ?: it.concepto }
-                        .mapValues { (_, values) -> values.sumOf(::convertedIncomeAmount) }
+                        .mapValues { (_, values) -> values.sumAvailable(::convertedIncomeAmount) }
                         .toList().sortedByDescending { it.second }.take(5)
                     if (bySource.isNotEmpty()) {
                         sb.append("\n").append(context.getString(R.string.chatbot_report_top_sources)).append("\n")
                         bySource.forEach { (name, total) ->
-                            sb.append(context.getString(R.string.chatbot_report_breakdown_line, name, fmt.format(total)))
+                            sb.append(context.getString(R.string.chatbot_report_breakdown_line, name, fmt.money(total)))
                                 .append('\n')
                         }
                     }
@@ -997,17 +1059,19 @@ class ChatbotViewModel @Inject constructor(
                 result(sb.toString().trimEnd())
             }
             "balance" -> {
-                val balance = totalIngresos - totalGastos
-                val emoji = if (balance >= 0) "✅" else "⚠️"
+                val balance = (filteredInvoices.map { invoice -> convertedInvoiceAmount(invoice)?.let {
+                    if (invoice.tipo == InvoiceType.GASTO) -it else it
+                } } + filteredIncomes.map(::convertedIncomeAmount)).sumAvailable { it }
+                val emoji = if (balance != null && balance >= 0) "✅" else "⚠️"
                 val title = if (FinancialQueryResolver.requestsNetBalance(originalQuestion)) {
                     context.getString(R.string.chatbot_report_net_income_title, scopeLabel)
                 } else {
                     context.getString(R.string.chatbot_report_balance_title, scopeLabel)
                 }
                 result(
-                    "$title\n${context.getString(R.string.chatbot_report_balance_income, fmt.format(totalIngresos), countIngresos)}\n" +
-                        "${context.getString(R.string.chatbot_report_balance_expenses, fmt.format(totalGastos), countGastos)}\n" +
-                        context.getString(R.string.chatbot_report_balance_remaining, emoji, fmt.format(balance))
+                    "$title\n${context.getString(R.string.chatbot_report_balance_income, fmt.money(totalIngresos), countIngresos)}\n" +
+                        "${context.getString(R.string.chatbot_report_balance_expenses, fmt.money(totalGastos), countGastos)}\n" +
+                        context.getString(R.string.chatbot_report_balance_remaining, emoji, fmt.money(balance))
                 )
             }
             "productos", "producto" -> {
@@ -1032,7 +1096,7 @@ class ChatbotViewModel @Inject constructor(
                     if (matchResult.matches.isEmpty()) {
                         return result(context.getString(R.string.chatbot_product_not_found, resolvedItem, scopeLabel))
                     }
-                    val total = matchResult.matches.sumOf(::convertedProductAmount)
+                    val total = matchResult.matches.sumAvailable(::convertedProductAmount)
                     val totalUnits = matchResult.matches.sumOf { it.cantidad }
                     val intro = if (matchResult.usedGroupMode) {
                         context.getString(R.string.chatbot_report_product_intro_group, resolvedItem, scopeLabel)
@@ -1041,7 +1105,7 @@ class ChatbotViewModel @Inject constructor(
                     }
                     return result(buildString {
                         appendLine(intro)
-                        appendLine(context.getString(R.string.chatbot_report_total_line, fmt.format(total)))
+                        appendLine(context.getString(R.string.chatbot_report_total_line, fmt.money(total)))
                         appendLine(context.getString(R.string.chatbot_report_units_line, if (totalUnits % 1.0 == 0.0) totalUnits.toInt() else totalUnits))
                         append(context.getString(R.string.chatbot_report_matches, matchResult.matches.size, matchResult.variants.size))
                         if (matchResult.usedGroupMode) {
@@ -1051,24 +1115,24 @@ class ChatbotViewModel @Inject constructor(
                                     Triple(
                                         products.first().descripcion.trim(),
                                         products.sumOf { it.cantidad },
-                                        products.sumOf(::convertedProductAmount)
+                                        products.sumAvailable(::convertedProductAmount)
                                     )
                                 }
                                 .sortedByDescending { it.third }
                             val byProvider = matchResult.matches
                                 .groupBy { product -> invoiceById[product.invoiceId]?.proveedor ?: context.getString(R.string.chatbot_report_no_store) }
-                                .mapValues { (_, products) -> products.sumOf(::convertedProductAmount) }
+                                .mapValues { (_, products) -> products.sumAvailable(::convertedProductAmount) }
                                 .toList()
                                 .sortedByDescending { it.second }
                             appendLine("\n\n" + context.getString(R.string.chatbot_report_breakdown_product))
                             byProduct.take(5).forEach { (name, units, amount) ->
                                 val unitsText = if (units % 1.0 == 0.0) units.toInt() else units
-                                appendLine(context.getString(R.string.chatbot_report_product_line, name, unitsText, fmt.format(amount)))
+                                appendLine(context.getString(R.string.chatbot_report_product_line, name, unitsText, fmt.money(amount)))
                             }
                             if (byProduct.size > 5) appendLine(context.getString(R.string.chatbot_report_more_variants, byProduct.size - 5))
                             appendLine("\n" + context.getString(R.string.chatbot_report_by_store))
                             byProvider.take(5).forEach { (name, amount) ->
-                                appendLine("  • $name: ${fmt.format(amount)}")
+                                appendLine("  • $name: ${fmt.money(amount)}")
                             }
                             if (byProvider.size > 5) append(context.getString(R.string.chatbot_report_more_stores, byProvider.size - 5))
                         }
@@ -1081,25 +1145,25 @@ class ChatbotViewModel @Inject constructor(
                 val byFrequency = periodProducts.groupBy { it.descripcion.lowercase().trim() }
                     .mapValues { (_, values) ->
                         values.sumOf { p -> p.cantidad }.toInt() to
-                            values.sumOf(::convertedProductAmount)
+                            values.sumAvailable(::convertedProductAmount)
                     }
                     .toList().sortedByDescending { it.second.first }.take(5)
 
                 sb.append("\n").append(context.getString(R.string.chatbot_report_most_bought)).append("\n")
                 byFrequency.forEachIndexed { i, (name, pair) ->
-                    sb.append(context.getString(R.string.chatbot_report_ranked_product, (i + 1).toString(), name.replaceFirstChar { it.uppercase() }, pair.first, fmt.format(pair.second)))
+                    sb.append(context.getString(R.string.chatbot_report_ranked_product, (i + 1).toString(), name.replaceFirstChar { it.uppercase() }, pair.first, fmt.money(pair.second)))
                     sb.append('\n')
                 }
                 val byAmount = periodProducts.groupBy { it.descripcion.lowercase().trim() }
-                    .mapValues { (_, values) -> values.sumOf(::convertedProductAmount) }
+                    .mapValues { (_, values) -> values.sumAvailable(::convertedProductAmount) }
                     .toList().sortedByDescending { it.second }.take(5)
 
                 sb.append("\n").append(context.getString(R.string.chatbot_report_highest_spend)).append("\n")
                 byAmount.forEachIndexed { i, (name, total) ->
-                    sb.append(context.getString(R.string.chatbot_report_ranked_product_amount, (i + 1).toString(), name.replaceFirstChar { it.uppercase() }, fmt.format(total)))
+                    sb.append(context.getString(R.string.chatbot_report_ranked_product_amount, (i + 1).toString(), name.replaceFirstChar { it.uppercase() }, fmt.money(total)))
                     sb.append('\n')
                 }
-                sb.append("\n").append(context.getString(R.string.chatbot_report_total_products, periodProducts.size, fmt.format(periodProducts.sumOf(::convertedProductAmount))))
+                sb.append("\n").append(context.getString(R.string.chatbot_report_total_products, periodProducts.size, fmt.money(periodProducts.sumAvailable(::convertedProductAmount))))
                 result(sb.toString().trimEnd())
             }
             else -> {
@@ -1139,13 +1203,32 @@ class ChatbotViewModel @Inject constructor(
         )
     }
 
+    private fun java.text.NumberFormat.money(amount: Number?): String =
+        if (amount == null) context.getString(R.string.total_unavailable) else format(amount)
+
+    fun refreshExchangeRates() {
+        if (_uiState.value.isProcessing) return
+        _uiState.update { it.copy(isProcessing = true) }
+        viewModelScope.launch {
+            try {
+                exchangeRateProvider.refresh()
+                lastFinancialQuery?.invoke()?.let { result ->
+                    handleAIResult(AIResult(success = true, message = result.text), contextTextOverride = result.contextText)
+                }
+            } catch (cancelled: CancellationException) { throw cancelled
+            } catch (_: Exception) {
+                _uiState.update { it.copy(messages = it.messages + ChatMessage.System(context.getString(R.string.exchange_refresh_failed))) }
+            } finally { _uiState.update { it.copy(isProcessing = false) } }
+        }
+    }
+
     private fun buildProductsByProviderReport(
         products: List<com.gastos.domain.model.Product>,
         invoicesById: Map<Long, com.gastos.domain.model.Invoice>,
         periodoLabel: String,
         providerLabel: String?,
         fmt: java.text.NumberFormat,
-        convertedProductAmount: (com.gastos.domain.model.Product) -> Double
+        convertedProductAmount: (com.gastos.domain.model.Product) -> Double?
     ): String {
         if (products.isEmpty()) {
             val scope = providerLabel?.let { context.getString(R.string.chatbot_scope_provider, it) }.orEmpty()
@@ -1159,13 +1242,13 @@ class ChatbotViewModel @Inject constructor(
         val scopePrefix = providerLabel?.let { context.getString(R.string.chatbot_scope_provider, it) }.orEmpty()
         val sb = StringBuilder("🧾 ${context.getString(R.string.chatbot_products_bought_prefix, periodoLabel + scopePrefix)}:\n")
         grouped.entries
-            .sortedByDescending { (_, items) -> items.sumOf(convertedProductAmount) }
+            .sortedByDescending { (_, items) -> items.sumAvailable(convertedProductAmount) }
             .forEach { (provider, items) ->
-                val providerTotal = items.sumOf(convertedProductAmount)
+                val providerTotal = items.sumAvailable(convertedProductAmount)
                 val providerUnits = items.sumOf { it.cantidad }
                 val providerUnitsText = if (providerUnits % 1.0 == 0.0) providerUnits.toInt() else providerUnits
                 sb.append('\n')
-                    .append(context.getString(R.string.chatbot_report_provider_total, provider, fmt.format(providerTotal), context.getString(R.string.chatbot_units_short, providerUnitsText)))
+                    .append(context.getString(R.string.chatbot_report_provider_total, provider, fmt.money(providerTotal), context.getString(R.string.chatbot_units_short, providerUnitsText)))
                     .append('\n')
                 val byProduct = items
                     .groupBy { FinancialQueryResolver.normalizeProductName(it.descripcion) }
@@ -1173,13 +1256,13 @@ class ChatbotViewModel @Inject constructor(
                         Triple(
                             groupItems.first().descripcion.trim(),
                             groupItems.sumOf { it.cantidad },
-                            groupItems.sumOf(convertedProductAmount)
+                            groupItems.sumAvailable(convertedProductAmount)
                         )
                     }
                     .sortedByDescending { it.third }
                 byProduct.forEach { (name, units, amount) ->
                     val unitsText = if (units % 1.0 == 0.0) units.toInt() else units
-                    sb.append(context.getString(R.string.chatbot_report_product_line, name, unitsText, fmt.format(amount)))
+                    sb.append(context.getString(R.string.chatbot_report_product_line, name, unitsText, fmt.money(amount)))
                     sb.append('\n')
                 }
             }
@@ -1191,7 +1274,7 @@ class ChatbotViewModel @Inject constructor(
         resolvedProvider: String,
         normalizedCategory: String?,
         requestedPeriod: String,
-        convertedAmount: (com.gastos.domain.model.Invoice) -> Double,
+        convertedAmount: (com.gastos.domain.model.Invoice) -> Double?,
         fmt: java.text.NumberFormat
     ): String {
         val matching = invoices.filter { invoice ->
@@ -1203,15 +1286,15 @@ class ChatbotViewModel @Inject constructor(
         }
         val expenses = matching.filter { it.tipo == InvoiceType.GASTO }
         val byMonth = expenses.groupBy { monthOf(it.fecha) }
-            .mapValues { (_, items) -> items.sumOf(convertedAmount) }
-            .filter { it.value > 0.0 }
+            .mapValues { (_, items) -> items.sumAvailable(convertedAmount) }
+            .filter { it.value == null || it.value!! > 0.0 }
             .toList()
             .sortedByDescending { it.first }
-        val totalAllTime = byMonth.sumOf { it.second }
-        val sb = StringBuilder(context.getString(R.string.chatbot_no_purchases_other_periods_prefix, resolvedProvider, requestedPeriod, fmt.format(totalAllTime)))
+        val totalAllTime = byMonth.sumAvailable { it.second }
+        val sb = StringBuilder(context.getString(R.string.chatbot_no_purchases_other_periods_prefix, resolvedProvider, requestedPeriod, fmt.money(totalAllTime)))
         sb.append("\n")
         byMonth.forEach { (month, amount) ->
-            sb.append(context.getString(R.string.chatbot_report_month_amount, month, fmt.format(amount)))
+            sb.append(context.getString(R.string.chatbot_report_month_amount, month, fmt.money(amount)))
                 .append('\n')
         }
         sb.append("\n").append(context.getString(R.string.chatbot_try_wider_period))
@@ -1273,17 +1356,21 @@ class ChatbotViewModel @Inject constructor(
 
         viewModelScope.launch {
             var persistedUri: Uri? = null
+            var locallySaved = false
             try {
                 val stableUri = invoiceImageStorage.persist(uri)
                 persistedUri = stableUri
                 invoiceImageStorage.deleteTemporaryCameraCopy(uri)
                 val result = aiService.processInvoiceFromImage(stableUri)
-                handleAIResult(result, includeInContext = false)
+                handleAIResult(result, includeInContext = false, onLocalSaved = { locallySaved = true })
                 if (!result.success || (result.invoice == null && result.income == null)) {
                     invoiceImageStorage.delete(persistedUri.toString())
                 }
+            } catch (cancelled: CancellationException) {
+                if (!locallySaved) invoiceImageStorage.delete(persistedUri?.toString())
+                throw cancelled
             } catch (e: Exception) {
-                invoiceImageStorage.delete(persistedUri?.toString())
+                if (!locallySaved) invoiceImageStorage.delete(persistedUri?.toString())
                 _uiState.update {
                     it.copy(
                         messages = it.messages + ChatMessage.AI(context.getString(R.string.chatbot_scan_error, e.message ?: "")),
@@ -1297,8 +1384,10 @@ class ChatbotViewModel @Inject constructor(
     fun clearChat() {
         viewModelScope.launch {
             aiService.resetChat()
+            lastFinancialQuery = null
+            incompletePrompt = null
             chatMessageRepository.clearAll()
-            _uiState.update { it.copy(messages = emptyList(), isProcessing = false) }
+            _uiState.update { it.copy(messages = emptyList(), isProcessing = false, canRetryIncomplete = false) }
         }
     }
 

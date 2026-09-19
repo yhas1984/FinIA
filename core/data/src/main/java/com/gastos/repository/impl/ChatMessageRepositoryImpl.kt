@@ -16,5 +16,6 @@ class ChatMessageRepositoryImpl @Inject constructor(
     override suspend fun addMessage(message: ChatMessageRecord) {
         dao.insertAndTrim(message.toEntity())
     }
+    override suspend fun replaceLastIncomplete(message: ChatMessageRecord) = dao.replaceLastIncomplete(message.toEntity())
     override suspend fun clearAll() = dao.clearAll()
 }

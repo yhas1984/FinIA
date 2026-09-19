@@ -20,6 +20,8 @@ class GastosApp : Application(), Configuration.Provider {
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var cloudBackupScheduler: CloudBackupScheduler
     @Inject lateinit var backupArchiveService: BackupArchiveService
+    @Inject lateinit var remoteSyncOutbox: com.gastos.feature.backup.RemoteSyncOutboxRepository
+    @Inject lateinit var backupDataRepository: com.gastos.repository.BackupDataRepository
     @Inject lateinit var remoteSyncQueue: RemoteSyncQueue
 
     override val workManagerConfiguration: Configuration
@@ -36,6 +38,7 @@ class GastosApp : Application(), Configuration.Provider {
             runCatching { fiscalConfigRepository.insertDefaultConfigs() }
             runCatching { backupArchiveService.recoverInterruptedRestore() }
             runCatching { backupArchiveService.cleanupTemporaryFiles(startupTime) }
+            runCatching { remoteSyncOutbox.reconcile(backupDataRepository.snapshot(), preserveDeletes = true) }
         }
         cloudBackupScheduler.reconcile()
         remoteSyncQueue.schedule()

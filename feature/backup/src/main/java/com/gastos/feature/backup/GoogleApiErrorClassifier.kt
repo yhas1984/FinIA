@@ -44,6 +44,7 @@ internal object GoogleApiErrorClassifier {
                 false
             )
             is GoogleJsonResponseException -> classifyHttp(error, context)
+            is java.net.SocketTimeoutException -> GoogleApiErrorResult(GoogleApiErrorCategory.TRANSIENT, context.transientMessage, true)
             is IOException -> GoogleApiErrorResult(
                 GoogleApiErrorCategory.NETWORK,
                 context.networkMessage,
@@ -69,6 +70,10 @@ internal object GoogleApiErrorClassifier {
                 GoogleApiErrorCategory.TRANSIENT,
                 context.transientMessage,
                 true
+            )
+            error.statusCode == 403 && reason in setOf("insufficientPermissions", "insufficientFilePermissions", "authError", "forbidden", "appNotAuthorizedToFile") -> GoogleApiErrorResult(
+                GoogleApiErrorCategory.AUTH_PERMANENT,
+                "Vuelve a conectar Google para reanudar ${context.featureLabel}.", false
             )
             error.statusCode == 403 -> GoogleApiErrorResult(
                 GoogleApiErrorCategory.QUOTA_OR_PERMISSION,

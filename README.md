@@ -1,6 +1,6 @@
 # 💰 FinAI
 
-**Asistente financiero personal para Android** con inteligencia artificial integrada (Gemini), escaneo de facturas desde el chat, comandos por voz y chat conversacional. Pensado para gestión de gastos, ingresos y facturación, con orientación por defecto a España (EUR, IVA 21%, IRPF, NIF) pero con extracción multi-país (MX, AR, CO, CL, PE, US…).
+**Asistente financiero personal para Android** con inteligencia artificial integrada (Gemini), escaneo de facturas desde el chat, comandos por voz y chat conversacional. Pensado para gestión de gastos, ingresos y facturación, con moneda y configuración fiscal adaptables. El alta manual empieza con IVA 0 % editable y conserva los impuestos reales de documentos escaneados o guardados. Incluye extracción multi-país (MX, AR, CO, CL, PE, US…).
 
 > 🌐 **Idiomas** — La app está disponible en **español** e **inglés** y sigue el idioma del sistema. | Read this in [**English**](README.en.md).
 
@@ -18,8 +18,8 @@
 - 🧾 **Gestión completa** de facturas/gastos, productos e ingresos (CRUD).
 - ☁️ **Google Sheets: exportación + sincronización multimoneda** — Sheet con Facturas Recibidas, Ingresos unificados, Productos y Resumen, con importes convertidos a tu moneda local.
 - 🔄 **Sincronización bidireccional** — altas, ediciones y borrados en la app se reflejan automáticamente (upsert/delete por ID de registro). “Forzar sincronización” reexporta el Sheet completo.
-- ☁️ **Google Drive** — subida automática de la foto tras escanear una factura si Premium y Google están conectados, con reintento y limpieza del temporal de cámara.
-- 🗑️ **Fotos remotas** — borrar una factura local no elimina automáticamente su foto de Drive; la copia remota se conserva y puede eliminarse directamente desde Google Drive.
+- ☁️ **Google Drive** — subida automática de las imágenes de gastos e ingresos si Premium y Google están conectados, con reintento y limpieza del temporal de cámara.
+- 🗑️ **Fotos remotas** — borrar una factura local no elimina automáticamente su foto de Drive; la copia remota se conserva, salvo que se marque expresamente la opción de borrado del archivo remoto.
 - 💎 **Premium** (pago único vía Google Play Billing, con flag debug independiente) — amplía la memoria del asistente de 3 a 10 turnos y desbloquea Sheets/Drive.
 - 🔐 **Backup recuperable** — archivo `.finai` cifrado para todos; copia automática versionada en Google Drive para Premium.
 - 📄 **Exportación CSV y PDF** para informes y uso externo.
@@ -34,7 +34,7 @@
 | **UI** | Jetpack Compose (BOM `2026.06.01`), Material 3, Navigation Compose `2.9.8` |
 | **DI** | Hilt `2.52` |
 | **Persistencia** | Room `2.7.2` (SQLite), DataStore Preferences `1.2.1`, EncryptedSharedPreferences (API key) |
-| **IA** | Google Generative AI SDK `0.9.0` (Gemini) |
+| **IA** | API REST de Gemini mediante OkHttp |
 | **Voz** | SpeechRecognizer de Android (es-ES) |
 | **Cámara** | `ActivityResultContracts.TakePicture` (app de cámara del sistema) + FileProvider |
 | **Sheets** | Google Sheets API v4 + Google Sign-In (Play Services Auth `21.6.0`), scope limitado `drive.file` |
@@ -73,7 +73,7 @@ Arquitectura **modular multi-módulo** en 3 capas (clean-ish), con inyección de
 
 ## 🤖 Inteligencia Artificial (Gemini)
 
-FinAI usa **Gemini 3.7 Flash** a través de la **API gratuita de Google AI Studio**. El nivel de *thinking* se ajusta por tarea: **bajo** en chat y consultas (respuestas rápidas e interactivas) y **medio** en el OCR de documentos (precisión equilibrada en la extracción fiscal).
+FinAI usa **Gemini** con la clave propia del usuario. La cadena mantiene `gemini-3.6-flash` como principal y `gemini-3.8-flash` como primer respaldo y `gemini-3.5-flash-lite` como último respaldo: como máximo cuatro solicitudes por operación, 90 segundos para chat y 180 para OCR. No cambia de modelo ante credenciales inválidas, bloqueos de seguridad o restricciones globales conocidas. La disponibilidad y las cuotas dependen de Google y del proyecto del usuario; el respaldo no garantiza capacidad gratuita adicional. Tras empezar a mostrar una respuesta, una interrupción conserva el texto y ofrece reintentar su sustitución. El nivel de thinking se mantiene bajo en chat y consultas, y medio en OCR.
 
 ### Configuración
 1. Obtén una API key gratuita en **[Google AI Studio](https://aistudio.google.com/apikey)**.
@@ -113,12 +113,13 @@ Desde **Backup** puedes vincular tu cuenta de Google:
 FinAI usa un formato portable `.finai` para que una copia sobreviva a la desinstalación y pueda recuperarse en otro dispositivo:
 
 1. **Backup manual gratuito** — configura una contraseña de recuperación y exporta el archivo con el selector de Android a Drive, Descargas, USB u otra ubicación elegida por ti.
-2. **Contenido** — conserva facturas, productos, ingresos, categorías fiscales, historial del chat, imágenes gestionadas y ajustes no sensibles.
+2. **Contenido** — conserva facturas, productos, ingresos, categorías fiscales, historial del chat, UUID, referencias a imágenes de Drive y ajustes no sensibles. La exportación manual empieza en **solo datos**; la opción **completa** añade las fotografías locales y descarga las remotas necesarias. Si falta alguna, no se presenta como completa.
 3. **Datos excluidos** — no copia la API key de Gemini, credenciales OAuth, estado Premium ni caché de tipos de cambio.
 4. **Cifrado** — el contenido se cifra con AES-256-GCM; la clave de datos se protege mediante PBKDF2 y la contraseña elegida por el usuario.
 5. **Restauración** — selecciona el archivo, revisa el resumen y confirma. La operación valida y descifra toda la copia antes de reemplazar los datos actuales en una única transacción de Room.
-6. **Premium Drive** — crea una copia automática aproximadamente cada 24 horas cuando hay red y batería suficiente, y conserva las cinco versiones más recientes en el espacio privado `appDataFolder` de Google Drive (scope `drive.appdata`).
-7. **Nueva instalación** — activa Premium, conecta la misma cuenta Google, elige una copia e introduce la contraseña de recuperación.
+6. **Premium Drive** — crea una copia automática **solo de datos y referencias, sin fotografías** aproximadamente cada 24 horas cuando hay red y batería suficiente, y conserva las cinco versiones más recientes en el espacio privado `appDataFolder` de Google Drive (scope `drive.appdata`).
+7. **Imágenes** — gastos e ingresos se sincronizan por separado. Al abrir una imagen restaurada, se descarga a una caché privada por cuenta (100 MiB). Borrar un movimiento conserva su imagen de Drive salvo consentimiento explícito para ese archivo y cuenta. La restauración nunca solicita borrados remotos. Se siguen leyendo los respaldos antiguos con fotografías.
+8. **Nueva instalación** — activa Premium, conecta la misma cuenta Google, elige una copia e introduce la contraseña de recuperación.
 
 > ⚠️ FinAI no guarda la contraseña en Drive y no puede recuperarla. Sin ella no es posible descifrar el backup después de desinstalar la app.
 

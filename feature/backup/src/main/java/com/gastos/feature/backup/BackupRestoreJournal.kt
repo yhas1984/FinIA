@@ -36,6 +36,7 @@ internal data class RestoreJournalEntry(
     val restoreId: String = "",
     val sheetRowsToDelete: List<RestoreJournalSheetRow> = emptyList(),
     val remoteFilesToDelete: List<RestoreJournalRemoteFile> = emptyList(),
+    val imagesChanged: Boolean = true,
     val updatedAt: Long = System.currentTimeMillis()
 )
 
@@ -93,14 +94,16 @@ class BackupRestoreJournal @Inject constructor(
         previousSettings: RestorableSettings,
         restoreId: String = "",
         sheetRowsToDelete: List<RestoreJournalSheetRow> = emptyList(),
-        remoteFilesToDelete: List<RestoreJournalRemoteFile> = emptyList()
+        remoteFilesToDelete: List<RestoreJournalRemoteFile> = emptyList(),
+        imagesChanged: Boolean = true
     ) {
         val entry = RestoreJournalEntry(
             phase = phase.name,
             previousSettings = RestoreJournalSettings.from(previousSettings),
             restoreId = restoreId,
             sheetRowsToDelete = sheetRowsToDelete,
-            remoteFilesToDelete = remoteFilesToDelete
+            remoteFilesToDelete = emptyList(),
+            imagesChanged = imagesChanged
         )
         val temporary = File(file.parentFile, "${file.name}.tmp")
         temporary.delete()

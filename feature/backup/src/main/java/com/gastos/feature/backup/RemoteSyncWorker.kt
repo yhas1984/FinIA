@@ -24,25 +24,30 @@ class RemoteSyncWorker @AssistedInject constructor(
     private val processor = RemoteSyncProcessor(outbox, invoiceRepository, incomeRepository, invoiceDriveService, sheetsSyncManager)
 
     override suspend fun doWork(): Result {
-        // Drain again after each snapshot so writes that arrive during a
-        // running worker are processed even when WorkManager coalesces work.
-        while (true) {
-            if (remoteSyncState.shouldDefer()) return Result.retry()
-            val pending = outbox.pending()
-            if (pending.isEmpty()) return Result.success()
-            for (item in pending) {
-                try {
-                    when (processor.process(item)) {
-                        RemoteSyncOutcome.SUCCESS -> Unit
-                        RemoteSyncOutcome.DEFERRED -> return Result.retry()
-                        RemoteSyncOutcome.RETRY -> return Result.retry()
-                    }
-                } catch (e: Exception) {
-                    SafeLog.e("RemoteSyncWorker", "sync failed ${item.targetKey}", e)
-                    return Result.retry()
+        if (remoteSyncState.shouldDefer()) return Result.retry()
+        val now = System.currentTimeMillis()
+        val pending = outbox.pending().filter { (it.status == RemoteSyncStatus.PENDING && it.nextAttemptAt <= now) || it.status == RemoteSyncStatus.WAITING_AUTH }
+        for (item in pending) {
+            try {
+                when (processor.process(item)) {
+                    RemoteSyncOutcome.SUCCESS -> Unit
+                    RemoteSyncOutcome.DEFERRED -> outbox.failed(item, "AUTH_OR_LINK_REQUIRED", consumeAttempt = false)
+                    RemoteSyncOutcome.RETRY -> outbox.failed(item, "REMOTE_UNAVAILABLE")
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                val category = GoogleApiErrorClassifier.classify(error,
+                    GoogleApiErrorContext("sync", "OFFLINE", "SERVER_UNAVAILABLE", "PERMISSION_OR_QUOTA", "SYNC_FAILED"))
+                val deferred = category.category in setOf(GoogleApiErrorCategory.NETWORK, GoogleApiErrorCategory.AUTH_RECOVERABLE,
+                    GoogleApiErrorCategory.AUTH_PERMANENT, GoogleApiErrorCategory.PLAY_SERVICES)
+                outbox.failed(item, category.category.name, consumeAttempt = !deferred,
+                    permanent = !deferred && !category.shouldRetry)
+                SafeLog.w("RemoteSyncWorker", "${item.target}: ${category.category}")
             }
         }
+        outbox.scheduleNext()
+        return Result.success()
     }
 }
 
@@ -58,35 +63,43 @@ internal class RemoteSyncProcessor(
     private val sheetsSyncManager: SheetsSyncManager
 ) {
     suspend fun process(item: RemoteSyncOutboxEntity): RemoteSyncOutcome = when (item.target) {
-        RemoteSyncTarget.INVOICE_DRIVE -> processDrive(item)
+        RemoteSyncTarget.INVOICE_DRIVE, RemoteSyncTarget.INCOME_DRIVE -> processDrive(item)
         RemoteSyncTarget.EXPENSE_SHEETS -> processExpense(item)
         RemoteSyncTarget.INCOME_SHEETS -> processIncome(item)
     }
 
     private suspend fun processDrive(item: RemoteSyncOutboxEntity): RemoteSyncOutcome {
         if (item.action == RemoteSyncAction.DELETE) {
-            val remoteFileId = item.remoteFileId ?: return RemoteSyncOutcome.SUCCESS.also { outbox.delete(item) }
-            val deleted = outbox.withCurrent(item) { invoiceDriveService.delete(remoteFileId) }
-                ?: return RemoteSyncOutcome.SUCCESS
-            return if (deleted) {
+            if (!item.deleteConsent || item.accountId.isNullOrBlank() || item.remoteFileId.isNullOrBlank()) {
                 outbox.delete(item)
-                RemoteSyncOutcome.SUCCESS
-            } else {
-                RemoteSyncOutcome.RETRY
+                return RemoteSyncOutcome.SUCCESS
             }
+            val deleted = outbox.withCurrent(item) { invoiceDriveService.delete(item.remoteFileId, item.accountId) }
+                ?: return RemoteSyncOutcome.SUCCESS
+            return if (deleted) { outbox.delete(item); RemoteSyncOutcome.SUCCESS } else RemoteSyncOutcome.DEFERRED
         }
-        val invoice = invoiceRepository.getInvoiceById(item.recordId) ?: return RemoteSyncOutcome.SUCCESS.also { outbox.delete(item) }
-        if (invoice.imagenUri.isNullOrBlank()) return RemoteSyncOutcome.SUCCESS.also { outbox.delete(item) }
-        if (!invoice.driveUploadPending && invoice.driveFileId.isNullOrBlank()) {
-            return RemoteSyncOutcome.SUCCESS.also { outbox.delete(item) }
+        if (item.target == RemoteSyncTarget.INCOME_DRIVE) {
+            val income = incomeRepository.getIncomeById(item.recordId)
+            if (income == null || item.documentUuid.isNotBlank() && item.documentUuid != income.documentUuid) {
+                outbox.delete(item); return RemoteSyncOutcome.SUCCESS
+            }
+            val result = invoiceDriveService.upload(income) { outbox.isCurrent(item) }
+            if (result.uploaded) {
+                outbox.delete(item)
+                sheetsSyncManager.upsertIncome(result.income)
+            } else outbox.failed(item, result.message, !result.deferred, result.permanent)
+        } else {
+            val invoice = invoiceRepository.getInvoiceById(item.recordId)
+            if (invoice == null || item.documentUuid.isNotBlank() && item.documentUuid != invoice.documentUuid) {
+                outbox.delete(item); return RemoteSyncOutcome.SUCCESS
+            }
+            val result = invoiceDriveService.upload(invoice) { outbox.isCurrent(item) }
+            if (result.uploaded) {
+                outbox.delete(item)
+                sheetsSyncManager.upsertExpense(result.invoice)
+            } else outbox.failed(item, result.message, !result.deferred, result.permanent)
         }
-        val result = outbox.withCurrent(item) { invoiceDriveService.upload(invoice) }
-            ?: return RemoteSyncOutcome.SUCCESS
-        return if (result.uploaded) {
-            outbox.delete(item); RemoteSyncOutcome.SUCCESS
-        } else if (!result.invoice.driveUploadPending) {
-            outbox.delete(item); RemoteSyncOutcome.SUCCESS
-        } else RemoteSyncOutcome.RETRY
+        return RemoteSyncOutcome.SUCCESS
     }
 
     private suspend fun processExpense(item: RemoteSyncOutboxEntity): RemoteSyncOutcome = when (item.action) {

@@ -163,7 +163,7 @@ class AIService @Inject constructor(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            SafeLog.e(TAG, "Error validando API key", error)
+            SafeLog.e(TAG, "Error validando API key: ${error.javaClass.simpleName}")
             friendlyError(error)
         }
     }
@@ -180,7 +180,7 @@ class AIService @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                SafeLog.e(TAG, "Error en processCommand", error)
+                SafeLog.w(TAG, "Error en processCommand (${error::class.java.simpleName})")
                 AIResult(success = false, message = friendlyError(error))
             }
         }
@@ -205,7 +205,7 @@ class AIService @Inject constructor(
             }
         }.catch { error ->
             if (error is CancellationException) throw error
-            SafeLog.e(TAG, "Error en streaming", error)
+            SafeLog.w(TAG, "Error en streaming (${error::class.java.simpleName})")
             throw error
         }
     }
@@ -259,7 +259,7 @@ class AIService @Inject constructor(
                         mediaResolution = OCR_MEDIA_RESOLUTION
                     )
                 )
-            )
+            ) { response -> parseInvoiceResponse(response, imageUri.toString(), currentFiscalCountry, defaultCurrency).success }
             val networkTimeMs = SystemClock.elapsedRealtime() - networkStartedAt
             val parsingStartedAt = SystemClock.elapsedRealtime()
             val result = parseInvoiceResponse(raw, imageUri.toString(), currentFiscalCountry, defaultCurrency)
@@ -273,7 +273,7 @@ class AIService @Inject constructor(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            SafeLog.e(TAG, "Error procesando imagen", error)
+            SafeLog.w(TAG, "Error procesando imagen (${error::class.java.simpleName})")
             AIResult(success = false, message = friendlyError(error))
         }
     }
@@ -294,7 +294,7 @@ class AIService @Inject constructor(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            SafeLog.e(TAG, "Error en queryData", error)
+            SafeLog.w(TAG, "Error en queryData (${error::class.java.simpleName})")
             AIResult(success = false, message = friendlyError(error))
         }
     }
@@ -659,8 +659,8 @@ class AIService @Inject constructor(
                 ?: return AIResult(success = false, message = context.getString(R.string.ai_manual_review_invoice_missing))
             if (total <= 0) return AIResult(success = false, message = context.getString(R.string.ai_manual_review_invoice_non_positive))
             val moneda = resolveCurrency(json.optString("moneda"), defaultCurrency)
-            val ivaPercent = readNullableDouble(json, "tipo_iva", "iva_percent") ?: 0.0
-            val irpfPercent = readNullableDouble(json, "retencion_irpf") ?: 0.0
+            val ivaPercent = readTaxPercent(json, "tipo_iva", "iva_percent") ?: 0.0
+            val irpfPercent = readTaxPercent(json, "retencion_irpf") ?: 0.0
             val numeroFactura = readNullableString(json, "numero_factura", "numeroFactura", "no_factura", "n_factura")
             val baseImponible = readNullableDouble(json, "base_imponible", "baseImponible")
             val cuotaIva = readNullableDouble(json, "cuota_iva", "cuotaIva", "iva_amount")
@@ -711,7 +711,7 @@ class AIService @Inject constructor(
                             cantidad = cantidad,
                             precioUnitario = effectivePrecio,
                             subtotal = subtotal,
-                            ivaPercent = readNullableDouble(productJson, "iva_percent").takeIf { it != null && it > 0.0 } ?: ivaPercent
+                            ivaPercent = readTaxPercent(productJson, "iva_percent") ?: ivaPercent
                         )
                     )
                 }
@@ -732,6 +732,15 @@ class AIService @Inject constructor(
     private fun extractJsonFromResponse(responseText: String): JSONObject {
         val jsonMatch = Regex("""\{[\s\S]*\}""").find(responseText)
         return JSONObject(jsonMatch?.value ?: responseText)
+    }
+
+    private fun readTaxPercent(json: JSONObject, vararg keys: String): Double? {
+        val present = keys.firstOrNull { json.has(it) && !json.isNull(it) } ?: return null
+        val value = readNullableDouble(json, present)
+        require(value != null && value.isFinite() && value in 0.0..100.0) {
+            context.getString(R.string.ai_invalid_tax_percentage)
+        }
+        return value
     }
 
     private fun readString(json: JSONObject, vararg keys: String): String = keys.asSequence()

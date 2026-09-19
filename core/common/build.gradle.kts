@@ -23,6 +23,7 @@ android {
 }
 
 dependencies {
+    testImplementation(libs.junit)
     implementation(libs.coroutines.core)
     implementation(libs.androidx.core.ktx)
 }

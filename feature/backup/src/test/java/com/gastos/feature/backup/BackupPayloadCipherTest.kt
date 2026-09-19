@@ -10,7 +10,7 @@ class BackupPayloadCipherTest {
     @Test
     fun `v2 round trip supports payloads larger than multiple segments`() {
         val dataKey: ByteArray = ByteArray(BackupCrypto.KEY_SIZE_BYTES) { index -> index.toByte() }
-        val header: EncryptedBackupHeader = createHeader(BACKUP_FORMAT_VERSION)
+        val header: EncryptedBackupHeader = createHeader(2)
         val headerBytes: ByteArray = "authenticated-v2-header".toByteArray()
         val plaintext: ByteArray = ByteArray(3 * 1024 * 1024 + 117) { index -> (index % 251).toByte() }
 

@@ -121,6 +121,17 @@ fun InvoicesScreen(
             val target = uiState.defaultCurrency
 
             Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                uiState.conversion?.takeIf { it.isPartial }?.let { summary ->
+                    Text(stringResource(R.string.total_partial), modifier = Modifier.padding(horizontal = 16.dp))
+                    summary.excludedByCurrency.forEach { (currency, amount) ->
+                        Text(com.gastos.domain.model.formatMoney(amount, currency), modifier = Modifier.padding(horizontal = 16.dp))
+                    }
+                    summary.excluded.forEach { record ->
+                        Text("${record.description}: ${record.amount} ${record.currency}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton(onClick = viewModel::refreshRates) { Text(stringResource(R.string.refresh_exchange_rates)) }
+                }
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -223,7 +234,7 @@ fun InvoicesScreen(
                         InvoiceCard(
                             invoice = invoice,
                             dateFormat = dateFormat,
-                            onDelete = { viewModel.deleteInvoice(invoice) },
+                            onDelete = { deleteRemote -> viewModel.deleteInvoice(invoice, deleteRemote) },
                             onEdit = { onNavigateToEdit(invoice.id) },
                             onRetryDrive = { viewModel.retryDriveUpload(invoice) },
                             onOpenDrive = {
@@ -291,7 +302,7 @@ private fun InvoiceCard(
     invoice: Invoice,
     
     dateFormat: SimpleDateFormat,
-    onDelete: () -> Unit,
+    onDelete: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onRetryDrive: () -> Unit,
     onOpenDrive: () -> Unit,
@@ -299,6 +310,7 @@ private fun InvoiceCard(
     isUploadingToDrive: Boolean
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var deleteRemoteImage by remember { mutableStateOf(false) }
     val language = LocalLocale.current.platformLocale.language
 
     Card(
@@ -398,6 +410,10 @@ private fun InvoiceCard(
                 }
             }
 
+            com.gastos.feature.backup.DocumentImageButton(
+                localUri = invoice.imagenUri, fileId = invoice.driveFileId,
+                accountId = invoice.driveAccountId, contentHash = invoice.driveContentHash)
+
             if (invoice.imagenUri != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 when {
@@ -442,7 +458,7 @@ private fun InvoiceCard(
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
-                IconButton(onClick = { showDeleteDialog = true }) {
+                IconButton(onClick = { deleteRemoteImage = false; showDeleteDialog = true }) {
                     Icon(
                         Icons.Default.Delete,
                         contentDescription = stringResource(R.string.delete),
@@ -457,11 +473,19 @@ private fun InvoiceCard(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text(stringResource(R.string.delete_invoice_title)) },
-            text = { Text(stringResource(R.string.delete_invoice_message)) },
+            text = { Column {
+                Text(stringResource(R.string.delete_invoice_message))
+                if (invoice.driveFileId != null && invoice.driveAccountId != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = deleteRemoteImage, onCheckedChange = { deleteRemoteImage = it })
+                        Text(stringResource(com.gastos.feature.backup.R.string.delete_remote_image_option))
+                    }
+                }
+            } },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onDelete()
+                        onDelete(deleteRemoteImage)
                         showDeleteDialog = false
                     }
                 ) {

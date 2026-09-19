@@ -26,7 +26,7 @@ internal object BackupPayloadCipher {
             output,
             BackupCrypto.encryptionCipher(dataKey, requirePayloadIv(header), headerBytes)
         )
-        BACKUP_FORMAT_VERSION -> createStreamingCipher(dataKey).newEncryptingStream(output, headerBytes)
+        2, BACKUP_FORMAT_VERSION -> createStreamingCipher(dataKey).newEncryptingStream(output, headerBytes)
         else -> throw IllegalArgumentException("Versión de backup incompatible.")
     }
 
@@ -36,7 +36,7 @@ internal object BackupPayloadCipher {
         headerBytes: ByteArray,
         dataKey: ByteArray
     ): InputStream {
-        require(header.formatVersion == BACKUP_FORMAT_VERSION) { "Versión de backup incompatible." }
+        require(header.formatVersion in 2..BACKUP_FORMAT_VERSION) { "Versión de backup incompatible." }
         return createStreamingCipher(dataKey).newDecryptingStream(input, headerBytes)
     }
 

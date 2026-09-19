@@ -1,5 +1,7 @@
 package com.gastos.feature.invoices
 
+import com.gastos.common.LocalizedNumbers
+import com.gastos.common.SaveState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.animation.AnimatedVisibility
@@ -44,14 +46,13 @@ fun EditInvoiceScreen(
 
     LaunchedEffect(invoiceId) {
         if (invoiceId > 0) {
-            viewModel.loadInvoice(invoiceId)
+            viewModel.loadInvoice(invoiceId, locale)
         }
     }
 
-    LaunchedEffect(uiState.saveResult) {
-        val result = uiState.saveResult
-        if (result != null && !result.contains("Error")) {
-            kotlinx.coroutines.delay(1000)
+    LaunchedEffect(uiState.saveState) {
+        if (uiState.saveState == SaveState.Success) {
+            viewModel.clearSaveResult()
             onNavigateBack()
         }
     }
@@ -67,9 +68,9 @@ fun EditInvoiceScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { viewModel.saveInvoice() },
+                        onClick = { viewModel.saveInvoice(locale) },
                         enabled = !uiState.isSaving &&
-                            form.total.toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true &&
+                            LocalizedNumbers.parse(form.total, locale)?.let { it.isFinite() && it > 0 } == true &&
                             form.proveedor.isNotBlank()
                     ) {
                         Icon(Icons.Default.Save, contentDescription = stringResource(R.string.save))
@@ -325,7 +326,7 @@ fun EditInvoiceScreen(
             }
 
             // Desglose fiscal en vivo
-            form.recalcFiscal()?.let { fb ->
+            form.recalcFiscal(locale)?.let { fb ->
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(stringResource(R.string.base_vat_irpf_breakdown, String.format("%.2f", fb.baseImponible), form.moneda), style = MaterialTheme.typography.bodySmall)
@@ -373,7 +374,7 @@ fun EditInvoiceScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (msg.contains("Error"))
+                        containerColor = if (uiState.saveState is SaveState.Error)
                             MaterialTheme.colorScheme.errorContainer
                         else
                             MaterialTheme.colorScheme.secondaryContainer
@@ -383,7 +384,7 @@ fun EditInvoiceScreen(
                         text = msg,
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (msg.contains("Error"))
+                        color = if (uiState.saveState is SaveState.Error)
                             MaterialTheme.colorScheme.onErrorContainer
                         else
                             MaterialTheme.colorScheme.onSecondaryContainer

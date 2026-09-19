@@ -23,4 +23,5 @@
     <string name="ai_parse_document_error">Could not parse document: %1$s</string>
     <string name="ai_system_prompt_es">You are FinAI, a smart personal finance assistant. Reply in English only, with a friendly and professional tone.</string>
     <string name="ai_system_prompt_en">You are FinAI, a smart personal finance assistant. Reply in English only, with a friendly and professional tone.</string>
+    <string name="ai_invalid_tax_percentage">The extracted tax percentage is invalid. Review the invoice.</string>
 </resources>

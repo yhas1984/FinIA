@@ -45,7 +45,8 @@ class BackupArchiveService @Inject constructor(
     private val imageStorage: InvoiceImageStorage,
     private val keyStore: BackupKeyStore,
     private val restoreJournal: BackupRestoreJournal,
-    private val remoteSyncOutbox: RemoteSyncOutboxRepository
+    private val remoteSyncOutbox: RemoteSyncOutboxRepository,
+    private val imageCache: DriveImageCache
 ) {
     private val json = Json {
         encodeDefaults = true
@@ -91,9 +92,9 @@ class BackupArchiveService @Inject constructor(
             (restoreId != null && committedRestoreId == restoreId)
         when (phase) {
             RestoreJournalPhase.STAGED -> {
-                if (imageStorage.hasRestoreSwapStarted()) {
+                if (journal.imagesChanged && imageStorage.hasRestoreSwapStarted()) {
                     imageStorage.rollbackRestoreStage()
-                } else {
+                } else if (journal.imagesChanged) {
                     imageStorage.discardRestoreStage()
                 }
                 restoreJournal.clear()
@@ -104,10 +105,11 @@ class BackupArchiveService @Inject constructor(
                     completeCommittedRestore(
                         restoreId,
                         journal.sheetRowsToDelete,
-                        journal.remoteFilesToDelete
+                        emptyList(),
+                        journal.imagesChanged
                     )
                 } else {
-                    imageStorage.rollbackRestoreStage()
+                    if (journal.imagesChanged) imageStorage.rollbackRestoreStage()
                     settingsProvider.restoreSettings(journal.previousSettings.toDomain())
                     restoreJournal.clear()
                 }
@@ -116,54 +118,72 @@ class BackupArchiveService @Inject constructor(
                 completeCommittedRestore(
                     restoreId,
                     journal.sheetRowsToDelete,
-                    journal.remoteFilesToDelete
+                    emptyList(),
+                        journal.imagesChanged
                 )
             }
         }
     }
 
-    suspend fun createArchive(destination: File): BackupPreview = withContext(Dispatchers.IO) {
+    suspend fun createArchive(destination: File, mode: BackupMode = BackupMode.DATA_ONLY): BackupPreview = withContext(Dispatchers.IO) {
         archiveMutex.withLock {
             destination.parentFile?.mkdirs()
-            destination.outputStream().use { output -> createArchiveLocked(output) }
+            destination.outputStream().use { output -> createArchiveLocked(output, mode) }
         }
     }
 
-    suspend fun createArchive(output: OutputStream): BackupPreview = withContext(Dispatchers.IO) {
-        archiveMutex.withLock { createArchiveLocked(output) }
+    suspend fun createArchive(output: OutputStream, mode: BackupMode = BackupMode.DATA_ONLY): BackupPreview = withContext(Dispatchers.IO) {
+        archiveMutex.withLock { createArchiveLocked(output, mode) }
     }
 
-    private suspend fun createArchiveLocked(output: OutputStream): BackupPreview {
+    private suspend fun createArchiveLocked(output: OutputStream, mode: BackupMode): BackupPreview {
         val material = keyStore.requireMaterial()
+        val exportImages = File(context.cacheDir, "backup_export_${UUID.randomUUID()}")
         return try {
             val dataset = dataRepository.snapshot()
             val settings = settingsProvider.snapshotSettings()
             val createdAt = System.currentTimeMillis()
-            val payload = dataset.toDto(createdAt, settings, imageStorage)
-            val imageFiles = payload.imageFileNames.mapNotNull { fileName ->
-                val sourceUri = dataset.invoices.firstOrNull {
-                    imageStorage.managedFile(it.imagenUri)?.name == fileName
-                }?.imagenUri ?: dataset.incomes.firstOrNull {
-                    imageStorage.managedFile(it.imagenUri)?.name == fileName
-                }?.imagenUri
-                imageStorage.managedFile(sourceUri)?.let { fileName to it }
-            }.toMap()
-            check(imageFiles.keys == payload.imageFileNames) {
-                "No se pudieron leer todas las imágenes del backup."
-            }
-            require(imageFiles.size <= MAX_ENTRIES) { "Hay demasiadas imágenes para crear el backup." }
-            require(imageFiles.values.all { it.length() <= MAX_SINGLE_IMAGE_BYTES }) {
-                "Una imagen supera el tamaño máximo permitido."
+            var payload = dataset.toDto(createdAt, settings, imageStorage, mode)
+            val imageFiles = mutableMapOf<String, File>()
+            if (mode == BackupMode.COMPLETE) {
+                check(exportImages.mkdirs()) { context.getString(R.string.backup_complete_prepare_failed) }
+                var imageBytes = 0L
+                suspend fun include(uuid: String, kind: String, local: String?, remote: String?, account: String?, hash: String?): String? {
+                    if (local == null && remote == null) return null
+                    val source = imageCache.resolve(local, remote, account, hash)
+                    require(source.length() <= MAX_SINGLE_IMAGE_BYTES) { context.getString(R.string.backup_image_limit) }
+                    imageBytes += source.length()
+                    require(imageBytes <= MAX_UNCOMPRESSED_BYTES) { context.getString(R.string.backup_images_limit) }
+                    val name = "${kind}_${uuid}.jpg"
+                    require(isSafeImageFileName(name))
+                    val copy = File(exportImages, name)
+                    source.copyTo(copy)
+                    imageFiles[name] = copy
+                    return name
+                }
+                payload = payload.copy(
+                    invoices = payload.invoices.map { dto ->
+                        val record = dataset.invoices.first { it.documentUuid == dto.documentUuid }
+                        require(!dto.hadImage || record.imagenUri != null || record.driveFileId != null) { context.getString(R.string.backup_image_unrecoverable) }
+                        dto.copy(imageFileName = include(record.documentUuid, "expense", record.imagenUri, record.driveFileId, record.driveAccountId, record.driveContentHash))
+                    },
+                    incomes = payload.incomes.map { dto ->
+                        val record = dataset.incomes.first { it.documentUuid == dto.documentUuid }
+                        require(!dto.hadImage || record.imagenUri != null || record.driveFileId != null) { context.getString(R.string.backup_image_unrecoverable) }
+                        dto.copy(imageFileName = include(record.documentUuid, "income", record.imagenUri, record.driveFileId, record.driveAccountId, record.driveContentHash))
+                    })
+                require(imageFiles.size < MAX_ENTRIES) { context.getString(R.string.backup_image_count_limit) }
             }
             val payloadBytes = json.encodeToString(payload).toByteArray(Charsets.UTF_8)
-            require(payloadBytes.size <= MAX_JSON_BYTES) { "Los datos superan el tamaño máximo permitido." }
-            require(payloadBytes.size + imageFiles.values.sumOf(File::length) <= MAX_UNCOMPRESSED_BYTES) {
-                "El backup supera el tamaño máximo permitido."
+            require(payloadBytes.size <= MAX_JSON_BYTES) { context.getString(R.string.backup_json_limit) }
+            if (mode == BackupMode.COMPLETE) require(payloadBytes.size + imageFiles.values.sumOf(File::length) <= MAX_UNCOMPRESSED_BYTES) {
+                context.getString(R.string.backup_complete_limit)
             }
 
             val appVersion = appVersion()
             val header = EncryptedBackupHeader(
                 formatVersion = BACKUP_FORMAT_VERSION,
+                mode = mode,
                 createdAt = createdAt,
                 appVersionName = appVersion.first,
                 appVersionCode = appVersion.second,
@@ -198,6 +218,7 @@ class BackupArchiveService @Inject constructor(
             }
             header.toPreview()
         } finally {
+            exportImages.deleteRecursively()
             material.dataKey.fill(0)
         }
     }
@@ -244,20 +265,37 @@ class BackupArchiveService @Inject constructor(
                 stagingDir = stagingDir
             )
             val missingImages = restored.payload.imageFileNames - restored.images.keys
-            require(missingImages.isEmpty()) { "El backup no contiene todas las imágenes declaradas." }
+            require(header.mode == BackupMode.DATA_ONLY || missingImages.isEmpty()) { "El backup no contiene todas las imágenes declaradas." }
             check(beginCommit()) { "Restauración cancelada." }
             val previousSettings = settingsProvider.snapshotSettings()
             val previousDataset = dataRepository.snapshot()
             val restoreId = UUID.randomUUID().toString()
             val sheetRowsToDelete = sheetRowsToDelete(previousDataset, restored.payload)
-            val remoteFilesToDelete = remoteFilesToDelete(previousDataset, restored.payload)
-            val restoredUris = imageStorage.stageRestoreFiles(restored.images)
+            val remoteFilesToDelete = emptyList<RestoreJournalRemoteFile>()
+            val imagesChanged = header.mode == BackupMode.COMPLETE
+            val restoredUris = if (imagesChanged) imageStorage.stageRestoreFiles(restored.images) else emptyMap()
+            val dataset = restored.payload.toDataset(restoredUris).let { incoming ->
+                if (imagesChanged) incoming else incoming.copy(
+                    invoices = incoming.invoices.map { invoice ->
+                        val local = previousDataset.invoices.firstOrNull { it.documentUuid == invoice.documentUuid }
+                            ?.imagenUri?.takeIf { imageStorage.managedFile(it) != null }
+                        val hadImage = restored.payload.invoices.first { it.documentUuid == invoice.documentUuid }.hadImage
+                        invoice.copy(imagenUri = local, driveSyncError = if (hadImage && local == null && invoice.driveFileId == null) "MISSING_SOURCE" else invoice.driveSyncError)
+                    },
+                    incomes = incoming.incomes.map { income ->
+                        val local = previousDataset.incomes.firstOrNull { it.documentUuid == income.documentUuid }
+                            ?.imagenUri?.takeIf { imageStorage.managedFile(it) != null }
+                        val hadImage = restored.payload.incomes.first { it.documentUuid == income.documentUuid }.hadImage
+                        income.copy(imagenUri = local, driveSyncError = if (hadImage && local == null && income.driveFileId == null) "MISSING_SOURCE" else income.driveSyncError)
+                    })
+            }
             restoreJournal.write(
                 phase = RestoreJournalPhase.STAGED,
                 previousSettings = previousSettings,
                 restoreId = restoreId,
                 sheetRowsToDelete = sheetRowsToDelete,
-                remoteFilesToDelete = remoteFilesToDelete
+                remoteFilesToDelete = remoteFilesToDelete,
+                imagesChanged = imagesChanged
             )
             withContext(NonCancellable) {
                 executeCommittedRestore(
@@ -268,7 +306,9 @@ class BackupArchiveService @Inject constructor(
                     restoredUris = restoredUris,
                     restoreId = restoreId,
                     sheetRowsToDelete = sheetRowsToDelete,
-                    remoteFilesToDelete = remoteFilesToDelete
+                    remoteFilesToDelete = remoteFilesToDelete,
+                    imagesChanged = imagesChanged,
+                    dataset = dataset
                 )
             }
         } finally {
@@ -296,17 +336,20 @@ class BackupArchiveService @Inject constructor(
         restoredUris: Map<String, String>,
         restoreId: String,
         sheetRowsToDelete: List<RestoreJournalSheetRow>,
-        remoteFilesToDelete: List<RestoreJournalRemoteFile>
+        remoteFilesToDelete: List<RestoreJournalRemoteFile>,
+        imagesChanged: Boolean,
+        dataset: com.gastos.repository.BackupDataset
     ): BackupRestoreResult {
         var databaseCommitted = false
         try {
-            imageStorage.activateRestoreStage()
+            if (imagesChanged) imageStorage.activateRestoreStage()
             restoreJournal.write(
                 phase = RestoreJournalPhase.IMAGES_SWAPPED,
                 previousSettings = previousSettings,
                 restoreId = restoreId,
                 sheetRowsToDelete = sheetRowsToDelete,
-                remoteFilesToDelete = remoteFilesToDelete
+                remoteFilesToDelete = remoteFilesToDelete,
+                imagesChanged = imagesChanged
             )
             settingsProvider.restoreSettings(restored.payload.settings.toDomain())
             restoreJournal.write(
@@ -314,23 +357,25 @@ class BackupArchiveService @Inject constructor(
                 previousSettings = previousSettings,
                 restoreId = restoreId,
                 sheetRowsToDelete = sheetRowsToDelete,
-                remoteFilesToDelete = remoteFilesToDelete
+                remoteFilesToDelete = remoteFilesToDelete,
+                imagesChanged = imagesChanged
             )
-            dataRepository.replaceAllWithRestoreMarker(restored.payload.toDataset(restoredUris), restoreId)
+            dataRepository.replaceAllWithRestoreMarker(dataset, restoreId)
             databaseCommitted = true
             restoreJournal.write(
                 phase = RestoreJournalPhase.DB_RESTORED,
                 previousSettings = previousSettings,
                 restoreId = restoreId,
                 sheetRowsToDelete = sheetRowsToDelete,
-                remoteFilesToDelete = remoteFilesToDelete
+                remoteFilesToDelete = remoteFilesToDelete,
+                imagesChanged = imagesChanged
             )
             remoteSyncOutbox.reconcile(
-                dataset = restored.payload.toDataset(restoredUris),
+                dataset = dataset,
                 sheetDeletes = sheetRowsToDelete.map { it.toRemoteSyncDelete() },
-                driveDeletes = remoteFilesToDelete.map { it.toRemoteSyncDelete() }
+                driveDeletes = emptyList()
             )
-            imageStorage.finalizeRestoreStage()
+            if (imagesChanged) imageStorage.finalizeRestoreStage()
             dataRepository.clearRestoreMarker(restoreId)
             restoreJournal.clear()
             runCatching { keyStore.remember(header, dataKey) }
@@ -340,7 +385,7 @@ class BackupArchiveService @Inject constructor(
             if (databaseCommitted || dataRepository.committedRestoreId() == restoreId) {
                 throw error
             }
-            runCatching { imageStorage.rollbackRestoreStage() }
+            runCatching { if (imagesChanged) imageStorage.rollbackRestoreStage() }
             runCatching { settingsProvider.restoreSettings(previousSettings) }
             restoreJournal.clear()
             throw error
@@ -350,28 +395,17 @@ class BackupArchiveService @Inject constructor(
     private suspend fun completeCommittedRestore(
         restoreId: String?,
         sheetRowsToDelete: List<RestoreJournalSheetRow>,
-        remoteFilesToDelete: List<RestoreJournalRemoteFile>
+        remoteFilesToDelete: List<RestoreJournalRemoteFile>,
+        imagesChanged: Boolean = true
     ) {
         remoteSyncOutbox.reconcile(
             dataset = dataRepository.snapshot(),
             sheetDeletes = sheetRowsToDelete.map { it.toRemoteSyncDelete() },
-            driveDeletes = remoteFilesToDelete.map { it.toRemoteSyncDelete() }
+            driveDeletes = emptyList()
         )
-        imageStorage.finalizeRestoreStage()
+        if (imagesChanged) imageStorage.finalizeRestoreStage()
         if (!restoreId.isNullOrBlank()) dataRepository.clearRestoreMarker(restoreId)
         restoreJournal.clear()
-    }
-
-    private fun remoteFilesToDelete(
-        previous: com.gastos.repository.BackupDataset,
-        restored: BackupPayloadDto
-    ): List<RestoreJournalRemoteFile> {
-        val restoredById = restored.invoices.associateBy { it.id }
-        return previous.invoices.mapNotNull { invoice ->
-            val remoteFileId = invoice.driveFileId?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-            if (restoredById[invoice.id]?.driveFileId == remoteFileId) return@mapNotNull null
-            RestoreJournalRemoteFile(invoice.id, remoteFileId)
-        }
     }
 
     private fun sheetRowsToDelete(
@@ -467,6 +501,7 @@ class BackupArchiveService @Inject constructor(
         }
         val decoded = requireNotNull(payload) { "El backup no contiene datos restaurables." }
         require(decoded.formatVersion == header.formatVersion) { "Versión de backup incompatible." }
+        require(header.mode != BackupMode.DATA_ONLY || (images.isEmpty() && decoded.imageFileNames.isEmpty())) { "La copia de datos contiene imágenes inesperadas." }
         require(images.size == header.imageCount) { "El número de imágenes del backup no coincide." }
         return RestoredArchive(decoded, images)
     }
@@ -529,7 +564,8 @@ class BackupArchiveService @Inject constructor(
         invoiceCount = invoiceCount,
         productCount = productCount,
         incomeCount = incomeCount,
-        imageCount = imageCount
+        imageCount = imageCount,
+        mode = mode
     )
 
     private data class RestoredArchive(

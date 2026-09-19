@@ -1,5 +1,9 @@
 package com.gastos.feature.invoices
 
+import com.gastos.common.LocalizedNumbers
+import com.gastos.common.SaveState
+import java.util.Locale
+import kotlinx.coroutines.CancellationException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
@@ -24,13 +28,15 @@ import javax.inject.Inject
 
 data class EditInvoiceUiState(
     val isLoading: Boolean = false,
-    val isSaving: Boolean = false,
-    val saveResult: String? = null,
+    val saveState: SaveState = SaveState.Idle,
     val invoice: Invoice? = null,
     val availableCategories: List<String> = TransactionCategories.defaultExpenseCategories,
     val availableSubcategories: List<String> = emptyList(),
     val error: String? = null
-)
+) {
+    val isSaving: Boolean get() = saveState == SaveState.Saving
+    val saveResult: String? get() = (saveState as? SaveState.Error)?.message
+}
 
 /**
  * Form de edición de FACTURA (siempre un GASTO).
@@ -47,7 +53,7 @@ data class EditInvoiceForm(
     val numeroFactura: String = "",
     val baseImponible: String = "",
     val cuotaIva: String = "",
-    val ivaPercent: String = "21.0",
+    val ivaPercent: String = "0",
     val irpfPercent: String = "0.0",
     val paisCodigo: String = "ES",
     val nifEmisor: String = "",
@@ -88,13 +94,13 @@ data class EditInvoiceForm(
      * Devuelve `null` si el total o los porcentajes no son numéricos
      * válidos (igual que hacía `saveInvoice()` antes con `toDoubleOrNull`).
      */
-    fun recalcFiscal(): FiscalBreakdown? {
-        val total = total.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 } ?: return null
-        val iva = ivaPercent.toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
-        val irpf = irpfPercent.toDoubleOrNull()?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
-        val enteredBase = baseImponible.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+    fun recalcFiscal(locale: Locale = Locale.getDefault()): FiscalBreakdown? {
+        val total = LocalizedNumbers.parse(total, locale)?.takeIf { it.isFinite() && it >= 0.0 } ?: return null
+        val iva = LocalizedNumbers.parse(ivaPercent, locale)?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
+        val irpf = LocalizedNumbers.parse(irpfPercent, locale)?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
+        val enteredBase = LocalizedNumbers.parse(baseImponible, locale)?.takeIf { it.isFinite() && it >= 0.0 }
         if (baseImponible.isNotBlank() && enteredBase == null) return null
-        val enteredCuota = cuotaIva.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+        val enteredCuota = LocalizedNumbers.parse(cuotaIva, locale)?.takeIf { it.isFinite() && it >= 0.0 }
         if (cuotaIva.isNotBlank() && enteredCuota == null) return null
         val base = enteredBase
             ?: total / (1.0 + iva / 100.0)
@@ -151,7 +157,8 @@ class EditInvoiceViewModel @Inject constructor(
         }
     }
 
-    fun loadInvoice(id: Long) {
+    fun loadInvoice(id: Long, locale: Locale = Locale.getDefault()) {
+        if (_form.value.id == id) return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
@@ -164,12 +171,12 @@ class EditInvoiceViewModel @Inject constructor(
                             fecha = invoice.fecha,
                             proveedor = invoice.proveedor,
                             moneda = invoice.moneda,
-                            total = invoice.total.toString(),
+                            total = LocalizedNumbers.format(invoice.total, locale),
                             numeroFactura = invoice.numeroFactura ?: "",
-                            baseImponible = invoice.baseImponible?.toString() ?: "",
-                            cuotaIva = invoice.cuotaIva?.toString() ?: "",
-                            ivaPercent = invoice.ivaPercent.toString(),
-                            irpfPercent = invoice.irpfPercent.toString(),
+                            baseImponible = invoice.baseImponible?.let { LocalizedNumbers.format(it, locale) } ?: "",
+                            cuotaIva = invoice.cuotaIva?.let { LocalizedNumbers.format(it, locale) } ?: "",
+                            ivaPercent = LocalizedNumbers.format(invoice.ivaPercent, locale),
+                            irpfPercent = LocalizedNumbers.format(invoice.irpfPercent, locale),
                             paisCodigo = invoice.paisCodigo,
                             nifEmisor = invoice.nifEmisor ?: "",
                             nifReceptor = invoice.nifReceptor ?: "",
@@ -196,6 +203,8 @@ class EditInvoiceViewModel @Inject constructor(
                         it.copy(isLoading = false, error = context.getString(R.string.invoice_not_found))
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, error = e.message ?: context.getString(R.string.load_invoice_error))
@@ -211,7 +220,7 @@ class EditInvoiceViewModel @Inject constructor(
     fun updateNumeroFactura(value: String) { _form.update { it.copy(numeroFactura = value) } }
     fun updateBaseImponible(value: String) { _form.update { it.copy(baseImponible = value) } }
     fun updateCuotaIva(value: String) { _form.update { it.copy(cuotaIva = value) } }
-    fun updateIvaPercent(value: String) { _form.update { it.copy(ivaPercent = value) } }
+    fun updateIvaPercent(value: String) { _form.update { it.copy(ivaPercent = value, baseImponible = "", cuotaIva = "") } }
     fun updateIrpfPercent(value: String) { _form.update { it.copy(irpfPercent = value) } }
     fun updatePaisCodigo(value: String) { _form.update { it.copy(paisCodigo = value) } }
     fun updateNifEmisor(value: String) { _form.update { it.copy(nifEmisor = value) } }
@@ -244,22 +253,24 @@ class EditInvoiceViewModel @Inject constructor(
     }
     fun updateNotas(value: String) { _form.update { it.copy(notas = value) } }
 
-    fun saveInvoice() {
+    fun saveInvoice(locale: Locale = Locale.getDefault()) {
+        if (_uiState.value.saveState == SaveState.Saving || _uiState.value.saveState == SaveState.Success) return
+        _uiState.update { it.copy(saveState = SaveState.Saving) }
         viewModelScope.launch {
             val form = _form.value
-            val fiscal = form.recalcFiscal()
+            val fiscal = form.recalcFiscal(locale)
             if (fiscal == null || fiscal.total <= 0.0) {
                 _uiState.update {
-                    it.copy(saveResult = context.getString(R.string.validation_total_percentages))
+                    it.copy(saveState = SaveState.Error(context.getString(R.string.validation_total_percentages)))
                 }
                 return@launch
             }
             if (form.proveedor.isBlank()) {
-                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_provider_required)) }
+                _uiState.update { it.copy(saveState = SaveState.Error(context.getString(R.string.validation_provider_required))) }
                 return@launch
             }
-            val enteredBase = form.baseImponible.toDoubleOrNull()
-            val enteredCuota = form.cuotaIva.toDoubleOrNull()
+            val enteredBase = LocalizedNumbers.parse(form.baseImponible, locale)
+            val enteredCuota = LocalizedNumbers.parse(form.cuotaIva, locale)
             val fiscalValuesAreConsistent = when {
                 enteredBase != null && enteredCuota != null -> {
                     val rateQuota = enteredBase * fiscal.ivaPercent / 100.0
@@ -278,17 +289,17 @@ class EditInvoiceViewModel @Inject constructor(
             }
             if (!fiscalValuesAreConsistent) {
                 _uiState.update {
-                    it.copy(saveResult = context.getString(R.string.validation_base_vat_mismatch))
+                    it.copy(saveState = SaveState.Error(context.getString(R.string.validation_base_vat_mismatch)))
                 }
                 return@launch
             }
             val currency = form.moneda.trim().uppercase()
             if (currency !in SUPPORTED_CURRENCIES) {
-                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_currency_not_supported)) }
+                _uiState.update { it.copy(saveState = SaveState.Error(context.getString(R.string.validation_currency_not_supported))) }
                 return@launch
             }
 
-            _uiState.update { it.copy(isSaving = true, saveResult = null) }
+
 
             try {
                 // Las facturas son siempre GASTO (los ingresos se editan en su
@@ -299,6 +310,10 @@ class EditInvoiceViewModel @Inject constructor(
                 // ni el texto OCR al guardar.
                 val original = originalInvoice
                 val invoice = Invoice(
+                    documentUuid = original?.documentUuid ?: java.util.UUID.randomUUID().toString(),
+                    driveAccountId = original?.driveAccountId,
+                    driveContentHash = original?.driveContentHash,
+                    driveSyncError = original?.driveSyncError,
                     id = form.id,
                     fecha = form.fecha,
                     proveedor = form.proveedor.trim(),
@@ -333,26 +348,31 @@ class EditInvoiceViewModel @Inject constructor(
                     updatedAt = System.currentTimeMillis()
                 )
 
-                if (form.id == 0L) {
-                    val invoiceId = invoiceRepository.insertInvoice(invoice)
-                    sheetsSyncManager.syncExpense(invoice.copy(id = invoiceId), emptyList())
+                val saved = if (form.id == 0L) {
+                    invoice.copy(id = invoiceRepository.insertInvoice(invoice))
                 } else {
                     invoiceRepository.updateInvoice(invoice)
-                    val products = productRepository.getProductsByInvoiceId(invoice.id).first()
-                    sheetsSyncManager.syncExpense(invoice, products)
+                    invoice
+                }
+                originalInvoice = saved
+                _form.update { it.copy(id = saved.id) }
+                _uiState.update { it.copy(saveState = SaveState.Success) }
+                // Startup reconciliation recovers a commit interrupted before enqueue.
+                try {
+                    val products = productRepository.getProductsByInvoiceId(saved.id).first()
+                    sheetsSyncManager.syncExpense(saved, products)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // The record is durable; remote synchronization remains pending.
                 }
 
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        saveResult = context.getString(R.string.saved_ok)
-                    )
-                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
-                        isSaving = false,
-                        saveResult = context.getString(R.string.save_invoice_error_prefix, e.message.orEmpty())
+                        saveState = SaveState.Error(context.getString(R.string.save_invoice_error_prefix, e.message.orEmpty()))
                     )
                 }
             }
@@ -360,7 +380,7 @@ class EditInvoiceViewModel @Inject constructor(
     }
 
     fun clearSaveResult() {
-        _uiState.update { it.copy(saveResult = null) }
+        _uiState.update { it.copy(saveState = SaveState.Idle) }
     }
 
     private companion object {

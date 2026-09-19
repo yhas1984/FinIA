@@ -7,6 +7,7 @@ plugins {
 }
 
 android {
+    sourceSets.getByName("androidTest").assets.srcDir("../core/data/schemas")
     namespace = "com.gastos"
     compileSdk = 36
 
@@ -14,8 +15,8 @@ android {
         applicationId = "com.gastos.ingresos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.6.0"
+        versionCode = 17
+        versionName = "1.8.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

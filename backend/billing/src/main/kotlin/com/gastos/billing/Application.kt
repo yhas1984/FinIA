@@ -51,13 +51,13 @@ fun Application.billingModule(
     install(ContentNegotiation) { json() }
     install(StatusPages) {
         exception<ClientInputException> { call, error ->
-            call.respond(HttpStatusCode.BadRequest, ErrorResponse(error.message ?: "Invalid request"))
+            call.respond(HttpStatusCode.BadRequest, ErrorResponse(error.message ?: "Invalid request", "INVALID_REQUEST"))
         }
         exception<PurchaseNotEntitledException> { call, _ ->
-            call.respond(HttpStatusCode.Forbidden, ErrorResponse("Purchase is not entitled"))
+            call.respond(HttpStatusCode.Forbidden, ErrorResponse("Purchase is not entitled", "PURCHASE_NOT_ENTITLED"))
         }
         exception<Throwable> { call, _ ->
-            call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Billing service unavailable"))
+            call.respond(HttpStatusCode.ServiceUnavailable, ErrorResponse("Billing service unavailable", "SERVICE_UNAVAILABLE"))
         }
     }
     routing {
@@ -76,7 +76,7 @@ fun Application.billingModule(
             if (!constantTimeEquals(config.internalReconcileSecret, secret) ||
                 !reconcileAuthenticator.isAuthorized(call.request.headers[HttpHeaders.Authorization])
             ) {
-                call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Unauthorized"))
+                call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Unauthorized", "UNAUTHORIZED"))
             } else {
                 call.respond(ReconcileResponse(service.reconcileVoidedPurchases()))
             }

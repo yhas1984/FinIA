@@ -1,5 +1,6 @@
 package com.gastos.feature.backup
 
+import com.gastos.domain.model.sumAvailable
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.Product
@@ -141,10 +142,11 @@ internal object SheetsSchema {
     )
 
     data class SummaryTotals(
-        val totalExpenses: Double,
-        val totalIncomes: Double,
-        val balance: Double,
-        val pendingConversions: Int
+        val totalExpenses: Double?,
+        val totalIncomes: Double?,
+        val balance: Double?,
+        val pendingConversions: Int,
+        val excluded: List<ConvertedAmount> = emptyList()
     )
 
     fun summaryTotals(
@@ -159,16 +161,18 @@ internal object SheetsSchema {
             .filter { it.tipo == com.gastos.domain.model.InvoiceType.INGRESO }
             .map { conversion.convert(it.total, it.moneda) }
         val incomeAmounts = incomes.map { conversion.convert(it.monto, it.moneda) }
-        val totalExpenses = expenseAmounts.sumOf { it.convertedAmount ?: 0.0 }
+        val totalExpenses = expenseAmounts.sumAvailable { it.convertedAmount }
         val totalIncomes = (invoiceIncomeAmounts + incomeAmounts)
-            .sumOf { it.convertedAmount ?: 0.0 }
+            .sumAvailable { it.convertedAmount }
         val pending = (expenseAmounts + invoiceIncomeAmounts + incomeAmounts)
             .count { it.convertedAmount == null }
         return SummaryTotals(
-            totalExpenses = round2(totalExpenses),
-            totalIncomes = round2(totalIncomes),
-            balance = round2(totalIncomes - totalExpenses),
-            pendingConversions = pending
+            totalExpenses = totalExpenses?.let(::round2),
+            totalIncomes = totalIncomes?.let(::round2),
+            balance = (expenseAmounts.map { it.convertedAmount?.unaryMinus() } +
+                (invoiceIncomeAmounts + incomeAmounts).map { it.convertedAmount }).sumAvailable { it }?.let(::round2),
+            pendingConversions = pending,
+            excluded = (expenseAmounts + invoiceIncomeAmounts + incomeAmounts).filter { it.convertedAmount == null }
         )
     }
 
@@ -177,15 +181,19 @@ internal object SheetsSchema {
         exportDate: String,
         reportCurrency: String,
         totals: SummaryTotals
-    ): List<List<Any>> = listOf(
-        listOf(descriptor.summaryTitle),
-        listOf(descriptor.summaryUpdatedLabel, exportDate),
-        listOf(descriptor.summaryCurrencyLabel, reportCurrency),
-        listOf(descriptor.summaryExpensesLabel, totals.totalExpenses),
-        listOf(descriptor.summaryIncomeLabel, totals.totalIncomes),
-        listOf(descriptor.summaryBalanceLabel, totals.balance),
-        listOf(descriptor.summaryPendingLabel, totals.pendingConversions)
-    )
+    ): List<List<Any>> {
+        val unavailable = if (descriptor.locale == LocaleCode.ES) "No disponible" else "Unavailable"
+        val partial = if (descriptor.locale == LocaleCode.ES) "Total parcial" else "Partial total"
+        return listOf(
+            listOf(descriptor.summaryTitle, if (totals.pendingConversions > 0) partial else ""),
+            listOf(descriptor.summaryUpdatedLabel, exportDate),
+            listOf(descriptor.summaryCurrencyLabel, reportCurrency),
+            listOf(descriptor.summaryExpensesLabel, totals.totalExpenses ?: unavailable),
+            listOf(descriptor.summaryIncomeLabel, totals.totalIncomes ?: unavailable),
+            listOf(descriptor.summaryBalanceLabel, totals.balance ?: unavailable),
+            listOf(descriptor.summaryPendingLabel, totals.pendingConversions)
+        ) + totals.excluded.map { listOf(descriptor.conversionPendingLabel, it.originalAmount, it.originalCurrency) }
+    }
 
     private fun displayCategoryWithSubcategory(
         category: String?,

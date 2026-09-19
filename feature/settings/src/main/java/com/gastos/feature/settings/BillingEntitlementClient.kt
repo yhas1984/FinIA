@@ -6,6 +6,7 @@ import android.content.Context
 import com.google.android.play.core.integrity.IntegrityManager
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.IntegrityTokenRequest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -43,34 +44,48 @@ class BillingEntitlementClient @Inject constructor(
     val isRequired: Boolean
         get() = BuildConfig.BILLING_BACKEND_REQUIRED
 
-    suspend fun verifyPurchase(productId: String, purchaseToken: String): Boolean = withContext(Dispatchers.IO) {
-        if (!isEnabled) return@withContext !isRequired
+    suspend fun verifyPurchase(productId: String, purchaseToken: String): EntitlementVerification = withContext(Dispatchers.IO) {
+        if (!isEnabled) return@withContext EntitlementVerification.Invalid
         val purchaseHash = hashPurchaseToken(purchaseToken)
         val playIntegrityToken = if (BuildConfig.BILLING_PLAY_INTEGRITY_ENABLED) {
-            requestPlayIntegrityToken(purchaseHash) ?: return@withContext false
-        } else {
-            null
-        }
+            requestPlayIntegrityToken(purchaseHash) ?: return@withContext EntitlementVerification.Unavailable
+        } else null
         val body = JSONObject()
             .put("packageName", BuildConfig.BILLING_PACKAGE_NAME)
             .put("productId", productId)
             .put("purchaseToken", purchaseToken)
             .apply { playIntegrityToken?.let { put("playIntegrityToken", it) } }
-            .toString()
-            .toRequestBody(JSON_MEDIA_TYPE)
+            .toString().toRequestBody(JSON_MEDIA_TYPE)
         val request = Request.Builder()
             .url(BuildConfig.BILLING_BACKEND_URL.trimEnd('/') + "/v1/entitlements:verify")
-            .header("Content-Type", "application/json")
-            .post(body)
-            .build()
-        runCatching {
+            .post(body).build()
+        try {
             httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@use false
-                val token = JSONObject(response.body?.string().orEmpty()).optString("entitlementToken")
-                verifyToken(token, productId, purchaseToken)
+                val raw = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    val error = runCatching { JSONObject(raw) }.getOrNull()
+                    return@use when {
+                        response.code == 403 && (error?.optString("code") == "PURCHASE_NOT_ENTITLED" ||
+                            error?.optString("error") == "Purchase is not entitled") -> EntitlementVerification.Revoked
+                        response.code >= 500 || response.code == 408 || response.code == 429 -> EntitlementVerification.Unavailable
+                        else -> EntitlementVerification.Invalid
+                    }
+                }
+                val token = runCatching { JSONObject(raw).optString("entitlementToken") }.getOrDefault("")
+                val expiresAt = validateStoredGrant(token, productId, purchaseHash)
+                if (expiresAt == null || expiresAt <= System.currentTimeMillis()) EntitlementVerification.Invalid
+                else EntitlementVerification.Valid(token, expiresAt, purchaseHash)
             }
-        }.getOrDefault(false)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: java.io.IOException) {
+            EntitlementVerification.Unavailable
+        }
     }
+
+    /** Recheck the signature and purchase binding when loading a cached grant. */
+    fun validateStoredGrant(token: String, productId: String, purchaseHash: String): Long? =
+        runCatching { verifyToken(token, productId, purchaseHash) }.getOrNull()
 
     private suspend fun requestPlayIntegrityToken(nonce: String): String? = suspendCancellableCoroutine { continuation ->
         integrityManager.requestIntegrityToken(
@@ -84,24 +99,25 @@ class BillingEntitlementClient @Inject constructor(
         }
     }
 
-    private fun verifyToken(token: String, productId: String, purchaseToken: String): Boolean {
+    private fun verifyToken(token: String, productId: String, purchaseHash: String): Long? {
         val parts = token.split('.')
-        if (parts.size != 3) return false
+        if (parts.size != 3) return null
         val publicKey = parsePublicKey(BuildConfig.BILLING_ENTITLEMENT_PUBLIC_KEY_PEM)
         val verifier = Signature.getInstance("SHA256withRSA")
         verifier.initVerify(publicKey)
         verifier.update("${parts[0]}.${parts[1]}".toByteArray(Charsets.US_ASCII))
         val signatureValid = verifier.verify(Base64.decode(parts[2], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING))
-        if (!signatureValid) return false
+        if (!signatureValid) return null
         val header = JSONObject(decodeSegment(parts[0]))
         val payload = JSONObject(String(Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING), Charsets.UTF_8))
-        return header.optString("kid") == BuildConfig.BILLING_ENTITLEMENT_KEY_ID &&
+        val valid = header.optString("alg") == "RS256" && header.optString("kid") == BuildConfig.BILLING_ENTITLEMENT_KEY_ID &&
             payload.optString("iss") == BuildConfig.BILLING_ENTITLEMENT_ISSUER &&
-            payload.optString("sub") == hashPurchaseToken(purchaseToken) &&
+            payload.optString("sub") == purchaseHash &&
             payload.optString("packageName") == BuildConfig.BILLING_PACKAGE_NAME &&
             payload.optString("productId") == productId &&
             payload.optString("status") == "active" &&
-            payload.optLong("exp", 0L) > System.currentTimeMillis() / 1000L
+            payload.optLong("exp", 0L) in 1..Long.MAX_VALUE / 1000L
+        return if (valid) payload.optLong("exp") * 1000L else null
     }
 
     private fun decodeSegment(segment: String): String =

@@ -269,7 +269,7 @@ internal fun MovementList(
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 AutoSizeMonetaryText(
-                    text = fmt(movement.monto),
+                    text = movement.originalCurrency?.let { "${movement.monto} $it · ${stringResource(R.string.rate_missing_short)}" } ?: fmt(movement.monto),
                     style = MaterialTheme.typography.bodyLarge.copy(
                         fontWeight = FontWeight.SemiBold,
                         color = if (movement.isExpense) {

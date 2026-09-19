@@ -43,6 +43,8 @@ class BillingManager @Inject constructor(
         private const val KEY_IS_PREMIUM = "is_premium"
         private const val KEY_PLAY_PREMIUM = "play_premium"
         private const val KEY_DEBUG_PREMIUM = "debug_premium"
+        private const val KEY_SIGNED_GRANT = "signed_grant"
+        private const val KEY_GRANT_SUBJECT = "grant_subject"
         private const val KEY_LAST_VERIFIED_AT = "last_verified_at"
         private const val KEY_LAST_SYNC_AT = "last_sync_at"
         private const val KEY_HAS_PENDING_PURCHASE = "has_pending_purchase"
@@ -81,7 +83,7 @@ class BillingManager @Inject constructor(
     val isDebugBuild: Boolean = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
     private val legacyPremium = prefs.getBoolean(KEY_IS_PREMIUM, false)
     private var playEntitled: Boolean = prefs.getBoolean(KEY_PLAY_PREMIUM, legacyPremium) &&
-        (!entitlementClient.isRequired || entitlementClient.isEnabled)
+        (!entitlementClient.isRequired || entitlementClient.isEnabled) && cachedAccessValid()
     private var debugOverride: Boolean = prefs.getBoolean(KEY_DEBUG_PREMIUM, if (isDebugBuild) legacyPremium else false)
     private var isStartingConnection: Boolean = false
     private var lastAutomaticRefreshAt: Long = 0L
@@ -104,6 +106,12 @@ class BillingManager @Inject constructor(
 
     init {
         refreshBillingNotice(hasFailure = false)
+        entitlementScope.launch {
+            while (true) {
+                expireCachedAccess()
+                delay(30_000L)
+            }
+        }
         startConnection()
         prefs.getString(KEY_ACK_TOKEN, null)?.let {
             acknowledgeScheduler.schedule(prefs.getLong(KEY_ACK_NEXT_AT, 0L) - System.currentTimeMillis())
@@ -159,6 +167,7 @@ class BillingManager @Inject constructor(
     }
 
     fun onAppResumed() {
+        expireCachedAccess()
         refreshNow(force = false)
     }
 
@@ -260,21 +269,29 @@ class BillingManager @Inject constructor(
             Purchase.PurchaseState.PENDING -> {
                 invalidateVerification()
                 setPendingPurchase(true)
-                setPlayEntitled(false, verified = false)
+                expireCachedAccess()
             }
             Purchase.PurchaseState.PURCHASED -> {
                 setPendingPurchase(false)
                 val generation = ++verificationGeneration
                 verificationToken = purchase.purchaseToken
                 if (entitlementClient.isEnabled) {
-                    setPlayEntitled(false, verified = false)
+                    expireCachedAccess()
                     entitlementScope.launch {
-                        if (entitlementClient.verifyPurchase(PREMIUM_SKU, purchase.purchaseToken)) {
-                            if (isCurrentVerification(generation, purchase.purchaseToken)) {
+                        val result = entitlementClient.verifyPurchase(PREMIUM_SKU, purchase.purchaseToken)
+                        if (!isCurrentVerification(generation, purchase.purchaseToken)) return@launch
+                        when (result) {
+                            is EntitlementVerification.Valid -> {
+                                prefs.edit().putString(KEY_SIGNED_GRANT, result.token)
+                                    .putString(KEY_GRANT_SUBJECT, result.purchaseHash).apply()
                                 setPlayEntitled(true, verified = true)
                             }
-                        } else if (isCurrentVerification(generation, purchase.purchaseToken)) {
-                            _purchaseError.value = "No se pudo verificar Premium con el servidor."
+                            EntitlementVerification.Revoked -> revokePremium()
+                            EntitlementVerification.Unavailable, EntitlementVerification.Invalid -> {
+                                expireCachedAccess()
+                                _purchaseError.value = context.getString(R.string.premium_verification_unavailable)
+                                refreshBillingNotice(hasFailure = true)
+                            }
                         }
                     }
                 } else if (entitlementClient.isRequired) {
@@ -330,6 +347,7 @@ class BillingManager @Inject constructor(
     }
 
     private fun revokePremium() {
+        prefs.edit().remove(KEY_SIGNED_GRANT).remove(KEY_GRANT_SUBJECT).remove(KEY_LAST_VERIFIED_AT).apply()
         invalidateVerification()
         clearAckRetryState()
         setPendingPurchase(false)
@@ -344,6 +362,20 @@ class BillingManager @Inject constructor(
 
     private fun isCurrentVerification(generation: Long, purchaseToken: String): Boolean =
         verificationGeneration == generation && verificationToken == purchaseToken
+
+    private fun cachedAccessValid(): Boolean {
+        val verifiedAt = prefs.getLong(KEY_LAST_VERIFIED_AT, 0L)
+        val token = prefs.getString(KEY_SIGNED_GRANT, null)
+        val expiresAt = if (token != null) {
+            entitlementClient.validateStoredGrant(token, PREMIUM_SKU, prefs.getString(KEY_GRANT_SUBJECT, "").orEmpty())
+                ?: return false
+        } else null // Upgrade: a dated legacy verification keeps only its original remaining window.
+        return PremiumAccessPolicy.isValid(verifiedAt, expiresAt, System.currentTimeMillis())
+    }
+
+    private fun expireCachedAccess() {
+        if (playEntitled && !cachedAccessValid()) setPlayEntitled(false, verified = false)
+    }
 
     private fun setPlayEntitled(value: Boolean, verified: Boolean) {
         playEntitled = value

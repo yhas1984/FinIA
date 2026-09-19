@@ -14,7 +14,10 @@ import com.gastos.storage.InvoiceImageStorage
 import kotlinx.serialization.Serializable
 
 internal const val LEGACY_BACKUP_FORMAT_VERSION = 1
-internal const val BACKUP_FORMAT_VERSION = 2
+internal const val BACKUP_FORMAT_VERSION = 3
+@Serializable
+enum class BackupMode { DATA_ONLY, COMPLETE }
+
 internal const val BACKUP_FILE_EXTENSION = "finai"
 internal const val BACKUP_MIME_TYPE = "application/vnd.finai.backup"
 
@@ -33,6 +36,7 @@ internal data class EncryptedBackupHeader(
     val salt: String,
     val keyIv: String,
     val wrappedKey: String,
+    val mode: BackupMode = BackupMode.COMPLETE,
     val payloadIv: String? = null
 )
 
@@ -43,7 +47,8 @@ data class BackupPreview(
     val invoiceCount: Int,
     val productCount: Int,
     val incomeCount: Int,
-    val imageCount: Int
+    val imageCount: Int,
+    val mode: BackupMode = BackupMode.COMPLETE
 )
 
 data class CloudBackupInfo(
@@ -80,6 +85,11 @@ internal data class BackupPayloadDto(
 
 @Serializable
 internal data class InvoiceDto(
+    val documentUuid: String = java.util.UUID.randomUUID().toString(),
+    val driveAccountId: String? = null,
+    val driveContentHash: String? = null,
+    val driveSyncError: String? = null,
+    val hadImage: Boolean = false,
     val id: Long,
     val fecha: Long,
     val proveedor: String,
@@ -106,6 +116,10 @@ internal data class InvoiceDto(
     val updatedAt: Long
 ) {
     fun toDomain(images: Map<String, String>): Invoice = Invoice(
+        documentUuid = documentUuid,
+        driveAccountId = driveAccountId,
+        driveContentHash = driveContentHash,
+        driveSyncError = driveSyncError,
         id = id,
         fecha = fecha,
         proveedor = proveedor,
@@ -160,6 +174,14 @@ internal data class ProductDto(
 
 @Serializable
 internal data class IncomeDto(
+    val documentUuid: String = java.util.UUID.randomUUID().toString(),
+    val driveAccountId: String? = null,
+    val driveContentHash: String? = null,
+    val driveSyncError: String? = null,
+    val hadImage: Boolean = false,
+    val driveFileId: String? = null,
+    val driveWebViewLink: String? = null,
+    val driveUploadPending: Boolean = false,
     val id: Long,
     val fecha: Long,
     val concepto: String,
@@ -178,6 +200,13 @@ internal data class IncomeDto(
     val updatedAt: Long
 ) {
     fun toDomain(images: Map<String, String>): Income = Income(
+        documentUuid = documentUuid,
+        driveAccountId = driveAccountId,
+        driveContentHash = driveContentHash,
+        driveSyncError = driveSyncError,
+        driveFileId = driveFileId,
+        driveWebViewLink = driveWebViewLink,
+        driveUploadPending = driveUploadPending,
         id = id,
         fecha = fecha,
         concepto = concepto,
@@ -279,11 +308,17 @@ internal data class RestorableSettingsDto(
 internal fun BackupDataset.toDto(
     createdAt: Long,
     settings: RestorableSettings,
-    imageStorage: InvoiceImageStorage
+    imageStorage: InvoiceImageStorage,
+    mode: BackupMode = BackupMode.COMPLETE
 ): BackupPayloadDto = BackupPayloadDto(
     createdAt = createdAt,
     invoices = invoices.map { invoice ->
         InvoiceDto(
+            documentUuid = invoice.documentUuid,
+            driveAccountId = invoice.driveAccountId,
+            driveContentHash = invoice.driveContentHash,
+            driveSyncError = invoice.driveSyncError,
+            hadImage = invoice.imagenUri != null || invoice.driveFileId != null || invoice.driveSyncError == "MISSING_SOURCE",
             id = invoice.id,
             fecha = invoice.fecha,
             proveedor = invoice.proveedor,
@@ -300,7 +335,7 @@ internal fun BackupDataset.toDto(
             numeroFactura = invoice.numeroFactura,
             baseImponible = invoice.baseImponible,
             cuotaIva = invoice.cuotaIva,
-            imageFileName = imageStorage.managedFile(invoice.imagenUri)?.name,
+            imageFileName = if (mode == BackupMode.COMPLETE) imageStorage.managedFile(invoice.imagenUri)?.name else null,
             driveFileId = invoice.driveFileId,
             driveWebViewLink = invoice.driveWebViewLink,
             driveUploadPending = invoice.driveUploadPending,
@@ -325,6 +360,14 @@ internal fun BackupDataset.toDto(
     },
     incomes = incomes.map { income ->
         IncomeDto(
+            documentUuid = income.documentUuid,
+            driveAccountId = income.driveAccountId,
+            driveContentHash = income.driveContentHash,
+            driveSyncError = income.driveSyncError,
+            driveFileId = income.driveFileId,
+            driveWebViewLink = income.driveWebViewLink,
+            driveUploadPending = income.driveUploadPending,
+            hadImage = income.imagenUri != null || income.driveFileId != null || income.driveSyncError == "MISSING_SOURCE",
             id = income.id,
             fecha = income.fecha,
             concepto = income.concepto,
@@ -337,7 +380,7 @@ internal fun BackupDataset.toDto(
             subcategoria = income.subcategoria,
             ivaPercent = income.ivaPercent,
             irpfPercent = income.irpfPercent,
-            imageFileName = imageStorage.managedFile(income.imagenUri)?.name,
+            imageFileName = if (mode == BackupMode.COMPLETE) imageStorage.managedFile(income.imagenUri)?.name else null,
             notas = income.notas,
             createdAt = income.createdAt,
             updatedAt = income.updatedAt
