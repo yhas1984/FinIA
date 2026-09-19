@@ -177,9 +177,9 @@ class SheetsSchemaTest {
             conversion = conversion
         )
 
-        assertEquals(900.0, totals.totalExpenses, 0.001)
-        assertEquals(7_500.0, totals.totalIncomes, 0.001)
-        assertEquals(6_600.0, totals.balance, 0.001)
+        assertEquals(900.0, totals.totalExpenses!!, 0.001)
+        assertEquals(7_500.0, totals.totalIncomes!!, 0.001)
+        assertEquals(6_600.0, totals.balance!!, 0.001)
         assertEquals(0, totals.pendingConversions)
         val rows = SheetsSchema.summaryRows(SheetsSchema.es, "2026-07-24", "EUR", totals)
         assertEquals("Total Ingresos", rows[4][0])
@@ -202,7 +202,8 @@ class SheetsSchemaTest {
             conversion = snapshot()
         )
 
-        assertEquals(0.0, totals.totalIncomes, 0.001)
+        org.junit.Assert.assertNull(totals.totalIncomes)
+        org.junit.Assert.assertNull(totals.balance)
         assertEquals(1, totals.pendingConversions)
     }
 

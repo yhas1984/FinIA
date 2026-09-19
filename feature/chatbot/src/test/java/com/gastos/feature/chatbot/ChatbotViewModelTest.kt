@@ -31,6 +31,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -50,10 +51,13 @@ class ChatbotViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(dispatcher)
+        io.mockk.mockkStatic(android.util.Log::class)
+        every { android.util.Log.w(any(), any<String>()) } returns 0
     }
 
     @After
     fun tearDown() {
+        io.mockk.unmockkStatic(android.util.Log::class)
         Dispatchers.resetMain()
     }
 
@@ -136,8 +140,32 @@ class ChatbotViewModelTest {
     }
 
     @Test
-    fun `invoice scan confirms after local save without waiting for Drive`() = runTest(dispatcher) {
-        assertTrue(true)
+    fun `interrupted stream preserves text and retry replaces it without duplicating the user`() = runTest(dispatcher) {
+        val fixture = fixture(isPremium = true)
+        every { fixture.aiService.processCommandStreaming("Hola") } returns flow {
+            emit("Respuesta parcial")
+            throw java.io.IOException("offline")
+        }
+        coEvery { fixture.chatMessageRepository.replaceLastIncomplete(any()) } answers {
+            fixture.persistedMessages.removeAt(fixture.persistedMessages.lastIndex)
+            fixture.persistedMessages.add(firstArg())
+        }
+        val viewModel = fixture.createViewModel()
+        advanceUntilIdle()
+        viewModel.sendMessage("Hola")
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.canRetryIncomplete)
+        assertTrue(viewModel.uiState.value.messages.last().text().contains("Respuesta parcial"))
+        assertEquals("model_incomplete", fixture.persistedMessages.last().role)
+        assertFalse(fixture.persistedMessages.last().includeInContext)
+        every { fixture.aiService.processCommandStreaming("Hola") } returns flowOf("Respuesta completa")
+        every { fixture.aiService.parseStreamingResult("Respuesta completa", "Hola") } returns
+            AIResult(success = true, message = "Respuesta completa")
+        viewModel.retryIncompleteResponse()
+        advanceUntilIdle()
+        assertEquals(listOf("Hola", "Respuesta completa"), viewModel.uiState.value.messages.map { it.text() })
+        assertEquals(listOf("user", "model"), fixture.persistedMessages.map { it.role })
+        assertFalse(viewModel.uiState.value.canRetryIncomplete)
     }
 
     private fun fixture(isPremium: Boolean): Fixture {

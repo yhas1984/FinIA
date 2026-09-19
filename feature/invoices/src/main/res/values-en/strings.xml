@@ -29,8 +29,8 @@
     <string name="subcategory">Subcategory</string>
     <string name="custom_subcategory">Custom subcategory</string>
     <string name="leave_empty_no_subcategory">Leave it empty to save without a subcategory.</string>
-    <string name="vat_percent">VAT %%</string>
-    <string name="irpf_percent">IRPF %%</string>
+    <string name="vat_percent" formatted="false">VAT %</string>
+    <string name="irpf_percent" formatted="false">IRPF %</string>
     <string name="base_vat">Base: %1$s</string>
     <string name="vat_line">VAT: %1$s</string>
     <string name="base_vat_irpf_breakdown">Tax base: %1$s %2$s</string>
@@ -67,4 +67,8 @@
     <string name="back">Back</string>
     <string name="ok">OK</string>
     <string name="no_conversion_total">— (%1$s)</string>
+    <string name="total_partial">Partial total</string>
+    <string name="total_unavailable">Unavailable</string>
+    <string name="partial_charts_notice">Balances, charts and comparisons only include transactions with available exchange rates. Excluded:</string>
+    <string name="refresh_exchange_rates">Refresh exchange rates</string>
 </resources>

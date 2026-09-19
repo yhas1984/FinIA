@@ -21,6 +21,7 @@ android {
 }
 
 dependencies {
+    testImplementation(libs.junit)
     implementation(libs.coroutines.core)
 
     // Hilt para los @Inject constructor de los UseCases

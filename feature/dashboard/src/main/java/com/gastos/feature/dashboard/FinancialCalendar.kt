@@ -210,7 +210,8 @@ private fun RowScope.CalendarDayCell(
                         }
                     }
                     Text(
-                        text = compactBalance(data.balance),
+                        text = if (data.balanceUnavailable) stringResource(R.string.rate_missing_short)
+                            else compactBalance(data.balance) + if (data.expensePartial || data.incomePartial) "*" else "",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Medium
@@ -308,17 +309,17 @@ private fun CalendarDayTotals(
     ) {
         CalendarTotalRow(
             label = stringResource(R.string.month_balance),
-            amount = fmt(balance),
+            amount = calendarAmount(balance, dayData?.balanceUnavailable == true, dayData?.let { it.expensePartial || it.incomePartial } == true, fmt),
             color = if (balance >= 0.0) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
         )
         CalendarTotalRow(
             label = stringResource(R.string.expenses),
-            amount = fmt(dayData?.gastos ?: 0.0),
+            amount = calendarAmount(dayData?.gastos ?: 0.0, dayData?.expenseUnavailable == true, dayData?.expensePartial == true, fmt),
             color = MaterialTheme.colorScheme.error
         )
         CalendarTotalRow(
             label = stringResource(R.string.income),
-            amount = fmt(dayData?.ingresos ?: 0.0),
+            amount = calendarAmount(dayData?.ingresos ?: 0.0, dayData?.incomeUnavailable == true, dayData?.incomePartial == true, fmt),
             color = MaterialTheme.colorScheme.secondary
         )
     }
@@ -368,3 +369,8 @@ private fun compactBalance(amount: Double): String {
         "$sign${"%.0f".format(Locale.ROOT, absolute)}"
     }
 }
+
+@Composable
+private fun calendarAmount(amount: Double, unavailable: Boolean, partial: Boolean, fmt: (Double) -> String): String =
+    if (unavailable) stringResource(R.string.total_unavailable)
+    else if (partial) "${fmt(amount)} · ${stringResource(R.string.total_partial)}" else fmt(amount)

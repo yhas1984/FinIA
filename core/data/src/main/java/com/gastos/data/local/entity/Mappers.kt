@@ -3,6 +3,10 @@ package com.gastos.data.local.entity
 import com.gastos.domain.model.*
 
 fun InvoiceEntity.toDomain(): Invoice = Invoice(
+    documentUuid = documentUuid,
+    driveAccountId = driveAccountId,
+    driveContentHash = driveContentHash,
+    driveSyncError = driveSyncError,
     id = id,
     fecha = fecha,
     proveedor = proveedor,
@@ -30,6 +34,10 @@ fun InvoiceEntity.toDomain(): Invoice = Invoice(
 )
 
 fun Invoice.toEntity(): InvoiceEntity = InvoiceEntity(
+    documentUuid = documentUuid,
+    driveAccountId = driveAccountId,
+    driveContentHash = driveContentHash,
+    driveSyncError = driveSyncError,
     id = id,
     fecha = fecha,
     proveedor = proveedor,
@@ -81,6 +89,13 @@ fun Product.toEntity(): ProductEntity = ProductEntity(
 )
 
 fun IncomeEntity.toDomain(): Income = Income(
+    documentUuid = documentUuid,
+    driveAccountId = driveAccountId,
+    driveContentHash = driveContentHash,
+    driveSyncError = driveSyncError,
+    driveFileId = driveFileId,
+    driveWebViewLink = driveWebViewLink,
+    driveUploadPending = driveUploadPending,
     id = id,
     fecha = fecha,
     concepto = concepto,
@@ -100,6 +115,13 @@ fun IncomeEntity.toDomain(): Income = Income(
 )
 
 fun Income.toEntity(): IncomeEntity = IncomeEntity(
+    documentUuid = documentUuid,
+    driveAccountId = driveAccountId,
+    driveContentHash = driveContentHash,
+    driveSyncError = driveSyncError,
+    driveFileId = driveFileId,
+    driveWebViewLink = driveWebViewLink,
+    driveUploadPending = driveUploadPending,
     id = id,
     fecha = fecha,
     concepto = concepto,

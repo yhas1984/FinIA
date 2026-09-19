@@ -59,7 +59,7 @@ class LegacyBackupRestoreTest {
             every { remember(any(), any()) } just Runs
         }
         val restoreJournal: BackupRestoreJournal = mockk {
-            every { write(any(), any(), any(), any(), any()) } just Runs
+            every { write(any(), any(), any(), any(), any(), any()) } just Runs
             every { clear() } just Runs
             every { read() } returns null
         }
@@ -73,7 +73,8 @@ class LegacyBackupRestoreTest {
             imageStorage,
             keyStore,
             restoreJournal,
-            remoteSyncOutbox
+            remoteSyncOutbox,
+            mockk(relaxed = true)
         )
         val password: CharArray = "frase-segura-v1".toCharArray()
         val archive: ByteArray = createLegacyArchive(password.copyOf())

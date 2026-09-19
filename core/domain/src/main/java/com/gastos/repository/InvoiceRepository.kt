@@ -20,6 +20,7 @@ interface InvoiceRepository {
         webViewLink: String?,
         pending: Boolean
     )
+    suspend fun updateImageSync(id: Long, documentUuid: String, sourceUri: String?, metadata: com.gastos.domain.model.DriveImageMetadata): Boolean
     suspend fun deleteInvoice(invoice: Invoice)
     suspend fun getInvoiceCount(): Int
     suspend fun getTotalByTypeAndDateRange(type: InvoiceType, startDate: Long, endDate: Long): Double?

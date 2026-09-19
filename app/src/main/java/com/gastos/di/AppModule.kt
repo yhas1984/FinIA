@@ -244,6 +244,28 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        for (table in listOf("invoices", "incomes")) {
+            db.execSQL("ALTER TABLE $table ADD COLUMN documentUuid TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE $table ADD COLUMN driveAccountId TEXT")
+            db.execSQL("ALTER TABLE $table ADD COLUMN driveContentHash TEXT")
+            db.execSQL("ALTER TABLE $table ADD COLUMN driveSyncError TEXT")
+            db.query("SELECT id FROM $table").use { cursor ->
+                while (cursor.moveToNext()) {
+                    db.execSQL("UPDATE $table SET documentUuid = ? WHERE id = ?",
+                        arrayOf<Any>(java.util.UUID.randomUUID().toString(), cursor.getLong(0)))
+                }
+            }
+            db.execSQL("CREATE UNIQUE INDEX index_${table}_documentUuid ON $table(documentUuid)")
+        }
+        db.execSQL("ALTER TABLE incomes ADD COLUMN driveFileId TEXT")
+        db.execSQL("ALTER TABLE incomes ADD COLUMN driveWebViewLink TEXT")
+        db.execSQL("ALTER TABLE incomes ADD COLUMN driveUploadPending INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("UPDATE incomes SET driveUploadPending = 1 WHERE imagenUri IS NOT NULL AND imagenUri != ''")
+    }
+}
+
 val MIGRATION_REMOTE_SYNC_OUTBOX_1_2 = object : Migration(1, 2) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN operationId TEXT NOT NULL DEFAULT ''")
@@ -253,6 +275,19 @@ val MIGRATION_REMOTE_SYNC_OUTBOX_1_2 = object : Migration(1, 2) {
 val MIGRATION_REMOTE_SYNC_OUTBOX_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN remoteFileId TEXT")
+    }
+}
+
+val MIGRATION_REMOTE_SYNC_OUTBOX_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN documentUuid TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN accountId TEXT")
+        db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN deleteConsent INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN status TEXT NOT NULL DEFAULT 'PENDING'")
+        db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN nextAttemptAt INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN lastError TEXT")
+        db.execSQL("DELETE FROM remote_sync_outbox WHERE target = 'INVOICE_DRIVE' AND action = 'DELETE'")
     }
 }
 
@@ -288,7 +323,8 @@ object AppModule {
                 MIGRATION_7_8,
                 MIGRATION_8_9,
                 MIGRATION_9_10,
-                MIGRATION_10_11
+                MIGRATION_10_11,
+                MIGRATION_11_12
             )
             .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()
@@ -324,7 +360,7 @@ object AppModule {
     @Singleton
     fun provideRemoteSyncOutboxDatabase(@ApplicationContext context: Context): RemoteSyncOutboxDatabase =
         Room.databaseBuilder(context, RemoteSyncOutboxDatabase::class.java, "finai_remote_sync.db")
-            .addMigrations(MIGRATION_REMOTE_SYNC_OUTBOX_1_2, MIGRATION_REMOTE_SYNC_OUTBOX_2_3)
+            .addMigrations(MIGRATION_REMOTE_SYNC_OUTBOX_1_2, MIGRATION_REMOTE_SYNC_OUTBOX_2_3, MIGRATION_REMOTE_SYNC_OUTBOX_3_4)
             .build()
 
     @Provides

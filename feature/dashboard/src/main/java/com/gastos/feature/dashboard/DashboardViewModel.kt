@@ -2,6 +2,10 @@ package com.gastos.feature.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gastos.domain.model.ConversionSummary
+import com.gastos.domain.model.moneyRecord
+import com.gastos.domain.model.summarize
+import com.gastos.domain.model.sumAvailable
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
@@ -39,7 +43,11 @@ data class MonthRef(val year: Int, val month: Int) {
 data class DayData(
     val dayLabel: String,
     val gastos: Double,
-    val ingresos: Double
+    val ingresos: Double,
+    val expensePartial: Boolean = false,
+    val incomePartial: Boolean = false,
+    val expenseUnavailable: Boolean = false,
+    val incomeUnavailable: Boolean = false
 )
 
 /** Totales convertidos de un día del mes seleccionado. */
@@ -48,7 +56,12 @@ data class CalendarDayData(
     val gastos: Double,
     val ingresos: Double,
     val balance: Double,
-    val count: Int
+    val count: Int,
+    val expensePartial: Boolean = false,
+    val incomePartial: Boolean = false,
+    val expenseUnavailable: Boolean = false,
+    val incomeUnavailable: Boolean = false,
+    val balanceUnavailable: Boolean = false
 )
 
 /** Porción del donut: una categoría con su agregación del mes. */
@@ -75,7 +88,8 @@ data class AnalyticsMovement(
     val fecha: Long,
     val descripcion: String,
     val monto: Double,
-    val isExpense: Boolean
+    val isExpense: Boolean,
+    val originalCurrency: String? = null
 )
 
 /** Detalle de la categoría seleccionada en el drill-down. */
@@ -87,6 +101,7 @@ data class CategoryDetail(
 )
 
 data class DashboardUiState(
+    val conversions: Map<String, ConversionSummary> = emptyMap(),
     val totalGastosMes: Double = 0.0,
     val totalIngresosMes: Double = 0.0,
     val balanceMes: Double = 0.0,
@@ -174,6 +189,7 @@ class DashboardViewModel @Inject constructor(
 
     /** Reloj inyectable para pruebas deterministas. */
     internal var nowProvider: () -> Long = System::currentTimeMillis
+        set(value) { field = value; selectedMonth.value = currentMonth() }
 
     private val _uiState = MutableStateFlow(DashboardUiState())
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
@@ -198,7 +214,7 @@ class DashboardViewModel @Inject constructor(
      * la moneda por defecto o la selección (mes / tipo / drill-down).
      *
      * Los registros cuya moneda no tenga tasa de cambio se EXCLUYEN del
-     * total (convert() devuelve null → contribuyen 0).
+     * total y se identifican como excluidos en los metadatos.
      */
     private fun observeDashboardData() {
         viewModelScope.launch {
@@ -426,7 +442,7 @@ class DashboardViewModel @Inject constructor(
      * Cálculo puro del estado del dashboard a partir de los registros, la
      * moneda destino y la selección actual. Usa [ExchangeRateProvider] para
      * convertir cada importe. Si una moneda no tiene tasa, su importe se
-     * excluye (suma 0).
+     * excluye y se muestra el resultado como parcial.
      */
     private fun computeState(
         invoices: List<Invoice>,
@@ -504,7 +520,23 @@ class DashboardViewModel @Inject constructor(
             target = target
         )
 
+        fun expenseSummary(rows: List<Invoice>) = exchangeRateProvider.summarize(rows.map { it.moneyRecord() }, target)
+        fun incomeSummary(rows: List<Income>) = exchangeRateProvider.summarize(rows.map { it.moneyRecord() }, target)
+        val monthlyRecords = monthlyExpenseInvoices.map { it.moneyRecord() } + monthlyIncomes.map { it.moneyRecord() }
+        val conversions = mapOf(
+            "totalGastosMes" to expenseSummary(monthlyExpenseInvoices),
+            "totalIngresosMes" to incomeSummary(monthlyIncomes),
+            "balanceMes" to exchangeRateProvider.summarize(monthlyExpenseInvoices.map { it.moneyRecord().let { row -> row.copy(amount = -row.amount) } } + monthlyIncomes.map { it.moneyRecord() }, target),
+            "totalGastosHoy" to expenseSummary(invoices.filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.hoyInicio..ranges.hoyFin }),
+            "totalIngresosHoy" to incomeSummary(incomes.filter { it.fecha in ranges.hoyInicio..ranges.hoyFin }),
+            "totalGastosSemana" to expenseSummary(invoices.filter { it.tipo == InvoiceType.GASTO && it.fecha in ranges.semanaInicio..now }),
+            "totalIngresosSemana" to incomeSummary(incomes.filter { it.fecha in ranges.semanaInicio..now }),
+            "analyticsTotal" to if (selection.type == AnalyticsType.GASTOS) expenseSummary(monthlyExpenseInvoices) else incomeSummary(monthlyIncomes),
+            "month" to exchangeRateProvider.summarize(monthlyRecords, target)
+        )
+
         return DashboardUiState(
+            conversions = conversions,
             totalGastosMes = gastosMes,
             totalIngresosMes = ingresosMes,
             balanceMes = ingresosMes - gastosMes,
@@ -564,6 +596,7 @@ class DashboardViewModel @Inject constructor(
                 fecha = invoice.fecha,
                 descripcion = invoice.proveedor,
                 amount = exchangeRateProvider.convert(invoice.total, invoice.moneda, target),
+                originalAmount = invoice.total, originalCurrency = invoice.moneda,
                 category = categoryLabel(invoice.categoria),
                 subcategory = invoice.subcategoria,
                 isExpense = true
@@ -574,30 +607,37 @@ class DashboardViewModel @Inject constructor(
                 fecha = income.fecha,
                 descripcion = income.concepto,
                 amount = exchangeRateProvider.convert(income.monto, income.moneda, target),
+                originalAmount = income.monto, originalCurrency = income.moneda,
                 category = categoryLabel(income.categoria),
                 subcategory = income.subcategoria,
                 isExpense = false
             )
         }
 
-        val convertible = records.filter { it.amount != null }
-        val days = convertible
+        val days = records
             .groupBy { dayOfMonth(it.fecha) }
             .map { (day, rows) ->
-                val gastos = rows.filter { it.isExpense }.sumOf { it.amount!! }
-                val ingresos = rows.filterNot { it.isExpense }.sumOf { it.amount!! }
+                val expenses = rows.filter { it.isExpense }
+                val incomes = rows.filterNot { it.isExpense }
+                val gastos = expenses.sumAvailable { it.amount }
+                val ingresos = incomes.sumAvailable { it.amount }
                 CalendarDayData(
                     day = day,
-                    gastos = gastos,
-                    ingresos = ingresos,
-                    balance = ingresos - gastos,
-                    count = rows.size
+                    gastos = gastos ?: 0.0,
+                    ingresos = ingresos ?: 0.0,
+                    balance = (ingresos ?: 0.0) - (gastos ?: 0.0),
+                    count = rows.size,
+                    expensePartial = expenses.any { it.amount == null },
+                    incomePartial = incomes.any { it.amount == null },
+                    expenseUnavailable = gastos == null,
+                    incomeUnavailable = ingresos == null,
+                    balanceUnavailable = rows.all { it.amount == null }
                 )
             }
             .sortedBy { it.day }
 
         val selectedRows = selection.day?.let { day ->
-            convertible.filter { dayOfMonth(it.fecha) == day }
+            records.filter { dayOfMonth(it.fecha) == day }
         }.orEmpty()
         val movements = selectedRows
             .sortedByDescending { it.fecha }
@@ -606,12 +646,13 @@ class DashboardViewModel @Inject constructor(
                     id = record.id,
                     fecha = record.fecha,
                     descripcion = record.descripcion,
-                    monto = record.amount!!,
+                    monto = record.amount ?: record.originalAmount,
+                    originalCurrency = record.originalCurrency.takeIf { record.amount == null },
                     isExpense = record.isExpense
                 )
             }
         val balance = selectedRows.sumOf {
-            if (it.isExpense) -it.amount!! else it.amount!!
+            if (it.isExpense) -(it.amount ?: 0.0) else it.amount ?: 0.0
         }
 
         return CalendarResult(days, movements, balance)
@@ -637,6 +678,7 @@ class DashboardViewModel @Inject constructor(
                     fecha = inv.fecha,
                     descripcion = inv.proveedor,
                     amount = exchangeRateProvider.convert(inv.total, inv.moneda, target),
+                originalAmount = inv.total, originalCurrency = inv.moneda,
                     category = categoryLabel(inv.categoria),
                     subcategory = inv.subcategoria,
                     isExpense = true
@@ -649,6 +691,7 @@ class DashboardViewModel @Inject constructor(
                     fecha = inc.fecha,
                     descripcion = inc.concepto,
                     amount = exchangeRateProvider.convert(inc.monto, inc.moneda, target),
+                originalAmount = inc.monto, originalCurrency = inc.moneda,
                     category = categoryLabel(inc.categoria),
                     subcategory = inc.subcategoria,
                     isExpense = false
@@ -731,7 +774,9 @@ class DashboardViewModel @Inject constructor(
         val amount: Double?,
         val category: String,
         val subcategory: String?,
-        val isExpense: Boolean
+        val isExpense: Boolean,
+        val originalAmount: Double,
+        val originalCurrency: String
     )
 
     private fun percentage(part: Double, total: Double): Double =
@@ -745,11 +790,11 @@ class DashboardViewModel @Inject constructor(
 
     /** Suma los importes convertidos a [target] (facturas). */
     private fun List<Invoice>.sumInvoicesConverted(target: String): Double =
-        sumOf { exchangeRateProvider.convert(it.total, it.moneda, target) ?: 0.0 }
+        sumAvailable { exchangeRateProvider.convert(it.total, it.moneda, target) } ?: 0.0
 
     /** Suma los importes convertidos a [target] (ingresos). */
     private fun List<Income>.sumIncomesConverted(target: String): Double =
-        sumOf { exchangeRateProvider.convert(it.monto, it.moneda, target) ?: 0.0 }
+        sumAvailable { exchangeRateProvider.convert(it.monto, it.moneda, target) } ?: 0.0
 
     private fun categoryLabel(category: String?): String =
         TransactionCategories.canonicalExpenseCategory(category)
@@ -845,23 +890,31 @@ class DashboardViewModel @Inject constructor(
             dayCal.set(Calendar.MILLISECOND, 999)
             val dayEnd = dayCal.timeInMillis
 
-            val gastos = invoices
-                .filter { it.tipo == InvoiceType.GASTO && it.fecha >= dayStart && it.fecha <= dayEnd }
-                .sumInvoicesConverted(target)
-            val ingresos = incomes
-                .filter { it.fecha >= dayStart && it.fecha <= dayEnd }
-                .sumIncomesConverted(target)
+            val expenses = invoices.filter { it.tipo == InvoiceType.GASTO && it.fecha in dayStart..dayEnd }
+            val gastos = exchangeRateProvider.summarize(expenses.map { it.moneyRecord() }, target)
+            val incomeRows = incomes.filter { it.fecha in dayStart..dayEnd }
+            val ingresos = exchangeRateProvider.summarize(incomeRows.map { it.moneyRecord() }, target)
 
             data.add(
                 DayData(
                     dayLabel = dayFormat.format(dayCal.time).take(2).uppercase(),
-                    gastos = gastos,
-                    ingresos = ingresos
+                    gastos = gastos.amount ?: 0.0,
+                    ingresos = ingresos.amount ?: 0.0,
+                    expensePartial = gastos.isPartial, incomePartial = ingresos.isPartial,
+                    expenseUnavailable = gastos.isUnavailable, incomeUnavailable = ingresos.isUnavailable
                 )
             )
         }
 
         return data
+    }
+
+    fun refreshRates() {
+        viewModelScope.launch {
+            try { exchangeRateProvider.refresh(); refresh() }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { SafeLog.w(TAG, "Exchange rate refresh unavailable") }
+        }
     }
 
     /** Fuerza un re-fetch y recálculo. */

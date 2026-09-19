@@ -25,6 +25,27 @@ interface IncomeDao {
     @Update
     suspend fun updateIncomeEntity(income: IncomeEntity)
 
+    @Query("""UPDATE incomes SET driveFileId = :fileId, driveWebViewLink = :webViewLink,
+        driveUploadPending = :pending, driveAccountId = :accountId,
+        driveContentHash = :contentHash, driveSyncError = :error
+        WHERE id = :id AND documentUuid = :documentUuid AND imagenUri IS :sourceUri""")
+    suspend fun updateImageSync(id: Long, documentUuid: String, sourceUri: String?, fileId: String?,
+        webViewLink: String?, pending: Boolean, accountId: String?, contentHash: String?, error: String?): Int
+
+    @Transaction
+    suspend fun updatePreservingImageState(record: IncomeEntity) {
+        val current = getIncomeById(record.id) ?: error("Document no longer exists")
+        check(current.documentUuid == record.documentUuid) { "Document identity changed" }
+        updateIncomeEntity(if (record.imagenUri == current.imagenUri) record.copy(
+            driveFileId = current.driveFileId, driveWebViewLink = current.driveWebViewLink,
+            driveUploadPending = current.driveUploadPending, driveAccountId = current.driveAccountId,
+            driveContentHash = current.driveContentHash, driveSyncError = current.driveSyncError
+        ) else record)
+    }
+
+    @Query("DELETE FROM incomes WHERE id = :id AND documentUuid = :uuid")
+    suspend fun deleteByIdentity(id: Long, uuid: String)
+
     @Delete
     suspend fun deleteIncomeEntity(income: IncomeEntity)
 

@@ -7,8 +7,12 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.gastos.domain.model.InvoiceType
 
-@Entity(tableName = "invoices")
+@Entity(tableName = "invoices", indices = [Index(value = ["documentUuid"], unique = true)])
 data class InvoiceEntity(
+    @ColumnInfo(defaultValue = "''") val documentUuid: String = java.util.UUID.randomUUID().toString(),
+    val driveAccountId: String? = null,
+    val driveContentHash: String? = null,
+    val driveSyncError: String? = null,
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val fecha: Long,
     val proveedor: String,
@@ -63,8 +67,12 @@ data class ProductEntity(
     val createdAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "incomes")
+@Entity(tableName = "incomes", indices = [Index(value = ["documentUuid"], unique = true)])
 data class IncomeEntity(
+    @ColumnInfo(defaultValue = "''") val documentUuid: String = java.util.UUID.randomUUID().toString(),
+    val driveAccountId: String? = null,
+    val driveContentHash: String? = null,
+    val driveSyncError: String? = null,
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val fecha: Long,
     val concepto: String,
@@ -78,6 +86,9 @@ data class IncomeEntity(
     val ivaPercent: Double = 0.0,
     val irpfPercent: Double = 0.0,
     val imagenUri: String? = null,
+    val driveFileId: String? = null,
+    val driveWebViewLink: String? = null,
+    @ColumnInfo(defaultValue = "0") val driveUploadPending: Boolean = false,
     val notas: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()

@@ -21,6 +21,15 @@ interface ChatMessageDao {
         trimToLast(limit)
     }
 
+    @Query("SELECT * FROM chat_messages ORDER BY createdAt DESC, id DESC LIMIT 1")
+    suspend fun latest(): ChatMessageEntity?
+
+    @Transaction
+    suspend fun replaceLastIncomplete(message: ChatMessageEntity) {
+        val previous = latest()?.takeIf { it.role == "model_incomplete" }
+        insertAndTrim(if (previous != null) message.copy(id = previous.id, createdAt = previous.createdAt) else message)
+    }
+
     @Query("DELETE FROM chat_messages")
     suspend fun clearAll()
 

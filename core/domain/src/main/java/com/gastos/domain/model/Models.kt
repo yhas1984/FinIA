@@ -3,6 +3,10 @@ package com.gastos.domain.model
 enum class InvoiceType { GASTO, INGRESO }
 
 data class Invoice(
+    val documentUuid: String = java.util.UUID.randomUUID().toString(),
+    val driveAccountId: String? = null,
+    val driveContentHash: String? = null,
+    val driveSyncError: String? = null,
     val id: Long = 0,
     val fecha: Long,
     val proveedor: String,
@@ -30,6 +34,13 @@ data class Invoice(
 ) {
     /** Convierte una factura tipo INGRESO a un Income para persistirlo en la tabla correcta. */
     fun toIncome(): Income = Income(
+        documentUuid = documentUuid,
+        driveAccountId = driveAccountId,
+        driveContentHash = driveContentHash,
+        driveSyncError = driveSyncError,
+        driveFileId = driveFileId,
+        driveWebViewLink = driveWebViewLink,
+        driveUploadPending = driveUploadPending,
         fecha = fecha,
         concepto = proveedor,
         monto = total,
@@ -64,6 +75,10 @@ data class Product(
 )
 
 data class Income(
+    val documentUuid: String = java.util.UUID.randomUUID().toString(),
+    val driveAccountId: String? = null,
+    val driveContentHash: String? = null,
+    val driveSyncError: String? = null,
     val id: Long = 0,
     val fecha: Long,
     val concepto: String,
@@ -77,6 +92,9 @@ data class Income(
     val ivaPercent: Double = 0.0,
     val irpfPercent: Double = 0.0,
     val imagenUri: String? = null,
+    val driveFileId: String? = null,
+    val driveWebViewLink: String? = null,
+    val driveUploadPending: Boolean = false,
     val notas: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()

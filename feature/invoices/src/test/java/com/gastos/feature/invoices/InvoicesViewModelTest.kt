@@ -47,6 +47,7 @@ class InvoicesViewModelTest {
         every { repo.getInvoicesByType(any()) } returns flowOf(invoices)
         val exchange = mockk<ExchangeRateProvider>()
         every { exchange.rates } returns MutableStateFlow(rates)
+        every { exchange.lastUpdated } returns MutableStateFlow<Long?>(null)
         every { exchange.convert(any(), any(), any()) } answers {
             val amount = firstArg<Double>()
             val from = secondArg<String>().uppercase()

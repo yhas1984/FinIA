@@ -10,6 +10,7 @@ interface IncomeRepository {
     suspend fun getIncomeById(id: Long): Income?
     suspend fun insertIncome(income: Income): Long
     suspend fun updateIncome(income: Income)
+    suspend fun updateImageSync(id: Long, documentUuid: String, sourceUri: String?, metadata: com.gastos.domain.model.DriveImageMetadata): Boolean
     suspend fun deleteIncome(income: Income)
     suspend fun getIncomeCount(): Int
     suspend fun getTotalByDateRange(startDate: Long, endDate: Long): Double?

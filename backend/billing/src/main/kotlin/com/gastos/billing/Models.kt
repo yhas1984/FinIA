@@ -27,7 +27,7 @@ data class ReconcileResponse(
 data class HealthResponse(val status: String)
 
 @Serializable
-data class ErrorResponse(val error: String)
+data class ErrorResponse(val error: String, val code: String? = null)
 
 data class VerifiedPurchase(
     val orderId: String?,

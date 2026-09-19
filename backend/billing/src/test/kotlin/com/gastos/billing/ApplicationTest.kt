@@ -50,6 +50,7 @@ class ApplicationTest {
             setBody(VerifyEntitlementRequest("other.package", "finai_premium", "token"))
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertEquals("INVALID_REQUEST", response.body<ErrorResponse>().code)
     }
 
     @Test
@@ -65,12 +66,33 @@ class ApplicationTest {
             header("X-Internal-Reconcile-Secret", "secret")
         }
         assertEquals(HttpStatusCode.Unauthorized, missingIdentity.status)
+        assertEquals("UNAUTHORIZED", missingIdentity.body<ErrorResponse>().code)
 
         val authorized = client.post("/v1/entitlements:reconcile") {
             header("Authorization", "Bearer valid")
             header("X-Internal-Reconcile-Secret", "secret")
         }
         assertEquals(HttpStatusCode.OK, authorized.status)
+    }
+
+    @Test
+    fun `confirmed revocation and temporary outage have different compatible codes`() {
+        listOf(
+            Triple(PurchaseNotEntitledException(), HttpStatusCode.Forbidden, "PURCHASE_NOT_ENTITLED"),
+            Triple(java.io.IOException("synthetic outage"), HttpStatusCode.ServiceUnavailable, "SERVICE_UNAVAILABLE")
+        ).forEach { (failure, status, code) -> testApplication {
+            val config = testConfig()
+            application { billingModule(config, BillingService(config, FakePlayApi(failure), FakeStore(), FakeSigner())) }
+            client = createClient { install(ContentNegotiation) { json() } }
+            val response = client.post("/v1/entitlements:verify") {
+                header("Content-Type", ContentType.Application.Json.toString())
+                setBody(VerifyEntitlementRequest("com.gastos.ingresos", "finai_premium", "synthetic-token"))
+            }
+            assertEquals(status,response.status)
+            val body = response.body<ErrorResponse>()
+            assertEquals(code,body.code)
+            assertTrue(body.error.isNotBlank())
+        } }
     }
 
     private fun testConfig() = BillingConfig(
@@ -86,9 +108,9 @@ class ApplicationTest {
             reconcileAudience = "https://billing.test"
     )
 
-    private class FakePlayApi : PlayPurchaseGateway {
+    private class FakePlayApi(private val failure: Exception? = null) : PlayPurchaseGateway {
         override suspend fun verifyPurchase(productId: String, purchaseToken: String) =
-            VerifiedPurchase("order-1", 1L, 1)
+            failure?.let { throw it } ?: VerifiedPurchase("order-1", 1L, 1)
 
         override suspend fun acknowledge(productId: String, purchaseToken: String) = Unit
         override suspend fun listVoidedPurchaseTokens() = emptyList<String>()

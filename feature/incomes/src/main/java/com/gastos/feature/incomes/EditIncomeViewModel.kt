@@ -1,5 +1,9 @@
 package com.gastos.feature.incomes
 
+import com.gastos.common.LocalizedNumbers
+import com.gastos.common.SaveState
+import java.util.Locale
+import kotlinx.coroutines.CancellationException
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
@@ -21,13 +25,15 @@ import javax.inject.Inject
 
 data class EditIncomeUiState(
     val isLoading: Boolean = false,
-    val isSaving: Boolean = false,
-    val saveResult: String? = null,
+    val saveState: SaveState = SaveState.Idle,
     val income: Income? = null,
     val availableCategories: List<String> = TransactionCategories.defaultIncomeCategories,
     val availableSubcategories: List<String> = emptyList(),
     val error: String? = null
-)
+) {
+    val isSaving: Boolean get() = saveState == SaveState.Saving
+    val saveResult: String? get() = (saveState as? SaveState.Error)?.message
+}
 
 data class EditIncomeForm(
     val id: Long = 0,
@@ -87,7 +93,8 @@ class EditIncomeViewModel @Inject constructor(
         }
     }
 
-    fun loadIncome(id: Long) {
+    fun loadIncome(id: Long, locale: Locale = Locale.getDefault()) {
+        if (_form.value.id == id) return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
@@ -99,9 +106,9 @@ class EditIncomeViewModel @Inject constructor(
                             id = income.id,
                             fecha = income.fecha,
                             concepto = income.concepto,
-                            monto = income.monto.toString(),
-                            totalDevengado = if (income.totalDevengado > 0) income.totalDevengado.toString() else "",
-                            totalNeto = if (income.totalNeto > 0) income.totalNeto.toString() else "",
+                            monto = LocalizedNumbers.format(income.monto, locale),
+                            totalDevengado = if (income.totalDevengado > 0) LocalizedNumbers.format(income.totalDevengado, locale) else "",
+                            totalNeto = if (income.totalNeto > 0) LocalizedNumbers.format(income.totalNeto, locale) else "",
                             moneda = income.moneda,
                             fuente = income.fuente ?: "",
                             categoria = income.categoria.orEmpty(),
@@ -114,8 +121,8 @@ class EditIncomeViewModel @Inject constructor(
                                     TransactionCategories.normalizeKey(suggested) == TransactionCategories.normalizeKey(it)
                                 }
                             } ?: false,
-                            ivaPercent = income.ivaPercent.toString(),
-                            irpfPercent = income.irpfPercent.toString(),
+                            ivaPercent = LocalizedNumbers.format(income.ivaPercent, locale),
+                            irpfPercent = LocalizedNumbers.format(income.irpfPercent, locale),
                             notas = income.notas ?: ""
                         )
                     }
@@ -134,6 +141,8 @@ class EditIncomeViewModel @Inject constructor(
                         it.copy(isLoading = false, error = context.getString(R.string.income_not_found))
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, error = e.message ?: context.getString(R.string.load_income_error))
@@ -181,47 +190,56 @@ class EditIncomeViewModel @Inject constructor(
     fun updateIrpfPercent(value: String) { _form.update { it.copy(irpfPercent = value) } }
     fun updateNotas(value: String) { _form.update { it.copy(notas = value) } }
 
-    fun saveIncome() {
+    fun saveIncome(locale: Locale = Locale.getDefault()) {
+        if (_uiState.value.saveState == SaveState.Saving || _uiState.value.saveState == SaveState.Success) return
+        _uiState.update { it.copy(saveState = SaveState.Saving) }
         viewModelScope.launch {
             val form = _form.value
-            val monto = form.monto.toDoubleOrNull()
+            val monto = LocalizedNumbers.parse(form.monto, locale)
             if (monto == null || !monto.isFinite() || monto <= 0) {
-                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_amount_positive)) }
+                _uiState.update { it.copy(saveState = SaveState.Error(context.getString(R.string.validation_amount_positive))) }
                 return@launch
             }
-            val devengado = form.totalDevengado.toDoubleOrNull()
-            val neto = form.totalNeto.toDoubleOrNull()
-            val iva = form.ivaPercent.toDoubleOrNull()
-            val irpf = form.irpfPercent.toDoubleOrNull()
+            val devengado = LocalizedNumbers.parse(form.totalDevengado, locale)
+            val neto = LocalizedNumbers.parse(form.totalNeto, locale)
+            val iva = LocalizedNumbers.parse(form.ivaPercent, locale)
+            val irpf = LocalizedNumbers.parse(form.irpfPercent, locale)
             val invalidOptionalAmount = listOf(form.totalDevengado to devengado, form.totalNeto to neto)
                 .any { (raw, value) -> raw.isNotBlank() && (value == null || !value.isFinite() || value <= 0.0) }
             if (invalidOptionalAmount) {
-                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_gross_net_positive)) }
+                _uiState.update { it.copy(saveState = SaveState.Error(context.getString(R.string.validation_gross_net_positive))) }
                 return@launch
             }
             if (iva == null || !iva.isFinite() || iva !in 0.0..100.0 ||
                 irpf == null || !irpf.isFinite() || irpf !in 0.0..100.0
             ) {
-                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_percentages_range)) }
+                _uiState.update { it.copy(saveState = SaveState.Error(context.getString(R.string.validation_percentages_range))) }
                 return@launch
             }
             val currency = form.moneda.trim().uppercase()
             if (currency !in SUPPORTED_CURRENCIES) {
-                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_currency_not_supported)) }
+                _uiState.update { it.copy(saveState = SaveState.Error(context.getString(R.string.validation_currency_not_supported))) }
                 return@launch
             }
             if (form.concepto.isBlank()) {
-                _uiState.update { it.copy(saveResult = context.getString(R.string.validation_concept_required)) }
+                _uiState.update { it.copy(saveState = SaveState.Error(context.getString(R.string.validation_concept_required))) }
                 return@launch
             }
 
-            _uiState.update { it.copy(isSaving = true, saveResult = null) }
+
 
             try {
                 // Conserva la imagen y la fecha de creación del registro
                 // original (no se editan desde el formulario).
                 val original = originalIncome
                 val income = Income(
+                    documentUuid = original?.documentUuid ?: java.util.UUID.randomUUID().toString(),
+                    driveAccountId = original?.driveAccountId,
+                    driveContentHash = original?.driveContentHash,
+                    driveSyncError = original?.driveSyncError,
+                    driveFileId = original?.driveFileId,
+                    driveWebViewLink = original?.driveWebViewLink,
+                    driveUploadPending = original?.driveUploadPending ?: false,
                     id = form.id,
                     fecha = form.fecha,
                     concepto = form.concepto.trim(),
@@ -240,25 +258,30 @@ class EditIncomeViewModel @Inject constructor(
                     updatedAt = System.currentTimeMillis()
                 )
 
-                if (form.id == 0L) {
-                    val incomeId = incomeRepository.insertIncome(income)
-                    sheetsSyncManager.upsertIncome(income.copy(id = incomeId))
+                val saved = if (form.id == 0L) {
+                    income.copy(id = incomeRepository.insertIncome(income))
                 } else {
                     incomeRepository.updateIncome(income)
-                    sheetsSyncManager.upsertIncome(income)
+                    income
+                }
+                originalIncome = saved
+                _form.update { it.copy(id = saved.id) }
+                _uiState.update { it.copy(saveState = SaveState.Success) }
+                // Startup reconciliation recovers a commit interrupted before enqueue.
+                try {
+                    sheetsSyncManager.upsertIncome(saved)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // The record is durable; remote synchronization remains pending.
                 }
 
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        saveResult = context.getString(R.string.saved_ok)
-                    )
-                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
-                        isSaving = false,
-                        saveResult = context.getString(R.string.save_income_error_prefix, e.message.orEmpty())
+                        saveState = SaveState.Error(context.getString(R.string.save_income_error_prefix, e.message.orEmpty()))
                     )
                 }
             }
@@ -266,6 +289,6 @@ class EditIncomeViewModel @Inject constructor(
     }
 
     fun clearSaveResult() {
-        _uiState.update { it.copy(saveResult = null) }
+        _uiState.update { it.copy(saveState = SaveState.Idle) }
     }
 }

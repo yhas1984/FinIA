@@ -360,13 +360,18 @@ class DashboardViewModelTest {
             assertEquals(300.0, dayFive.ingresos, 0.001)
             assertEquals(175.0, dayFive.balance, 0.001)
             assertEquals(3, dayFive.count)
-            assertTrue(state.calendarDays.none { it.day == 7 })
+            assertTrue(state.calendarDays.single { it.day == 7 }.balanceUnavailable)
+            assertTrue(state.calendarDays.single { it.day == 7 }.expensePartial)
 
             vm.selectDay(5)
             val detail = awaitStable { it.selectedDay == 5 && it.dayMovements.size == 3 }
             assertEquals(175.0, detail.selectedDayBalance, 0.001)
             assertEquals(false, detail.dayMovements.first { !it.isExpense }.isExpense)
             assertEquals(300.0, detail.dayMovements.first { !it.isExpense }.monto, 0.001)
+            vm.selectDay(7)
+            val missing = awaitStable { it.selectedDay == 7 && it.dayMovements.size == 1 }
+            assertEquals("XXX", missing.dayMovements.single().originalCurrency)
+            assertEquals(50.0, missing.dayMovements.single().monto, 0.0)
             cancelAndConsumeRemainingEvents()
         }
     }
@@ -504,12 +509,12 @@ class DashboardViewModelTest {
             awaitStable { it.widgetOrder.isNotEmpty() }
             vm.hideWidget("balance")
 
-            val hiddenState = awaitItem()
+            val hiddenState = awaitStable { "balance" in it.hiddenWidgets }
             assertEquals(setOf("balance"), hiddenState.hiddenWidgets)
 
             vm.restoreWidget("balance")
 
-            val restoredState = awaitItem()
+            val restoredState = awaitStable { it.hiddenWidgets.isEmpty() }
             assertTrue(restoredState.hiddenWidgets.isEmpty())
             cancelAndConsumeRemainingEvents()
         }

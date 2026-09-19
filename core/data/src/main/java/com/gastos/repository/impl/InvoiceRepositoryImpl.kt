@@ -52,7 +52,7 @@ class InvoiceRepositoryImpl @Inject constructor(
         }
 
     override suspend fun updateInvoice(invoice: Invoice) =
-        invoiceDao.updateInvoice(invoice.toEntity().copy(updatedAt = System.currentTimeMillis()))
+        invoiceDao.updatePreservingImageState(invoice.toEntity().copy(updatedAt = System.currentTimeMillis()))
 
     override suspend fun updateDriveMetadata(
         invoiceId: Long,
@@ -67,8 +67,12 @@ class InvoiceRepositoryImpl @Inject constructor(
         updatedAt = System.currentTimeMillis()
     )
 
+    override suspend fun updateImageSync(id: Long, documentUuid: String, sourceUri: String?, metadata: com.gastos.domain.model.DriveImageMetadata): Boolean =
+        invoiceDao.updateImageSync(id, documentUuid, sourceUri, metadata.fileId, metadata.webViewLink,
+            metadata.pending, metadata.accountId, metadata.contentHash, metadata.error) == 1
+
     override suspend fun deleteInvoice(invoice: Invoice) =
-        invoiceDao.deleteInvoice(invoice.toEntity())
+        invoiceDao.deleteByIdentity(invoice.id, invoice.documentUuid)
 
     override suspend fun getInvoiceCount(): Int = invoiceDao.getInvoiceCount()
 

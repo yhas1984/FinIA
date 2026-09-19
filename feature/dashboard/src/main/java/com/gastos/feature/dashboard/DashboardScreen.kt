@@ -139,6 +139,23 @@ fun DashboardScreen(
             }
 
             item {
+                val excluded = uiState.conversions.values.flatMap { it.excluded }.distinctBy { it.id }
+                if (excluded.isNotEmpty()) {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text(stringResource(R.string.total_partial), style = MaterialTheme.typography.titleMedium)
+                            Text(stringResource(R.string.partial_charts_notice))
+                            excluded.groupBy { it.currency }.forEach { (currency, rows) ->
+                                Text("${rows.size} · ${com.gastos.domain.model.formatMoney(rows.sumOf { kotlin.math.abs(it.amount) }, currency)}")
+                            }
+                            excluded.forEach { Text("${it.description}: ${com.gastos.domain.model.formatMoney(kotlin.math.abs(it.amount), it.currency)}") }
+                            TextButton(onClick = viewModel::refreshRates) { Text(stringResource(R.string.refresh_exchange_rates)) }
+                        }
+                    }
+                }
+            }
+
+            item {
                 Spacer(modifier = Modifier.height(32.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -358,15 +375,15 @@ private fun DashboardWidgetContent(
     when (widgetId) {
         DashboardWidget.BALANCE.id -> BalanceWidget(uiState = uiState, fmt = fmt, monthLabel = monthLabel)
         DashboardWidget.CASHFLOW.id -> CashflowCard(
-            totalGastos = fmt(uiState.totalGastosMes),
-            totalIngresos = fmt(uiState.totalIngresosMes)
+            totalGastos = conversionText(uiState.conversions["totalGastosMes"], uiState.totalGastosMes, fmt),
+            totalIngresos = conversionText(uiState.conversions["totalIngresosMes"], uiState.totalIngresosMes, fmt)
         )
         DashboardWidget.ANALYTICS.id -> InteractiveAnalyticsCard(
             type = uiState.analyticsType,
             monthLabel = monthLabel,
-            total = fmt(uiState.analyticsTotal),
+            total = conversionText(uiState.conversions["analyticsTotal"], uiState.analyticsTotal, fmt),
             slices = uiState.analyticsSlices,
-                emptyMessage = if (uiState.analyticsType == AnalyticsType.GASTOS) {
+                emptyMessage = if (uiState.conversions["analyticsTotal"]?.isUnavailable == true) stringResource(R.string.total_unavailable) else if (uiState.analyticsType == AnalyticsType.GASTOS) {
                  stringResource(R.string.no_expense_in_month, monthLabel.lowercase(appLocale))
             } else {
                  stringResource(R.string.no_income_in_month, monthLabel.lowercase(appLocale))
@@ -416,7 +433,7 @@ private fun BalanceWidget(
             )
         )
         AutoSizeMonetaryText(
-            text = fmt(uiState.balanceMes),
+            text = conversionText(uiState.conversions["balanceMes"], uiState.balanceMes, fmt),
             style = MaterialTheme.typography.displayLarge.copy(
                 fontWeight = FontWeight.Bold,
                 color = if (uiState.balanceMes >= 0)
@@ -472,13 +489,13 @@ private fun WeeklyTotalsWidget(
         )
         TotalsRow(
             label = stringResource(R.string.expenses),
-            amount = fmt(uiState.totalGastosSemana),
+            amount = conversionText(uiState.conversions["totalGastosSemana"], uiState.totalGastosSemana, fmt),
             color = MaterialTheme.colorScheme.error
         )
         Spacer(modifier = Modifier.height(8.dp))
         TotalsRow(
             label = stringResource(R.string.income),
-            amount = fmt(uiState.totalIngresosSemana),
+            amount = conversionText(uiState.conversions["totalIngresosSemana"], uiState.totalIngresosSemana, fmt),
             color = MaterialTheme.colorScheme.secondary
         )
     }
@@ -500,13 +517,13 @@ private fun TodayWidget(
         )
         TotalsRow(
             label = stringResource(R.string.expenses),
-            amount = fmt(uiState.totalGastosHoy),
+            amount = conversionText(uiState.conversions["totalGastosHoy"], uiState.totalGastosHoy, fmt),
             color = MaterialTheme.colorScheme.error
         )
         Spacer(modifier = Modifier.height(8.dp))
         TotalsRow(
             label = stringResource(R.string.income),
-            amount = fmt(uiState.totalIngresosHoy),
+            amount = conversionText(uiState.conversions["totalIngresosHoy"], uiState.totalIngresosHoy, fmt),
             color = MaterialTheme.colorScheme.secondary
         )
     }
@@ -876,7 +893,8 @@ fun WeeklyBarChart(dailyData: List<DayData>) {
         ) {
             dailyData.forEach { day ->
                 WeeklyBar(
-                    dayLabel = day.dayLabel,
+                    dayLabel = day.dayLabel + if (day.expensePartial || day.incomePartial) "*" else "",
+                    expenseUnavailable = day.expenseUnavailable, incomeUnavailable = day.incomeUnavailable,
                     gastos = day.gastos,
                     ingresos = day.ingresos,
                     maxValue = maxValue,
@@ -890,6 +908,8 @@ fun WeeklyBarChart(dailyData: List<DayData>) {
 @Composable
 fun WeeklyBar(
     dayLabel: String,
+    expenseUnavailable: Boolean = false,
+    incomeUnavailable: Boolean = false,
     gastos: Double,
     ingresos: Double,
     maxValue: Double,
@@ -907,15 +927,13 @@ fun WeeklyBar(
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.Center
         ) {
-            // Barra de gastos
-            AnimatedBar(
+            if (expenseUnavailable) Text(stringResource(R.string.rate_missing_short), style = MaterialTheme.typography.labelSmall) else AnimatedBar(
                 height = gastosHeight,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.width(10.dp)
             )
             Spacer(modifier = Modifier.width(2.dp))
-            // Barra de ingresos
-            AnimatedBar(
+            if (incomeUnavailable) Text(stringResource(R.string.rate_missing_short), style = MaterialTheme.typography.labelSmall) else AnimatedBar(
                 height = ingresosHeight,
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.width(10.dp)
@@ -954,4 +972,11 @@ fun AnimatedBar(
             .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
             .background(color)
     )
+}
+
+@Composable
+private fun conversionText(summary: com.gastos.domain.model.ConversionSummary?, fallback: Double, fmt: (Double) -> String): String {
+    if (summary == null) return fmt(fallback)
+    if (summary.amount == null) return stringResource(R.string.total_unavailable)
+    return fmt(summary.amount!!) + if (summary.isPartial) " · " + stringResource(R.string.total_partial) else ""
 }

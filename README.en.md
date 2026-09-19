@@ -73,7 +73,7 @@
 
 ## 🤖 Artificial Intelligence (Gemini)
 
-FinAI uses **Gemini 3.7 Flash** through the **free Google AI Studio API**. The thinking level is tuned per task: **low** for chat and queries (fast, interactive responses) and **medium** for document OCR (balanced accuracy in fiscal extraction).
+FinAI uses the user’s Google AI Studio key with `gemini-3.6-flash` as the primary model and `gemini-3.8-flash` as first fallback and `gemini-3.5-flash-lite` as the final fallback. Each operation is limited to four requests and 90 seconds for chat or 180 seconds for OCR. Availability and quotas depend on Google and the user’s project; fallback does not guarantee additional free capacity. Thinking remains low for chat and queries, and medium for document OCR.
 
 ### Setup
 1. Get a free API key at **[Google AI Studio](https://aistudio.google.com/apikey)**.

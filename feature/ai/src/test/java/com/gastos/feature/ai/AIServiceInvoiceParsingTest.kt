@@ -5,6 +5,7 @@ import com.gastos.repository.CountryFiscalConfigRepository
 import com.gastos.repository.CurrencyPreference
 import io.mockk.mockk
 import io.mockk.every
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -13,6 +14,16 @@ import org.junit.Test
 import java.util.Locale
 
 class AIServiceInvoiceParsingTest {
+    @Test fun `explicit zero line is different from missing and invalid VAT`() {
+        fun parse(rate: String) = service().parseInvoiceResponse(
+            """{"proveedor":"A","total":121,"tipo_iva":21,"productos":[
+                {"descripcion":"Pan","cantidad":1,"subtotal":10,"precio_unitario":10 $rate}]}""",
+            "content://test", "ES", "EUR")
+        assertEquals(0.0, parse(",\"iva_percent\":0").products.single().ivaPercent, 0.0)
+        assertEquals(21.0, parse("").products.single().ivaPercent, 0.0)
+        assertFalse(parse(",\"iva_percent\":150").success)
+    }
+
     @Test
     fun `invoice parsing keeps fiscal identity and product details`() {
         val result = service().parseInvoiceResponse(

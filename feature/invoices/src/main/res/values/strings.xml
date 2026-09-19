@@ -29,8 +29,8 @@
     <string name="subcategory">Subcategoría</string>
     <string name="custom_subcategory">Subcategoría personalizada</string>
     <string name="leave_empty_no_subcategory">Déjala vacía para guardar sin subcategoría.</string>
-    <string name="vat_percent">IVA %%</string>
-    <string name="irpf_percent">IRPF %%</string>
+    <string name="vat_percent" formatted="false">IVA %</string>
+    <string name="irpf_percent" formatted="false">IRPF %</string>
     <string name="base_vat">Base: %1$s</string>
     <string name="vat_line">IVA: %1$s</string>
     <string name="base_vat_irpf_breakdown">Base Imponible: %1$s %2$s</string>
@@ -67,4 +67,8 @@
     <string name="back">Volver</string>
     <string name="ok">OK</string>
     <string name="no_conversion_total">— (%1$s)</string>
+    <string name="total_partial">Total parcial</string>
+    <string name="total_unavailable">No disponible</string>
+    <string name="partial_charts_notice">Los balances, gráficos y comparaciones solo incluyen movimientos con tasa disponible. Excluidos:</string>
+    <string name="refresh_exchange_rates">Actualizar tasas</string>
 </resources>

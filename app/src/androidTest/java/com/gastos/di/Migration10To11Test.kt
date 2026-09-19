@@ -42,7 +42,7 @@ class Migration10To11Test {
         }
 
         val database = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_10_11)
+            .addMigrations(MIGRATION_10_11, MIGRATION_11_12)
             .build()
         database.openHelper.writableDatabase.use { sqlite ->
             sqlite.query("PRAGMA table_info(restore_markers)").use { cursor ->

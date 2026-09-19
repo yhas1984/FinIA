@@ -31,10 +31,14 @@ class IncomeRepositoryImpl @Inject constructor(
         incomeDao.insertIncomeEntity(income.toEntity().copy(updatedAt = System.currentTimeMillis()))
 
     override suspend fun updateIncome(income: Income) =
-        incomeDao.updateIncomeEntity(income.toEntity().copy(updatedAt = System.currentTimeMillis()))
+        incomeDao.updatePreservingImageState(income.toEntity().copy(updatedAt = System.currentTimeMillis()))
+
+    override suspend fun updateImageSync(id: Long, documentUuid: String, sourceUri: String?, metadata: com.gastos.domain.model.DriveImageMetadata): Boolean =
+        incomeDao.updateImageSync(id, documentUuid, sourceUri, metadata.fileId, metadata.webViewLink,
+            metadata.pending, metadata.accountId, metadata.contentHash, metadata.error) == 1
 
     override suspend fun deleteIncome(income: Income) =
-        incomeDao.deleteIncomeEntity(income.toEntity())
+        incomeDao.deleteByIdentity(income.id, income.documentUuid)
 
     override suspend fun getIncomeCount(): Int = incomeDao.getIncomeCount()
 

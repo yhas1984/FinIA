@@ -40,6 +40,7 @@ fun BackupScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val locale = LocalLocale.current.platformLocale
+    var exportMode by remember { mutableStateOf(BackupMode.DATA_ONLY) }
     var showPasswordSetup by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
     var passwordConfirmation by remember { mutableStateOf("") }
@@ -51,7 +52,7 @@ fun BackupScreen(
     val exportBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(BACKUP_MIME_TYPE)
     ) { uri ->
-        uri?.let { viewModel.exportEncryptedBackup(context, it) }
+        uri?.let { viewModel.exportEncryptedBackup(context, it, exportMode) }
     }
 
     val importBackupLauncher = rememberLauncherForActivityResult(
@@ -119,6 +120,8 @@ fun BackupScreen(
                     )
                 }
             }
+            ImageSyncStatusPanel()
+
             // Backup portable cifrado
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -148,6 +151,13 @@ fun BackupScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(12.dp))
+                    Text(stringResource(R.string.backup_mode_help))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = exportMode == BackupMode.DATA_ONLY, onClick = { exportMode = BackupMode.DATA_ONLY })
+                        Text(stringResource(R.string.backup_mode_data))
+                        RadioButton(selected = exportMode == BackupMode.COMPLETE, onClick = { exportMode = BackupMode.COMPLETE })
+                        Text(stringResource(R.string.backup_mode_complete))
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = {

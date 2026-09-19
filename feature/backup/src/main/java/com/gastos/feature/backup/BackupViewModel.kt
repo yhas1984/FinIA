@@ -9,6 +9,9 @@ import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gastos.domain.model.ConversionSummary
+import com.gastos.domain.model.moneyRecord
+import com.gastos.domain.model.summarize
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
@@ -111,9 +114,16 @@ class BackupViewModel @Inject constructor(
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
     private var observedCloudSuccessAt: Long? = cloudBackupPreferences.status().lastSuccessAt
 
-    /** Convierte un importe a la moneda por defecto del usuario (para totales). */
-    private fun converted(amount: Double, currency: String): Double =
-        exchangeRateProvider.convert(amount, currency, currencyPreference.defaultCurrency.value) ?: 0.0
+    private fun conversionReports(invoices: List<Invoice>, incomes: List<Income>): Pair<ConversionSummary, ConversionSummary> {
+        val target = currencyPreference.defaultCurrency.value
+        return exchangeRateProvider.summarize(invoices.filter { it.tipo == InvoiceType.GASTO }.map { it.moneyRecord() }, target) to
+            exchangeRateProvider.summarize(invoices.filter { it.tipo == InvoiceType.INGRESO }.map { it.moneyRecord() } + incomes.map { it.moneyRecord() }, target)
+    }
+
+    private fun convertedText(summary: ConversionSummary, currency: String): String =
+        summary.amount?.let { com.gastos.domain.model.formatMoney(it, currency) +
+            if (summary.isPartial) " · " + context.getString(R.string.total_partial) else "" }
+            ?: context.getString(R.string.total_unavailable)
 
     init {
         checkSignInStatus()
@@ -307,7 +317,7 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun exportEncryptedBackup(context: Context, uri: Uri) {
+    fun exportEncryptedBackup(context: Context, uri: Uri, mode: BackupMode = BackupMode.DATA_ONLY) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, backupResult = null, error = null) }
             try {
@@ -316,7 +326,7 @@ class BackupViewModel @Inject constructor(
                 }
                 val output = context.contentResolver.openOutputStream(uri)
                     ?: error(context.getString(R.string.destination_open_error))
-                val preview = output.use { backupArchiveService.createArchive(it) }
+                val preview = output.use { backupArchiveService.createArchive(it, mode) }
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -608,16 +618,17 @@ class BackupViewModel @Inject constructor(
         }
 
         val target = currencyPreference.defaultCurrency.value
-        val totalGastos = invoices.filter { it.tipo == InvoiceType.GASTO }
-            .sumOf { converted(it.total, it.moneda) }
-        val totalIngresos = incomes.sumOf { converted(it.monto, it.moneda) } +
-            invoices.filter { it.tipo == InvoiceType.INGRESO }
-                .sumOf { converted(it.total, it.moneda) }
+        val (expenses, revenue) = conversionReports(invoices, incomes)
+        val balance = com.gastos.domain.model.partialBalance(expenses, revenue)
         append('\n')
         appendCsvRow(context.getString(R.string.csv_summary), context.getString(R.string.csv_summary_currency), target)
-        appendCsvRow(context.getString(R.string.csv_summary_expenses), totalGastos)
-        appendCsvRow(context.getString(R.string.csv_summary_income), totalIngresos)
-        appendCsvRow(context.getString(R.string.csv_summary_balance), totalIngresos - totalGastos)
+        appendCsvRow(context.getString(R.string.csv_summary_expenses), convertedText(expenses, target))
+        appendCsvRow(context.getString(R.string.csv_summary_income), convertedText(revenue, target))
+        appendCsvRow(context.getString(R.string.csv_summary_balance), balance?.let { com.gastos.domain.model.formatMoney(it, target) } ?: context.getString(R.string.total_unavailable),
+            if (expenses.isPartial || revenue.isPartial) context.getString(R.string.total_partial) else "")
+        (expenses.excluded + revenue.excluded).forEach {
+            appendCsvRow(context.getString(R.string.total_partial), it.id, it.description, it.amount, it.currency)
+        }
         appendCsvRow(context.getString(R.string.csv_summary_exported_at), SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).format(Date()))
     }
 
@@ -708,15 +719,15 @@ class BackupViewModel @Inject constructor(
                 y += 30f
 
                 // Summary (convertido a la moneda por defecto del usuario)
-                val totalGastos = invoices.filter { it.tipo == InvoiceType.GASTO }.sumOf { converted(it.total, it.moneda) }
-                val totalIngresos = incomes.sumOf { converted(it.monto, it.moneda) } + invoices.filter { it.tipo == InvoiceType.INGRESO }.sumOf { converted(it.total, it.moneda) }
+                val (expenses, revenue) = conversionReports(invoices, incomes)
+                val balance = com.gastos.domain.model.partialBalance(expenses, revenue)
 
                 canvas.drawText(context.getString(R.string.pdf_summary), 40f, y, headerPaint)
                 y += 20f
                 canvas.drawText(
                     context.getString(
                         R.string.pdf_total_expenses,
-                        com.gastos.domain.model.formatMoney(totalGastos, targetCurrency)
+                        convertedText(expenses, targetCurrency)
                     ),
                     60f,
                     y,
@@ -726,7 +737,7 @@ class BackupViewModel @Inject constructor(
                 canvas.drawText(
                     context.getString(
                         R.string.pdf_total_income,
-                        com.gastos.domain.model.formatMoney(totalIngresos, targetCurrency)
+                        convertedText(revenue, targetCurrency)
                     ),
                     60f,
                     y,
@@ -736,13 +747,24 @@ class BackupViewModel @Inject constructor(
                 canvas.drawText(
                     context.getString(
                         R.string.pdf_balance,
-                        com.gastos.domain.model.formatMoney(totalIngresos - totalGastos, targetCurrency)
+                        (balance?.let { com.gastos.domain.model.formatMoney(it, targetCurrency) } ?: context.getString(R.string.total_unavailable)) + if (expenses.isPartial || revenue.isPartial) " · " + context.getString(R.string.total_partial) else ""
                     ),
                     60f,
                     y,
                     bodyPaint
                 )
                 y += 30f
+
+                (expenses.excluded + revenue.excluded).forEach { excluded ->
+                    if (y > 780f) {
+                        pdfDocument.finishPage(page)
+                        page = pdfDocument.startPage(pageInfo)
+                        canvas = page.canvas
+                        y = 50f
+                    }
+                    canvas.drawText("${context.getString(R.string.total_partial)}: ${excluded.description.take(45)} · ${excluded.amount} ${excluded.currency}", 40f, y, bodyPaint)
+                    y += 18f
+                }
 
                 // Gastos
                 canvas.drawText(context.getString(R.string.pdf_expenses), 40f, y, headerPaint)

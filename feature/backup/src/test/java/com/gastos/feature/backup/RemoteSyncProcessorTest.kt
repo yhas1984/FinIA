@@ -64,10 +64,11 @@ class RemoteSyncProcessorTest {
         coEvery { outbox.withCurrent<InvoiceDriveUploadResult>(any(), any()) } coAnswers {
             secondArg<suspend () -> InvoiceDriveUploadResult>().invoke()
         }
-        coEvery { drive.upload(any()) } returns uploadResult
+        coEvery { drive.upload(any<Invoice>(), any()) } returns uploadResult
         val processor = RemoteSyncProcessor(outbox, invoiceRepo, incomeRepo, drive, sheets)
-        assertEquals(RemoteSyncOutcome.RETRY, processor.process(RemoteSyncOutboxEntity("INVOICE_DRIVE:3", RemoteSyncTarget.INVOICE_DRIVE, 3, RemoteSyncAction.UPSERT)))
+        assertEquals(RemoteSyncOutcome.SUCCESS, processor.process(RemoteSyncOutboxEntity("INVOICE_DRIVE:3", RemoteSyncTarget.INVOICE_DRIVE, 3, RemoteSyncAction.UPSERT)))
         coVerify(exactly = 0) { outbox.delete(any()) }
+        coVerify { outbox.failed(any(), "x", true, false, any()) }
     }
 
     private fun income() = Income(id = 7, fecha = 0, concepto = "s", monto = 1.0, totalDevengado = 1.0, totalNeto = 1.0, moneda = "EUR")

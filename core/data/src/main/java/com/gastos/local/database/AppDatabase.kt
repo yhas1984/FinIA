@@ -15,7 +15,7 @@ import com.gastos.local.dao.*
         ChatMessageEntity::class,
         RestoreMarkerEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -30,6 +30,6 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "gastos_ingresos_db"
-        const val DATABASE_VERSION = 11
+        const val DATABASE_VERSION = 12
     }
 }

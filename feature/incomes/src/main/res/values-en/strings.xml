@@ -31,8 +31,8 @@
     <string name="net_amount">Net amount</string>
     <string name="calculated_net">Calculated net: %1$s %2$s</string>
     <string name="source_optional">Source (optional)</string>
-    <string name="vat_percent">VAT %%</string>
-    <string name="irpf_percent">IRPF %%</string>
+    <string name="vat_percent" formatted="false">VAT %</string>
+    <string name="irpf_percent" formatted="false">IRPF %</string>
     <string name="notes_optional">Notes (optional)</string>
     <string name="edit_income">Edit Income</string>
     <string name="new_income">New Income</string>
@@ -49,4 +49,7 @@
     <string name="source_label">Source: %1$s</string>
     <string name="income_type_label">Income</string>
     <string name="delete_income_error">Error deleting income</string>
+    <string name="total_partial">Partial total</string>
+    <string name="partial_charts_notice">Balances, charts and comparisons only include transactions with available exchange rates. Excluded:</string>
+    <string name="refresh_exchange_rates">Refresh exchange rates</string>
 </resources>

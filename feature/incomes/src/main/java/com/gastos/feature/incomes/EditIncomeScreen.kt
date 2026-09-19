@@ -1,5 +1,7 @@
 package com.gastos.feature.incomes
 
+import com.gastos.common.LocalizedNumbers
+import com.gastos.common.SaveState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -42,14 +44,13 @@ fun EditIncomeScreen(
 
     LaunchedEffect(incomeId) {
         if (incomeId > 0) {
-            viewModel.loadIncome(incomeId)
+            viewModel.loadIncome(incomeId, locale)
         }
     }
 
-    LaunchedEffect(uiState.saveResult) {
-        val result = uiState.saveResult
-        if (result != null && !result.contains("Error")) {
-            kotlinx.coroutines.delay(1000)
+    LaunchedEffect(uiState.saveState) {
+        if (uiState.saveState == SaveState.Success) {
+            viewModel.clearSaveResult()
             onNavigateBack()
         }
     }
@@ -65,9 +66,9 @@ fun EditIncomeScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { viewModel.saveIncome() },
+                        onClick = { viewModel.saveIncome(locale) },
                         enabled = !uiState.isSaving &&
-                            form.monto.toDoubleOrNull()?.let { it.isFinite() && it > 0 } == true &&
+                            LocalizedNumbers.parse(form.monto, locale)?.let { it.isFinite() && it > 0 } == true &&
                             form.concepto.isNotBlank()
                     ) {
                         Icon(Icons.Default.Save, contentDescription = stringResource(R.string.save))
@@ -299,8 +300,8 @@ fun EditIncomeScreen(
             }
 
             // Cálculo automático: si hay devengado e IRPF, mostrar neto
-            val dev = form.totalDevengado.toDoubleOrNull() ?: 0.0
-            val irpf = form.irpfPercent.toDoubleOrNull() ?: 0.0
+            val dev = LocalizedNumbers.parse(form.totalDevengado, locale) ?: 0.0
+            val irpf = LocalizedNumbers.parse(form.irpfPercent, locale) ?: 0.0
             if (dev > 0 && irpf > 0) {
                 val netoCalc = dev * (1.0 - irpf / 100.0)
                 Text(
@@ -354,7 +355,7 @@ fun EditIncomeScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (msg.contains("Error"))
+                        containerColor = if (uiState.saveState is SaveState.Error)
                             MaterialTheme.colorScheme.errorContainer
                         else
                             MaterialTheme.colorScheme.secondaryContainer
@@ -364,7 +365,7 @@ fun EditIncomeScreen(
                         text = msg,
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (msg.contains("Error"))
+                        color = if (uiState.saveState is SaveState.Error)
                             MaterialTheme.colorScheme.onErrorContainer
                         else
                             MaterialTheme.colorScheme.onSecondaryContainer

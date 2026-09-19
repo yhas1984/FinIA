@@ -40,6 +40,7 @@ class IncomesViewModelTest {
         every { repo.getAllIncomes() } returns flowOf(incomes)
         val exchange = mockk<ExchangeRateProvider>()
         every { exchange.rates } returns MutableStateFlow(rates)
+        every { exchange.lastUpdated } returns MutableStateFlow<Long?>(null)
         every { exchange.convert(any(), any(), any()) } answers {
             val amount = firstArg<Double>()
             val from = secondArg<String>().uppercase()
@@ -53,7 +54,7 @@ class IncomesViewModelTest {
         val sync = mockk<SheetsSyncManager>(relaxed = true)
         val imageStorage = mockk<InvoiceImageStorage>(relaxed = true)
         val context = mockk<Context>()
-        return IncomesViewModel(context, repo, sync, exchange, currency, imageStorage)
+        return IncomesViewModel(context, repo, sync, exchange, currency, mockk(relaxed = true), imageStorage)
     }
 
     @Test

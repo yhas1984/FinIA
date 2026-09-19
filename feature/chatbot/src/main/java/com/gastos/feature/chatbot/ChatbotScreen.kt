@@ -130,6 +130,7 @@ fun ChatbotScreen(
                     }
                 },
                 actions = {
+                    TextButton(onClick = viewModel::refreshExchangeRates) { Text(stringResource(R.string.refresh_exchange_rates)) }
                     IconButton(onClick = { showClearDialog = true }) {
                         Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.chatbot_cd_clear_chat))
                     }
@@ -338,6 +339,9 @@ fun ChatbotScreen(
                         }
                     }
 
+                    if (uiState.canRetryIncomplete && !uiState.isProcessing) {
+                        item { OutlinedButton(onClick = viewModel::retryIncompleteResponse) { Text(stringResource(R.string.chatbot_retry_incomplete)) } }
+                    }
                     // Indicador de "escribiendo..." solo si aún no hay un mensaje
                     // AI en streaming rellenándose (placeholder vacío o ausente).
                     val lastMessage = uiState.messages.lastOrNull()

@@ -91,4 +91,9 @@
     <string name="category_ingresos_month">Income · %1$s</string>
     <string name="percent_format">%1$.1f%%</string>
     <string name="count_movements_format">%1$d mov. · %2$s</string>
+    <string name="total_partial">Partial total</string>
+    <string name="total_unavailable">Unavailable</string>
+    <string name="partial_charts_notice">Balances, charts and comparisons only include transactions with available exchange rates. Excluded:</string>
+    <string name="refresh_exchange_rates">Refresh exchange rates</string>
+    <string name="rate_missing_short">N/A</string>
 </resources>
