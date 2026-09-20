@@ -212,7 +212,10 @@ class DashboardViewModelTest {
         vm.nextMonth()
 
         vm.uiState.test {
-            val state = awaitStable { !it.isLoading }
+            // The ViewModel starts observing before the injected test clock is
+            // applied. Ignore that transient system-month emission and assert
+            // the stable state produced by the fixed clock.
+            val state = awaitStable { !it.isLoading && it.selectedMonth == MonthRef(2026, 8) }
             assertEquals(MonthRef(2026, 8), state.selectedMonth)
             assertEquals(true, state.isCurrentMonth)
             cancelAndConsumeRemainingEvents()
