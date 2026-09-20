@@ -443,7 +443,7 @@ class DashboardViewModelTest {
             awaitStable { it.widgetOrder.isNotEmpty() }
             vm.moveWidget(0, 2)
 
-            val state = awaitItem()
+            val state = awaitStable { it.widgetOrder.getOrNull(2) == DashboardWidget.BALANCE.id }
             assertEquals("cashflow", state.widgetOrder[0])
             assertEquals("balance", state.widgetOrder[2])
             coVerify { layoutPref.updateDashboardLayout(any()) }
@@ -530,18 +530,18 @@ class DashboardViewModelTest {
         vm.uiState.test {
             awaitStable { it.widgetOrder.isNotEmpty() }
             vm.moveWidget(0, 2)
-            awaitItem()
+            awaitStable { it.widgetOrder.getOrNull(2) == DashboardWidget.BALANCE.id }
 
             vm.resetLayout()
 
-            val resetState = awaitItem()
+            val resetState = awaitStable { it.showResetUndo && it.widgetOrder == DashboardWidget.defaultOrder }
             assertEquals(DashboardWidget.defaultOrder, resetState.widgetOrder)
             assertTrue(resetState.hiddenWidgets.isEmpty())
             assertEquals(true, resetState.showResetUndo)
 
             vm.undoResetLayout()
 
-            val undoState = awaitItem()
+            val undoState = awaitStable { !it.showResetUndo && it.widgetOrder.firstOrNull() == DashboardWidget.CASHFLOW.id }
             assertEquals("cashflow", undoState.widgetOrder[0])
             assertEquals(false, undoState.showResetUndo)
             cancelAndConsumeRemainingEvents()
