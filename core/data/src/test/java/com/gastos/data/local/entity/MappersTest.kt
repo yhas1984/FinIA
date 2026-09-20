@@ -34,8 +34,8 @@ class MappersTest {
             ivaPercent = 21.0
         )
 
-        assertEquals(21.0, product.ivaAmount, 0.001)
-        assertEquals(21.0, entity.ivaAmount, 0.001)
+        assertEquals(21.0, product.ivaAmount!!, 0.001)
+        assertEquals(21.0, entity.ivaAmount!!, 0.001)
     }
 
     @Test
@@ -90,7 +90,7 @@ class MappersTest {
         assertEquals(entity.numeroFactura, back.numeroFactura)
         assertEquals(entity.baseImponible, back.baseImponible)
         assertEquals(entity.cuotaIva, back.cuotaIva)
-        assertEquals(entity.ivaPercent, back.ivaPercent, 0.0)
+        assertEquals(entity.ivaPercent!!, back.ivaPercent!!, 0.0)
         assertEquals(entity.nifEmisor, back.nifEmisor)
         assertEquals(entity.driveFileId, back.driveFileId)
         assertEquals(entity.driveWebViewLink, back.driveWebViewLink)

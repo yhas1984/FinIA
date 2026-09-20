@@ -1,0 +1,23 @@
+<resources>
+    <string name="taxes_add_breakdown">Tax breakdown</string>
+    <string name="taxes_breakdown_count">Taxes (%1$d)</string>
+    <string name="taxes_help">Keep the taxes shown on the document. Different taxes can share a base. An empty field means unknown.</string>
+    <string name="taxes_name">Tax name</string>
+    <string name="taxes_taxable">Taxable</string>
+    <string name="taxes_zero">Zero-rated</string>
+    <string name="taxes_exempt">Exempt</string>
+    <string name="taxes_outside">Outside scope</string>
+    <string name="taxes_unknown">Unidentified</string>
+    <string name="taxes_charge">Tax</string>
+    <string name="taxes_withholding">Withholding</string>
+    <string name="taxes_rate">Rate (%)</string>
+    <string name="taxes_base">Base</string>
+    <string name="taxes_amount">Amount (%1$s)</string>
+    <string name="taxes_calculated">Calculated: %1$s %2$s</string>
+    <string name="taxes_remove">Remove tax</string>
+    <string name="taxes_add">Add tax</string>
+    <string name="taxes_total">Taxes: %1$s %2$s</string>
+    <string name="taxes_total_label">Total taxes</string>
+    <string name="taxes_inconsistent">The tax breakdown does not match the amounts. Check bases, tax amounts and total.</string>
+    <string name="taxes_partial_products">Partial total: some products have unidentified taxes.</string>
+</resources>

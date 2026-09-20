@@ -6,6 +6,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface IncomeDao {
+    @Query("SELECT * FROM incomes WHERE documentKey = :key OR sourceSha256 = :hash OR documentKey IS NULL")
+    suspend fun documentCandidates(key: String?, hash: String?): List<IncomeEntity>
+
+    @Query("SELECT * FROM incomes")
+    suspend fun documentRecords(): List<IncomeEntity>
+
 
     @Query("SELECT * FROM incomes ORDER BY fecha DESC")
     fun getAllIncomes(): Flow<List<IncomeEntity>>
@@ -19,7 +25,7 @@ interface IncomeDao {
     @Query("SELECT * FROM incomes WHERE id = :id")
     suspend fun getIncomeById(id: Long): IncomeEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertIncomeEntity(income: IncomeEntity): Long
 
     @Update

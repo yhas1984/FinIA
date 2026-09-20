@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="ai_request_rejected">Google rechazó la solicitud de lectura (código %1$d). No se ha guardado ningún movimiento.</string>
+    <string name="ai_document_blocked">Google bloqueó la lectura de esta imagen. No se ha guardado ningún movimiento.</string>
+    <string name="ai_document_unreadable">Los modelos no devolvieron una lectura válida. La foto se conserva para reintentar; no se ha guardado ningún movimiento.</string>
+    <string name="ai_model_unavailable">Los modelos de lectura no están disponibles para esta clave. Revisa el acceso en Google AI Studio.</string>
+    <string name="ai_document_timeout">Google no terminó la lectura a tiempo. La foto se conserva; puedes reintentar más tarde.</string>
     <string name="ai_api_key_empty">API key vacía</string>
     <string name="ai_image_load_error">Error al cargar la imagen</string>
     <string name="ai_query_processed">Consulta procesada</string>

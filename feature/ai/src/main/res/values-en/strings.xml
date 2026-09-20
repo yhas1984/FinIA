@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="ai_request_rejected">Google rejected the reading request (code %1$d). No transaction was saved.</string>
+    <string name="ai_document_blocked">Google blocked this image. No transaction was saved.</string>
+    <string name="ai_document_unreadable">The models did not return a valid reading. The photo is kept for retrying; no transaction was saved.</string>
+    <string name="ai_model_unavailable">The reading models are not available for this key. Check access in Google AI Studio.</string>
+    <string name="ai_document_timeout">Google did not finish reading in time. The photo is kept; you can retry later.</string>
     <string name="ai_api_key_empty">Empty API key</string>
     <string name="ai_image_load_error">Error loading image</string>
     <string name="ai_query_processed">Query processed</string>

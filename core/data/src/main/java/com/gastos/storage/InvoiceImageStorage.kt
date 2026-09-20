@@ -16,6 +16,8 @@ import javax.inject.Singleton
 class InvoiceImageStorage @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+    /** Serializes capture promotion with restore directory swaps and crash recovery. */
+    val mutationMutex: kotlinx.coroutines.sync.Mutex = kotlinx.coroutines.sync.Mutex()
     private val imageDir = File(context.filesDir, DIRECTORY_NAME)
     private val stagedImageDir = File(context.filesDir, "$DIRECTORY_NAME.restore_new")
     private val oldImageDir = File(context.filesDir, "$DIRECTORY_NAME.restore_old")

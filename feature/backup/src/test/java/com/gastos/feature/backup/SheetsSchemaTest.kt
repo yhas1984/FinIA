@@ -1,5 +1,8 @@
 package com.gastos.feature.backup
 
+import com.gastos.domain.model.DocumentTax
+import com.gastos.domain.model.DocumentTaxCodec
+import com.gastos.domain.model.TaxTreatment
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
@@ -21,6 +24,22 @@ class SheetsSchemaTest {
 
     private fun snapshot(target: String = "EUR") =
         SheetsSchema.ConversionSnapshot(targetCurrency = target, exchangeRateProvider = exchangeRateProvider)
+
+    @Test fun `tax export has no fictitious global rate and one payable total`() {
+        val taxes = listOf(DocumentTax("GST", 5.0, 100.0, 5.0, TaxTreatment.TAXABLE), DocumentTax("PST", 7.0, 100.0, 7.0, TaxTreatment.TAXABLE))
+        val invoice = Invoice(fecha = 1, proveedor = "Synthetic", tipo = InvoiceType.GASTO, total = 112.0,
+            baseImponible = 100.0, cuotaIva = 12.0, ivaPercent = null, taxes = taxes)
+        val row = SheetsSchema.expenseRow(invoice, snapshot())
+        assertEquals("", row[6])
+        assertEquals(100.0, row[5])
+        assertEquals(112.0, row[10])
+        assertEquals(taxes, DocumentTaxCodec.decode(row.last().toString()))
+        val unknown = SheetsSchema.productRow(Product(invoiceId = 1, descripcion = "Unknown", precioUnitario = 100.0,
+            ivaPercent = null, ivaAmount = null, pricesIncludeTax = false), "Synthetic", "EUR", snapshot())
+        assertEquals("", unknown[5])
+        assertEquals("", unknown[11])
+        assertEquals("Impuesto no identificado", unknown[15])
+    }
 
     @Test
     fun `expense row matches headers and keeps id before Drive link`() {
@@ -137,10 +156,10 @@ class SheetsSchemaTest {
     }
 
     @Test
-    fun `schema v7 uses one income sheet with stable id column`() {
-        assertEquals(7, SheetsSchema.SCHEMA_VERSION)
+    fun `schema v8 preserves stable document columns when adding tax detail`() {
+        assertEquals(8, SheetsSchema.SCHEMA_VERSION)
         assertEquals("K", SheetsSchema.INGRESOS_KEY_COLUMN)
-        assertEquals("R", SheetsSchema.INGRESOS_LAST_COLUMN)
+        assertEquals("S", SheetsSchema.INGRESOS_LAST_COLUMN)
         assertEquals("ID", SheetsSchema.ingresosHeaders[10])
     }
 
@@ -214,8 +233,8 @@ class SheetsSchemaTest {
 
         assertEquals("Facturas Recibidas", es.recibidasTitle)
         assertEquals("Received Invoices", en.recibidasTitle)
-        assertEquals("Resumen Financiero (AEAT)", es.summaryTitle)
-        assertEquals("Financial Summary (AEAT)", en.summaryTitle)
+        assertEquals("Resumen Financiero", es.summaryTitle)
+        assertEquals("Financial Summary", en.summaryTitle)
         assertEquals("Tasa pendiente", es.conversionPendingLabel)
         assertEquals("pending rate", en.conversionPendingLabel)
     }
@@ -240,7 +259,7 @@ class SheetsSchemaTest {
     fun `summary rows follow descriptor locale`() {
         val totals = SheetsSchema.SummaryTotals(1.0, 2.0, 1.0, 0)
         val rows = SheetsSchema.summaryRows(SheetsSchema.en, "2026-07-24", "EUR", totals)
-        assertEquals("Financial Summary (AEAT)", rows[0][0])
+        assertEquals("Financial Summary", rows[0][0])
         assertEquals("Total income", rows[4][0])
     }
 }

@@ -1,0 +1,14 @@
+<es-ES>
+• Facturas con varios tipos de IVA y otros impuestos, conservando su desglose.
+• Comprobación silenciosa de importes antes de guardar, sin pantalla de revisión.
+• Detección de posibles gastos e ingresos duplicados.
+• Mejoras en el respaldo completo y un único botón para abrir la fotografía.
+• Mayor resistencia a fallos de Gemini con modelos de respaldo.
+</es-ES>
+<en-US>
+• Invoices with multiple VAT rates and other taxes, preserving their breakdown.
+• Silent amount checks before saving, without a review screen.
+• Detection of potential duplicate expenses and income.
+• Improved complete backups and a single button to open the photo.
+• More resilient Gemini requests with fallback models.
+</en-US>

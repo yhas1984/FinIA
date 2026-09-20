@@ -1,0 +1,15 @@
+<resources>
+    <string name="document_duplicate">Este documento puede estar ya registrado</string>
+    <string name="document_duplicate_help">Revisa la identidad y los importes. Un duplicado confirmado no se puede guardar de nuevo.</string>
+    <string name="document_distinct">Confirmo que es otro documento</string>
+    <string name="document_correct">Revisar campos</string>
+    <string name="document_identity">Identidad del documento (opcional)</string>
+    <string name="document_invoice">Factura emitida</string>
+    <string name="document_payroll">Nómina</string>
+    <string name="document_number">Número completo de factura</string>
+    <string name="document_issuer_tax">Identificador fiscal del emisor / empresa</string>
+    <string name="document_worker">Identificador del trabajador</string>
+    <string name="document_period">Periodo de liquidación impreso</string>
+    <string name="document_payment_kind">Tipo de pago impreso</string>
+    <string name="document_payroll_reference">Referencia de nómina</string>
+</resources>

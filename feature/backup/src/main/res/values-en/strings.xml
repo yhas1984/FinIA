@@ -225,9 +225,8 @@
     <string name="refresh_exchange_rates">Refresh exchange rates</string>
     <string name="backup_complete_prepare_failed">Could not prepare the complete backup.</string>
     <string name="backup_image_limit">One image exceeds 50 MiB. Export data only.</string>
-    <string name="backup_images_limit">The images exceed 300 MiB. Export data only.</string>
+    <string name="backup_storage_insufficient">There is not enough free space to restore the photos. Free up storage and try again.</string>
     <string name="backup_image_unrecoverable">An image cannot be recovered. Export data only.</string>
     <string name="backup_image_count_limit">Too many images. Export data only.</string>
     <string name="backup_json_limit">The data exceeds the 25 MiB limit.</string>
-    <string name="backup_complete_limit">The complete backup exceeds 300 MiB. Export data only.</string>
 </resources>

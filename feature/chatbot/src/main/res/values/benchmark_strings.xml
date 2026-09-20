@@ -1,0 +1,19 @@
+<resources>
+    <string name="benchmark_start">Comparar velocidad de lectura</string>
+    <string name="benchmark_consent">Prueba voluntaria: selecciona hasta 25 documentos representativos. Cada foto se enviará a Gemini dos veces (rápido y detallado), consumiendo cuota de tu clave. No se guardarán gastos ni ingresos. Las lecturas de esta comparación se mantienen solo durante esta sesión.</string>
+    <string name="benchmark_select">Seleccionar documentos</string>
+    <string name="benchmark_title">Comparación: %1$d / %2$d</string>
+    <string name="benchmark_explanation">Comprueba ambas lecturas con la foto original, incluidos identidad, fecha, moneda, importes, impuestos y todas las líneas. No asumas que el modo detallado es correcto.</string>
+    <string name="benchmark_fast">Modo rápido</string>
+    <string name="benchmark_thorough">Modo detallado</string>
+    <string name="benchmark_fast_accurate">Rápido: todos los datos críticos son correctos</string>
+    <string name="benchmark_thorough_accurate">Detallado: todos los datos críticos son correctos</string>
+    <string name="benchmark_fast_complete">Rápido: conserva todas las líneas y datos legibles</string>
+    <string name="benchmark_thorough_complete">Detallado: conserva todas las líneas y datos legibles</string>
+    <string name="benchmark_checked">He comparado ambas lecturas con la fotografía</string>
+    <string name="benchmark_next">Registrar evaluación y continuar</string>
+    <string name="benchmark_summary">Mediana rápida: %1$d ms · detallada: %2$d ms · mejora: %3$d%%</string>
+    <string name="benchmark_eligible">Según tu revisión, esta muestra cumple el umbral de velocidad, precisión y cobertura. El resultado se limita a los documentos comparados.</string>
+    <string name="benchmark_not_eligible">Esta muestra todavía no demuestra una mejora suficiente de velocidad y precisión. Continúa comparando documentos representativos.</string>
+    <string name="benchmark_share">Compartir métricas sin datos financieros</string>
+</resources>

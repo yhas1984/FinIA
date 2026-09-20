@@ -1,6 +1,7 @@
 package com.gastos.repository.impl
 
 import androidx.room.withTransaction
+import com.gastos.domain.model.documentIdentity
 import com.gastos.data.local.entity.toDomain
 import com.gastos.data.local.entity.toEntity
 import com.gastos.local.dao.InvoiceDao
@@ -38,10 +39,11 @@ class InvoiceRepositoryImpl @Inject constructor(
         invoiceDao.getInvoiceById(id)?.toDomain()
 
     override suspend fun insertInvoice(invoice: Invoice): Long =
-        invoiceDao.insertInvoice(invoice.toEntity().copy(updatedAt = System.currentTimeMillis()))
+        insertInvoiceWithProducts(invoice, emptyList())
 
     override suspend fun insertInvoiceWithProducts(invoice: Invoice, products: List<Product>): Long =
         database.withTransaction {
+            DocumentGuard(database).check(invoice.documentIdentity())
             val invoiceId = invoiceDao.insertInvoice(
                 invoice.toEntity().copy(updatedAt = System.currentTimeMillis())
             )
@@ -51,8 +53,12 @@ class InvoiceRepositoryImpl @Inject constructor(
             invoiceId
         }
 
-    override suspend fun updateInvoice(invoice: Invoice) =
-        invoiceDao.updatePreservingImageState(invoice.toEntity().copy(updatedAt = System.currentTimeMillis()))
+    override suspend fun updateInvoice(invoice: Invoice) {
+        database.withTransaction {
+            DocumentGuard(database).check(invoice.documentIdentity())
+            invoiceDao.updatePreservingImageState(invoice.toEntity().copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
 
     override suspend fun updateDriveMetadata(
         invoiceId: Long,

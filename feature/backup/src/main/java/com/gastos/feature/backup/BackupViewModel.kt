@@ -551,7 +551,8 @@ class BackupViewModel @Inject constructor(
             context.getString(R.string.csv_header_net),
             context.getString(R.string.csv_header_category),
             context.getString(R.string.csv_header_subcategory),
-            context.getString(R.string.csv_header_notes)
+            context.getString(R.string.csv_header_notes),
+            "taxes_json_original_currency"
         )
         val invoiceById = invoices.associateBy { it.id }
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
@@ -566,14 +567,15 @@ class BackupViewModel @Inject constructor(
                 invoice.total,
                 invoice.moneda,
                 invoice.baseImponible ?: "",
-                invoice.ivaPercent,
+                invoice.ivaPercent ?: "",
                 invoice.cuotaIva ?: "",
                 invoice.irpfPercent,
                 "",
                 "",
                 invoice.categoria.orEmpty(),
                 invoice.subcategoria.orEmpty(),
-                invoice.notas.orEmpty()
+                invoice.notas.orEmpty(),
+                com.gastos.domain.model.DocumentTaxCodec.encode(invoice.taxes)
             )
         }
         products.forEach { product ->
@@ -583,17 +585,18 @@ class BackupViewModel @Inject constructor(
                 dateFormat.format(Date(product.createdAt)),
                 "",
                 product.descripcion,
-                product.subtotal,
+                product.totalIncludingTax ?: "",
                 invoiceById[product.invoiceId]?.moneda.orEmpty(),
                 "",
-                product.ivaPercent,
+                product.ivaPercent ?: "",
                 "",
                 0,
                 "",
                 "",
                 "",
                 "",
-                ""
+                "",
+                com.gastos.domain.model.DocumentTaxCodec.encode(product.taxes)
             )
         }
         incomes.forEach { income ->
@@ -601,19 +604,20 @@ class BackupViewModel @Inject constructor(
                  context.getString(R.string.csv_type_income),
                 income.id,
                 dateFormat.format(Date(income.fecha)),
-                "",
+                income.evidence?.document?.number.orEmpty(),
                 income.concepto,
                 income.monto,
                 income.moneda,
-                "",
-                income.ivaPercent,
-                "",
+                income.evidence?.document?.taxBase ?: "",
+                income.ivaPercent ?: "",
+                income.evidence?.document?.vatAmount ?: "",
                 income.irpfPercent,
                 income.totalDevengado,
                 income.totalNeto,
                 income.categoria.orEmpty(),
                 income.subcategoria.orEmpty(),
-                income.notas.orEmpty()
+                income.notas.orEmpty(),
+                com.gastos.domain.model.DocumentTaxCodec.encode(income.taxes)
             )
         }
 
@@ -704,6 +708,24 @@ class BackupViewModel @Inject constructor(
                     color = android.graphics.Color.DKGRAY
                 }
 
+                fun drawTaxLines(taxes: List<com.gastos.domain.model.DocumentTax>, currency: String) {
+                    taxes.forEach { tax ->
+                        var remaining = com.gastos.common.describeTax(context, tax, currency)
+                        while (remaining.isNotEmpty()) {
+                            if (y > 780f) {
+                                pdfDocument.finishPage(page)
+                                page = pdfDocument.startPage(PdfDocument.PageInfo.Builder(595, 842, page.info.pageNumber + 1).create())
+                                canvas = page.canvas
+                                y = 50f
+                            }
+                            val length = bodyPaint.breakText(remaining, true, 475f, null).coerceAtLeast(1)
+                            canvas.drawText(remaining.take(length), 70f, y, bodyPaint)
+                            remaining = remaining.drop(length)
+                            y += 14f
+                        }
+                    }
+                }
+
                 // Title
                 canvas.drawText(context.getString(R.string.pdf_title), 40f, y, titlePaint)
                 y += 30f
@@ -778,6 +800,7 @@ class BackupViewModel @Inject constructor(
                     }
                     canvas.drawText("${df.format(Date(inv.fecha))} - ${inv.proveedor}: ${com.gastos.domain.model.formatMoney(inv.total, inv.moneda)}", 60f, y, bodyPaint)
                     y += 16f
+                    drawTaxLines(inv.taxes, inv.moneda)
                 }
                 y += 15f
 
@@ -793,6 +816,7 @@ class BackupViewModel @Inject constructor(
                     }
                     canvas.drawText("${df.format(Date(inc.fecha))} - ${inc.concepto}: ${com.gastos.domain.model.formatMoney(inc.monto, inc.moneda)}", 60f, y, bodyPaint)
                     y += 16f
+                    drawTaxLines(inc.taxes, inc.moneda)
                 }
 
                 pdfDocument.finishPage(page)

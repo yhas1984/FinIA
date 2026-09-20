@@ -1,0 +1,19 @@
+<resources>
+    <string name="benchmark_start">Compare reading speed</string>
+    <string name="benchmark_consent">Optional test: select up to 25 representative documents. Each photo is sent to Gemini twice (fast and thorough), using your key quota. No expenses or income are saved. Comparison readings are kept only for this session.</string>
+    <string name="benchmark_select">Select documents</string>
+    <string name="benchmark_title">Comparison: %1$d / %2$d</string>
+    <string name="benchmark_explanation">Check both readings against the original photo, including identity, date, currency, amounts, taxes and every line. Do not assume thorough mode is correct.</string>
+    <string name="benchmark_fast">Fast mode</string>
+    <string name="benchmark_thorough">Thorough mode</string>
+    <string name="benchmark_fast_accurate">Fast: all critical data is correct</string>
+    <string name="benchmark_thorough_accurate">Thorough: all critical data is correct</string>
+    <string name="benchmark_fast_complete">Fast: preserves all readable lines and data</string>
+    <string name="benchmark_thorough_complete">Thorough: preserves all readable lines and data</string>
+    <string name="benchmark_checked">I compared both readings with the photograph</string>
+    <string name="benchmark_next">Record evaluation and continue</string>
+    <string name="benchmark_summary">Fast median: %1$d ms · thorough: %2$d ms · improvement: %3$d%%</string>
+    <string name="benchmark_eligible">Based on your review, this sample meets the speed, accuracy and coverage threshold. The result applies only to the compared documents.</string>
+    <string name="benchmark_not_eligible">This sample does not yet demonstrate a sufficient speed and accuracy improvement. Continue comparing representative documents.</string>
+    <string name="benchmark_share">Share metrics without financial data</string>
+</resources>

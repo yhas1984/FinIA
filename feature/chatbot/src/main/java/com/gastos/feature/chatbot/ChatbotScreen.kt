@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -42,9 +45,12 @@ sealed class ChatMessage {
 @Composable
 fun ChatbotScreen(
     onNavigateBack: () -> Unit = {},
+    onOpenDocument: (com.gastos.domain.model.DocumentIdentity) -> Unit = {},
+    captureModel: DocumentCaptureViewModel = hiltViewModel(),
     viewModel: ChatbotViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val captureState by captureModel.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var textInput by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -56,7 +62,7 @@ fun ChatbotScreen(
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let { viewModel.processImage(it) }
+        uri?.let { captureModel.processImage(it) }
     }
 
     // Estado para la URI de la foto tomada con cámara
@@ -69,7 +75,7 @@ fun ChatbotScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success && capturedImageUri != null) {
-            viewModel.processImage(capturedImageUri!!)
+            captureModel.processImage(capturedImageUri!!)
         }
     }
 
@@ -115,7 +121,7 @@ fun ChatbotScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column {
-                            Text(stringResource(R.string.chatbot_app_title))
+                            Text(stringResource(R.string.chatbot_app_title), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(
                                 text = stringResource(R.string.chatbot_online_status),
                                 style = MaterialTheme.typography.labelSmall,
@@ -130,7 +136,7 @@ fun ChatbotScreen(
                     }
                 },
                 actions = {
-                    TextButton(onClick = viewModel::refreshExchangeRates) { Text(stringResource(R.string.refresh_exchange_rates)) }
+                    IconButton(onClick = viewModel::refreshExchangeRates) { Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh_exchange_rates)) }
                     IconButton(onClick = { showClearDialog = true }) {
                         Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.chatbot_cd_clear_chat))
                     }
@@ -146,7 +152,9 @@ fun ChatbotScreen(
                 tonalElevation = 8.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+                Column(modifier = Modifier.navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp)) {
+                    DocumentCapturePanel(captureState, captureModel, onOpenDocument)
+                    if (BuildConfig.DEBUG) OcrBenchmarkButton(enabled = !uiState.isProcessing && !captureState.busy)
                     // Quick action buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -186,7 +194,7 @@ fun ChatbotScreen(
                         OutlinedButton(
                             onClick = { showScanMenu = true },
                             modifier = Modifier.weight(1f),
-                            enabled = !uiState.isProcessing,
+                            enabled = !uiState.isProcessing && !captureState.busy,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -284,6 +292,7 @@ fun ChatbotScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
                         .padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center

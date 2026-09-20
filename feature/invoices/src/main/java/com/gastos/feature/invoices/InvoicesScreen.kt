@@ -1,8 +1,5 @@
 package com.gastos.feature.invoices
 
-import android.content.ActivityNotFoundException
-import android.content.Context
-import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
@@ -18,14 +15,12 @@ import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.TransactionCategories
 import com.gastos.feature.invoices.R
-import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -40,10 +35,8 @@ fun InvoicesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showFilterMenu by remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
     val language = LocalLocale.current.platformLocale.language
     val snackbarHostState = remember { SnackbarHostState() }
-    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let {
@@ -237,18 +230,6 @@ fun InvoicesScreen(
                             onDelete = { deleteRemote -> viewModel.deleteInvoice(invoice, deleteRemote) },
                             onEdit = { onNavigateToEdit(invoice.id) },
                             onRetryDrive = { viewModel.retryDriveUpload(invoice) },
-                            onOpenDrive = {
-                                invoice.driveWebViewLink?.let { link ->
-                                    openTrustedUrl(
-                                        context = context,
-                                        rawUrl = link,
-                                        allowedHosts = setOf("drive.google.com", "docs.google.com"),
-                                        onError = { message ->
-                                            coroutineScope.launch { snackbarHostState.showSnackbar(message) }
-                                        }
-                                    )
-                                }
-                            },
                             isPremium = uiState.isPremium,
                             isUploadingToDrive = invoice.id in uiState.uploadingToDrive
                         )
@@ -305,7 +286,6 @@ private fun InvoiceCard(
     onDelete: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onRetryDrive: () -> Unit,
-    onOpenDrive: () -> Unit,
     isPremium: Boolean,
     isUploadingToDrive: Boolean
 ) {
@@ -401,7 +381,7 @@ private fun InvoiceCard(
                                 }
                                 invoice.cuotaIva?.let {
                                     if (isNotEmpty()) append(" · ")
-                                    append(stringResource(R.string.vat_line, com.gastos.domain.model.formatMoney(it, invoice.moneda)))
+                                    append(stringResource(com.gastos.common.R.string.taxes_total, com.gastos.domain.model.formatMoney(it, invoice.moneda), ""))
                                 }
                             },
                             style = MaterialTheme.typography.bodySmall
@@ -410,19 +390,15 @@ private fun InvoiceCard(
                 }
             }
 
+            com.gastos.common.TaxBreakdownSummary(invoice.taxes, invoice.moneda)
+
             com.gastos.feature.backup.DocumentImageButton(
                 localUri = invoice.imagenUri, fileId = invoice.driveFileId,
                 accountId = invoice.driveAccountId, contentHash = invoice.driveContentHash)
 
-            if (invoice.imagenUri != null) {
+            if (invoice.imagenUri != null && invoice.driveFileId == null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                when {
-                    invoice.driveWebViewLink != null -> TextButton(onClick = onOpenDrive) {
-                        Icon(Icons.Default.CloudDone, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(stringResource(R.string.open_drive_photo))
-                    }
-                    else -> OutlinedButton(
+                OutlinedButton(
                         onClick = onRetryDrive,
                         enabled = isPremium && !isUploadingToDrive
                     ) {
@@ -444,7 +420,6 @@ private fun InvoiceCard(
                             }
                         )
                     }
-                }
             }
 
             Row(
@@ -498,27 +473,5 @@ private fun InvoiceCard(
                 }
             }
         )
-    }
-}
-
-private fun openTrustedUrl(
-    context: Context,
-    rawUrl: String,
-    allowedHosts: Set<String>,
-    onError: (String) -> Unit
-) {
-    val uri = rawUrl.toUri()
-    val host = uri.host?.lowercase(Locale.ROOT)
-    if (uri.scheme != "https" || host !in allowedHosts) {
-        onError(context.getString(R.string.open_link_invalid))
-        return
-    }
-    val intent = Intent(Intent.ACTION_VIEW, uri)
-    try {
-        context.startActivity(intent)
-    } catch (_: ActivityNotFoundException) {
-        onError(context.getString(R.string.open_link_no_app))
-    } catch (_: SecurityException) {
-        onError(context.getString(R.string.open_link_denied))
     }
 }

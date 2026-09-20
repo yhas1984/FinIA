@@ -1,0 +1,22 @@
+{
+  "keyConfigured": true,
+  "syntheticOnly": true,
+  "ledgerWrites": 0,
+  "reads": [
+    {
+      "fixture": "es-three-rates",
+      "durationMs": 4312,
+      "result": "NeedsReview",
+      "issues": [
+        "kind:AMBIGUOUS"
+      ],
+      "printedValuesPreserved": false
+    },
+    {
+      "fixture": "ca-shared-base",
+      "durationMs": 7220,
+      "result": "Ready",
+      "printedValuesPreserved": true
+    }
+  ]
+}

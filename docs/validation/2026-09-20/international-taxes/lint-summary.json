@@ -1,0 +1,8 @@
+{
+  "debug": {
+    "Warning": 23
+  },
+  "release": {
+    "Warning": 23
+  }
+}

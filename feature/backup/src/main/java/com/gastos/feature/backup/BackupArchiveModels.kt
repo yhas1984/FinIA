@@ -86,6 +86,7 @@ internal data class BackupPayloadDto(
 @Serializable
 internal data class InvoiceDto(
     val documentUuid: String = java.util.UUID.randomUUID().toString(),
+    val evidence: com.gastos.domain.model.DocumentEvidence? = null,
     val driveAccountId: String? = null,
     val driveContentHash: String? = null,
     val driveSyncError: String? = null,
@@ -101,7 +102,7 @@ internal data class InvoiceDto(
     val numeroFactura: String? = null,
     val baseImponible: Double? = null,
     val cuotaIva: Double? = null,
-    val ivaPercent: Double,
+    val ivaPercent: Double?,
     val irpfPercent: Double,
     val paisCodigo: String,
     val nifEmisor: String?,
@@ -113,10 +114,13 @@ internal data class InvoiceDto(
     val ocrRawText: String?,
     val notas: String?,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val taxes: List<com.gastos.domain.model.DocumentTax> = emptyList()
 ) {
     fun toDomain(images: Map<String, String>): Invoice = Invoice(
+        taxes = taxes,
         documentUuid = documentUuid,
+        evidence = evidence,
         driveAccountId = driveAccountId,
         driveContentHash = driveContentHash,
         driveSyncError = driveSyncError,
@@ -155,11 +159,15 @@ internal data class ProductDto(
     val cantidad: Double,
     val precioUnitario: Double,
     val subtotal: Double,
-    val ivaPercent: Double,
-    val ivaAmount: Double,
-    val createdAt: Long
+    val ivaPercent: Double?,
+    val ivaAmount: Double?,
+    val createdAt: Long,
+    val pricesIncludeTax: Boolean = true,
+    val taxes: List<com.gastos.domain.model.DocumentTax> = emptyList()
 ) {
     fun toDomain(): Product = Product(
+        taxes = taxes,
+        pricesIncludeTax = pricesIncludeTax,
         id = id,
         invoiceId = invoiceId,
         descripcion = descripcion,
@@ -175,6 +183,7 @@ internal data class ProductDto(
 @Serializable
 internal data class IncomeDto(
     val documentUuid: String = java.util.UUID.randomUUID().toString(),
+    val evidence: com.gastos.domain.model.DocumentEvidence? = null,
     val driveAccountId: String? = null,
     val driveContentHash: String? = null,
     val driveSyncError: String? = null,
@@ -192,15 +201,18 @@ internal data class IncomeDto(
     val fuente: String?,
     val categoria: String?,
     val subcategoria: String? = null,
-    val ivaPercent: Double,
+    val ivaPercent: Double?,
     val irpfPercent: Double,
     val imageFileName: String?,
     val notas: String?,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val taxes: List<com.gastos.domain.model.DocumentTax> = emptyList()
 ) {
     fun toDomain(images: Map<String, String>): Income = Income(
+        taxes = taxes,
         documentUuid = documentUuid,
+        evidence = evidence,
         driveAccountId = driveAccountId,
         driveContentHash = driveContentHash,
         driveSyncError = driveSyncError,
@@ -314,7 +326,9 @@ internal fun BackupDataset.toDto(
     createdAt = createdAt,
     invoices = invoices.map { invoice ->
         InvoiceDto(
+            taxes = invoice.taxes,
             documentUuid = invoice.documentUuid,
+            evidence = invoice.evidence,
             driveAccountId = invoice.driveAccountId,
             driveContentHash = invoice.driveContentHash,
             driveSyncError = invoice.driveSyncError,
@@ -347,6 +361,8 @@ internal fun BackupDataset.toDto(
     },
     products = products.map { product ->
         ProductDto(
+            taxes = product.taxes,
+            pricesIncludeTax = product.pricesIncludeTax,
             id = product.id,
             invoiceId = product.invoiceId,
             descripcion = product.descripcion,
@@ -360,7 +376,9 @@ internal fun BackupDataset.toDto(
     },
     incomes = incomes.map { income ->
         IncomeDto(
+            taxes = income.taxes,
             documentUuid = income.documentUuid,
+            evidence = income.evidence,
             driveAccountId = income.driveAccountId,
             driveContentHash = income.driveContentHash,
             driveSyncError = income.driveSyncError,

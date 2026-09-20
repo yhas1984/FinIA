@@ -1,0 +1,23 @@
+<resources>
+    <string name="taxes_add_breakdown">Desglose por impuestos</string>
+    <string name="taxes_breakdown_count">Impuestos (%1$d)</string>
+    <string name="taxes_help">Conserva los impuestos del documento. Las bases de impuestos distintos pueden coincidir. Un campo vacío significa desconocido.</string>
+    <string name="taxes_name">Nombre del impuesto</string>
+    <string name="taxes_taxable">Sujeto a impuesto</string>
+    <string name="taxes_zero">Tipo cero</string>
+    <string name="taxes_exempt">Exento</string>
+    <string name="taxes_outside">No sujeto</string>
+    <string name="taxes_unknown">No identificado</string>
+    <string name="taxes_charge">Impuesto</string>
+    <string name="taxes_withholding">Retención</string>
+    <string name="taxes_rate">Porcentaje (%)</string>
+    <string name="taxes_base">Base</string>
+    <string name="taxes_amount">Importe (%1$s)</string>
+    <string name="taxes_calculated">Calculado: %1$s %2$s</string>
+    <string name="taxes_remove">Quitar impuesto</string>
+    <string name="taxes_add">Añadir impuesto</string>
+    <string name="taxes_total">Impuestos: %1$s %2$s</string>
+    <string name="taxes_total_label">Total de impuestos</string>
+    <string name="taxes_inconsistent">El desglose de impuestos no coincide con los importes. Comprueba bases, cuotas y total.</string>
+    <string name="taxes_partial_products">Total parcial: hay productos cuyo impuesto no se ha identificado.</string>
+</resources>

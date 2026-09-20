@@ -212,7 +212,10 @@ class DashboardViewModelTest {
         vm.nextMonth()
 
         vm.uiState.test {
-            val state = awaitStable { !it.isLoading }
+            // The ViewModel starts observing before the injected test clock is
+            // applied. Ignore that transient system-month emission and assert
+            // the stable state produced by the fixed clock.
+            val state = awaitStable { !it.isLoading && it.selectedMonth == MonthRef(2026, 8) }
             assertEquals(MonthRef(2026, 8), state.selectedMonth)
             assertEquals(true, state.isCurrentMonth)
             cancelAndConsumeRemainingEvents()
@@ -440,7 +443,7 @@ class DashboardViewModelTest {
             awaitStable { it.widgetOrder.isNotEmpty() }
             vm.moveWidget(0, 2)
 
-            val state = awaitItem()
+            val state = awaitStable { it.widgetOrder.getOrNull(2) == DashboardWidget.BALANCE.id }
             assertEquals("cashflow", state.widgetOrder[0])
             assertEquals("balance", state.widgetOrder[2])
             coVerify { layoutPref.updateDashboardLayout(any()) }
@@ -463,7 +466,7 @@ class DashboardViewModelTest {
             // slot persistido pero no debe alterar los índices de pantalla.
             vm.moveWidget(from = 2, to = 0)
 
-            val state = awaitStable { it.widgetOrder.first() == DashboardWidget.CALENDAR.id }
+            val state = awaitStable { it.widgetOrder.firstOrNull() == DashboardWidget.CALENDAR.id }
             assertEquals(DashboardWidget.CALENDAR.id, state.widgetOrder[0])
             assertEquals(DashboardWidget.CASHFLOW.id, state.widgetOrder[1])
             assertEquals(DashboardWidget.BALANCE.id, state.widgetOrder[2])
@@ -485,7 +488,7 @@ class DashboardViewModelTest {
         firstViewModel.uiState.test {
             awaitStable { it.widgetOrder.isNotEmpty() }
             firstViewModel.moveWidget(from = 0, to = 2)
-            awaitStable { it.widgetOrder[2] == DashboardWidget.BALANCE.id }
+            awaitStable { it.widgetOrder.getOrNull(2) == DashboardWidget.BALANCE.id }
             cancelAndConsumeRemainingEvents()
         }
 
@@ -495,7 +498,7 @@ class DashboardViewModelTest {
             persistLayoutUpdates = true
         )
         recreatedViewModel.uiState.test {
-            val restored = awaitStable { it.widgetOrder[2] == DashboardWidget.BALANCE.id }
+            val restored = awaitStable { it.widgetOrder.getOrNull(2) == DashboardWidget.BALANCE.id }
             assertEquals(DashboardWidget.BALANCE.id, restored.widgetOrder[2])
             cancelAndConsumeRemainingEvents()
         }
@@ -527,18 +530,18 @@ class DashboardViewModelTest {
         vm.uiState.test {
             awaitStable { it.widgetOrder.isNotEmpty() }
             vm.moveWidget(0, 2)
-            awaitItem()
+            awaitStable { it.widgetOrder.getOrNull(2) == DashboardWidget.BALANCE.id }
 
             vm.resetLayout()
 
-            val resetState = awaitItem()
+            val resetState = awaitStable { it.showResetUndo && it.widgetOrder == DashboardWidget.defaultOrder }
             assertEquals(DashboardWidget.defaultOrder, resetState.widgetOrder)
             assertTrue(resetState.hiddenWidgets.isEmpty())
             assertEquals(true, resetState.showResetUndo)
 
             vm.undoResetLayout()
 
-            val undoState = awaitItem()
+            val undoState = awaitStable { !it.showResetUndo && it.widgetOrder.firstOrNull() == DashboardWidget.CASHFLOW.id }
             assertEquals("cashflow", undoState.widgetOrder[0])
             assertEquals(false, undoState.showResetUndo)
             cancelAndConsumeRemainingEvents()

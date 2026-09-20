@@ -1,7 +1,10 @@
 package com.gastos.feature.invoices
 
+import com.gastos.domain.model.*
 import com.gastos.common.LocalizedNumbers
 import com.gastos.common.SaveState
+import com.gastos.common.TaxFormRow
+import com.gastos.common.reconcileTaxForm
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import androidx.lifecycle.ViewModel
@@ -27,6 +30,7 @@ import kotlin.math.abs
 import javax.inject.Inject
 
 data class EditInvoiceUiState(
+    val duplicates: List<DuplicateMatch> = emptyList(),
     val isLoading: Boolean = false,
     val saveState: SaveState = SaveState.Idle,
     val invoice: Invoice? = null,
@@ -45,6 +49,9 @@ data class EditInvoiceUiState(
  * propia edición en la pestaña Ingresos.
  */
 data class EditInvoiceForm(
+    val taxes: List<TaxFormRow> = emptyList(),
+    val withheldAmountRead: Double? = null,
+    val withheldRateRead: Double? = null,
     val id: Long = 0,
     val fecha: Long = System.currentTimeMillis(),
     val proveedor: String = "",
@@ -78,10 +85,10 @@ data class EditInvoiceForm(
      */
     data class FiscalBreakdown(
         val total: Double,
-        val ivaPercent: Double,
+        val ivaPercent: Double?,
         val irpfPercent: Double,
-        val baseImponible: Double,
-        val ivaAmount: Double,
+        val baseImponible: Double?,
+        val ivaAmount: Double?,
         val irpfAmount: Double,
         val totalNeto: Double
     )
@@ -96,27 +103,26 @@ data class EditInvoiceForm(
      */
     fun recalcFiscal(locale: Locale = Locale.getDefault()): FiscalBreakdown? {
         val total = LocalizedNumbers.parse(total, locale)?.takeIf { it.isFinite() && it >= 0.0 } ?: return null
-        val iva = LocalizedNumbers.parse(ivaPercent, locale)?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
-        val irpf = LocalizedNumbers.parse(irpfPercent, locale)?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
-        val enteredBase = LocalizedNumbers.parse(baseImponible, locale)?.takeIf { it.isFinite() && it >= 0.0 }
+        val iva: Double? = LocalizedNumbers.parse(ivaPercent, locale)?.takeIf { it.isFinite() && it in 0.0..100.0 }
+        if (taxes.isEmpty() && ivaPercent.isNotBlank() && iva == null) return null
+        val irpf: Double = LocalizedNumbers.parse(irpfPercent, locale)?.takeIf { it.isFinite() && it in 0.0..100.0 } ?: return null
+        val enteredBase: Double? = LocalizedNumbers.parse(baseImponible, locale)?.takeIf { it >= 0.0 }
         if (baseImponible.isNotBlank() && enteredBase == null) return null
-        val enteredCuota = LocalizedNumbers.parse(cuotaIva, locale)?.takeIf { it.isFinite() && it >= 0.0 }
+        val enteredCuota: Double? = LocalizedNumbers.parse(cuotaIva, locale)?.takeIf { it >= 0.0 }
         if (cuotaIva.isNotBlank() && enteredCuota == null) return null
-        val base = enteredBase
-            ?: total / (1.0 + iva / 100.0)
-        val ivaAmount = enteredCuota
-            ?: total - base
-        val irpfAmount = base * irpf / 100.0
-        val neto = total - irpfAmount
-        return FiscalBreakdown(
-            total = total,
-            ivaPercent = iva,
-            irpfPercent = irpf,
-            baseImponible = base,
-            ivaAmount = ivaAmount,
-            irpfAmount = irpfAmount,
-            totalNeto = neto
-        )
+        if (taxes.isNotEmpty()) {
+            val parsed: List<DocumentTax> = TaxFormRow.parseAll(taxes, locale, moneda) ?: return null
+            val withholding: Double? = if (withheldRateRead == irpf) withheldAmountRead else enteredBase?.times(irpf / 100.0)
+            val result = reconcileTaxForm(parsed, total, enteredBase, withholding, moneda) ?: return null
+            return FiscalBreakdown(total, DocumentTaxes.singleRate(parsed), irpf, result.base, result.charges, result.withholding, total)
+        }
+        val withholdingDeducted: Boolean = withheldAmountRead != null
+        val base: Double? = enteredBase ?: iva?.let { total / (1.0 + it / 100.0 - if (withholdingDeducted) irpf / 100.0 else 0.0) }
+        if (base != null && !base.isFinite()) return null
+        val irpfAmount: Double = if (withholdingDeducted && withheldRateRead == irpf) withheldAmountRead!! else (base?.times(irpf / 100.0) ?: 0.0)
+        val ivaAmount: Double? = enteredCuota ?: base?.let { total + (if (withholdingDeducted) irpfAmount else 0.0) - it }
+        val neto: Double = if (withholdingDeducted) total else total - irpfAmount
+        return FiscalBreakdown(total, iva, irpf, base, ivaAmount, irpfAmount, neto)
     }
 }
 
@@ -135,6 +141,7 @@ class EditInvoiceViewModel @Inject constructor(
     val form: StateFlow<EditInvoiceForm> = _form.asStateFlow()
 
     private var originalInvoice: Invoice? = null
+    private var duplicateForm: EditInvoiceForm? = null
     private var existingSubcategories: List<String?> = emptyList()
 
     init {
@@ -167,6 +174,9 @@ class EditInvoiceViewModel @Inject constructor(
                     originalInvoice = invoice
                     _form.update {
                         EditInvoiceForm(
+                            taxes = invoice.taxes.map { TaxFormRow.from(it, locale) },
+                            withheldAmountRead = invoice.evidence?.document?.withholdingAmount,
+                            withheldRateRead = invoice.irpfPercent,
                             id = invoice.id,
                             fecha = invoice.fecha,
                             proveedor = invoice.proveedor,
@@ -175,7 +185,7 @@ class EditInvoiceViewModel @Inject constructor(
                             numeroFactura = invoice.numeroFactura ?: "",
                             baseImponible = invoice.baseImponible?.let { LocalizedNumbers.format(it, locale) } ?: "",
                             cuotaIva = invoice.cuotaIva?.let { LocalizedNumbers.format(it, locale) } ?: "",
-                            ivaPercent = LocalizedNumbers.format(invoice.ivaPercent, locale),
+                            ivaPercent = invoice.ivaPercent?.let { LocalizedNumbers.format(it, locale) }.orEmpty(),
                             irpfPercent = LocalizedNumbers.format(invoice.irpfPercent, locale),
                             paisCodigo = invoice.paisCodigo,
                             nifEmisor = invoice.nifEmisor ?: "",
@@ -209,6 +219,19 @@ class EditInvoiceViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(isLoading = false, error = e.message ?: context.getString(R.string.load_invoice_error))
                 }
+            }
+        }
+    }
+
+    fun updateTaxes(rows: List<TaxFormRow>) { _form.update { it.copy(taxes = rows, cuotaIva = "") } }
+    fun addTax(locale: Locale) {
+        _form.update { form ->
+            if (form.taxes.isNotEmpty()) form.copy(taxes = form.taxes + TaxFormRow()) else {
+                val fiscal = form.recalcFiscal(locale)
+                val row = TaxFormRow.from(DocumentTax(name = if (form.paisCodigo == "ES") "IVA" else "Tax",
+                    rate = fiscal?.ivaPercent, base = fiscal?.baseImponible, amount = fiscal?.ivaAmount,
+                    treatment = if (fiscal?.ivaPercent == 0.0) TaxTreatment.ZERO_RATED else TaxTreatment.TAXABLE), locale)
+                form.copy(taxes = listOf(row))
             }
         }
     }
@@ -253,15 +276,15 @@ class EditInvoiceViewModel @Inject constructor(
     }
     fun updateNotas(value: String) { _form.update { it.copy(notas = value) } }
 
-    fun saveInvoice(locale: Locale = Locale.getDefault()) {
+    fun saveInvoice(locale: Locale = Locale.getDefault(), distinctFrom: Set<String> = emptySet()) {
         if (_uiState.value.saveState == SaveState.Saving || _uiState.value.saveState == SaveState.Success) return
-        _uiState.update { it.copy(saveState = SaveState.Saving) }
+        _uiState.update { it.copy(saveState = SaveState.Saving, duplicates = emptyList()) }
         viewModelScope.launch {
             val form = _form.value
             val fiscal = form.recalcFiscal(locale)
             if (fiscal == null || fiscal.total <= 0.0) {
                 _uiState.update {
-                    it.copy(saveState = SaveState.Error(context.getString(R.string.validation_total_percentages)))
+                    it.copy(saveState = SaveState.Error(context.getString(if (form.taxes.isNotEmpty()) com.gastos.common.R.string.taxes_inconsistent else R.string.validation_total_percentages)))
                 }
                 return@launch
             }
@@ -271,19 +294,19 @@ class EditInvoiceViewModel @Inject constructor(
             }
             val enteredBase = LocalizedNumbers.parse(form.baseImponible, locale)
             val enteredCuota = LocalizedNumbers.parse(form.cuotaIva, locale)
+            val withholding = if (form.withheldAmountRead != null) fiscal.irpfAmount else 0.0
+            val parsedTaxes: List<DocumentTax> = TaxFormRow.parseAll(form.taxes, locale, form.moneda) ?: emptyList()
+            val legacyMixed: Boolean = originalInvoice?.evidence?.document?.lines?.mapNotNull { it.vatPercent }?.distinct()?.size?.let { it > 1 } == true
+            val rate: Double? = fiscal.ivaPercent.takeUnless { legacyMixed && form.taxes.isEmpty() }
             val fiscalValuesAreConsistent = when {
-                enteredBase != null && enteredCuota != null -> {
-                    val rateQuota = enteredBase * fiscal.ivaPercent / 100.0
-                    abs(enteredBase + enteredCuota - fiscal.total) <= FISCAL_TOLERANCE &&
-                        abs(enteredCuota - rateQuota) <= FISCAL_TOLERANCE
-                }
-                enteredBase != null -> abs(
-                    enteredBase * (1.0 + fiscal.ivaPercent / 100.0) - fiscal.total
-                ) <= FISCAL_TOLERANCE
-                enteredCuota != null -> {
-                    val inferredBase = fiscal.total - enteredCuota
-                    inferredBase >= -FISCAL_TOLERANCE &&
-                        abs(enteredCuota - inferredBase * fiscal.ivaPercent / 100.0) <= FISCAL_TOLERANCE
+                form.taxes.isNotEmpty() -> parsedTaxes.size == form.taxes.size
+                enteredBase != null && enteredCuota != null ->
+                    abs(enteredBase + enteredCuota - withholding - fiscal.total) <= FISCAL_TOLERANCE &&
+                        (rate == null || abs(enteredCuota - enteredBase * rate / 100.0) <= FISCAL_TOLERANCE)
+                enteredBase != null && rate != null -> abs(enteredBase * (1.0 + rate / 100.0) - withholding - fiscal.total) <= FISCAL_TOLERANCE
+                enteredCuota != null && rate != null -> {
+                    val inferredBase = fiscal.total + withholding - enteredCuota
+                    inferredBase >= -FISCAL_TOLERANCE && abs(enteredCuota - inferredBase * rate / 100.0) <= FISCAL_TOLERANCE
                 }
                 else -> true
             }
@@ -310,6 +333,19 @@ class EditInvoiceViewModel @Inject constructor(
                 // ni el texto OCR al guardar.
                 val original = originalInvoice
                 val invoice = Invoice(
+                    taxes = parsedTaxes,
+                    evidence = (original?.evidence ?: DocumentEvidence(ScannedDocument())).copy(
+                        distinctFrom = distinctFrom,
+                        document = (original?.evidence?.document ?: ScannedDocument()).copy(
+                            date = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(java.util.Date(form.fecha)),
+                            number = form.numeroFactura.takeIf(String::isNotBlank), issuer = form.proveedor,
+                            issuerTaxId = form.nifEmisor.takeIf(String::isNotBlank), recipientTaxId = form.nifReceptor.takeIf(String::isNotBlank),
+                            country = form.paisCodigo, currency = currency, total = fiscal.total,
+                            taxes = parsedTaxes, taxesComplete = if (parsedTaxes.isNotEmpty()) true else null,
+                            taxBase = fiscal.baseImponible, vatAmount = fiscal.ivaAmount, vatPercent = fiscal.ivaPercent, withholdingPercent = fiscal.irpfPercent,
+                            withholdingAmount = if (form.taxes.isNotEmpty() || form.withheldAmountRead != null) fiscal.irpfAmount else original?.evidence?.document?.withholdingAmount
+                        )
+                    ),
                     documentUuid = original?.documentUuid ?: java.util.UUID.randomUUID().toString(),
                     driveAccountId = original?.driveAccountId,
                     driveContentHash = original?.driveContentHash,
@@ -323,12 +359,12 @@ class EditInvoiceViewModel @Inject constructor(
                     moneda = currency,
                     total = fiscal.total,
                     numeroFactura = form.numeroFactura.trim().takeIf { it.isNotBlank() },
-                    baseImponible = if (original != null && form.baseImponible.isBlank()) {
+                    baseImponible = if (form.taxes.isEmpty() && original != null && form.baseImponible.isBlank()) {
                         null
                     } else {
                         fiscal.baseImponible
                     },
-                    cuotaIva = if (original != null && form.cuotaIva.isBlank()) {
+                    cuotaIva = if (form.taxes.isEmpty() && original != null && form.cuotaIva.isBlank()) {
                         null
                     } else {
                         fiscal.ivaAmount
@@ -369,6 +405,9 @@ class EditInvoiceViewModel @Inject constructor(
 
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (duplicate: DuplicateDocumentException) {
+                duplicateForm = form
+                _uiState.update { it.copy(duplicates = duplicate.matches, saveState = SaveState.Error(context.getString(R.string.document_duplicate))) }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -377,6 +416,15 @@ class EditInvoiceViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun dismissDuplicate() { _uiState.update { it.copy(duplicates = emptyList()) } }
+
+    fun confirmDistinct(locale: Locale) {
+        val matches: List<DuplicateMatch> = _uiState.value.duplicates
+        if (matches.any { it.strength == DuplicateStrength.STRONG }) return
+        val confirmed: Set<String> = if (_form.value == duplicateForm) matches.map { it.existing.version }.toSet() else emptySet()
+        saveInvoice(locale, confirmed)
     }
 
     fun clearSaveResult() {

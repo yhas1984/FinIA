@@ -1,7 +1,10 @@
 package com.gastos.feature.incomes
 
+import com.gastos.domain.model.*
 import com.gastos.common.LocalizedNumbers
 import com.gastos.common.SaveState
+import com.gastos.common.TaxFormRow
+import com.gastos.common.reconcileTaxForm
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import androidx.lifecycle.ViewModel
@@ -24,6 +27,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class EditIncomeUiState(
+    val duplicates: List<DuplicateMatch> = emptyList(),
     val isLoading: Boolean = false,
     val saveState: SaveState = SaveState.Idle,
     val income: Income? = null,
@@ -36,6 +40,15 @@ data class EditIncomeUiState(
 }
 
 data class EditIncomeForm(
+    val taxes: List<TaxFormRow> = emptyList(),
+    val taxBase: String = "",
+    val documentNumber: String = "",
+    val issuerTaxId: String = "",
+    val workerId: String = "",
+    val payPeriod: String = "",
+    val paymentKind: String = "",
+    val payrollReference: String = "",
+    val documentKind: String = "",
     val id: Long = 0,
     val fecha: Long = System.currentTimeMillis(),
     val concepto: String = "",
@@ -67,6 +80,7 @@ class EditIncomeViewModel @Inject constructor(
     val form: StateFlow<EditIncomeForm> = _form.asStateFlow()
 
     private var originalIncome: Income? = null
+    private var duplicateForm: EditIncomeForm? = null
     private var existingSubcategories: List<String?> = emptyList()
 
     init {
@@ -103,6 +117,15 @@ class EditIncomeViewModel @Inject constructor(
                     originalIncome = income
                     _form.update {
                         EditIncomeForm(
+                            taxes = income.taxes.map { TaxFormRow.from(it, locale) },
+                            taxBase = income.evidence?.document?.taxBase?.let { LocalizedNumbers.format(it, locale) }.orEmpty(),
+                            documentNumber = income.evidence?.document?.number.orEmpty(),
+                            issuerTaxId = income.evidence?.document?.issuerTaxId.orEmpty(),
+                            workerId = income.evidence?.document?.workerId.orEmpty(),
+                            payPeriod = income.evidence?.document?.payPeriod.orEmpty(),
+                            paymentKind = income.evidence?.document?.paymentKind.orEmpty(),
+                            payrollReference = income.evidence?.document?.payrollReference.orEmpty(),
+                            documentKind = income.evidence?.document?.kind.orEmpty(),
                             id = income.id,
                             fecha = income.fecha,
                             concepto = income.concepto,
@@ -121,7 +144,7 @@ class EditIncomeViewModel @Inject constructor(
                                     TransactionCategories.normalizeKey(suggested) == TransactionCategories.normalizeKey(it)
                                 }
                             } ?: false,
-                            ivaPercent = LocalizedNumbers.format(income.ivaPercent, locale),
+                            ivaPercent = income.ivaPercent?.let { LocalizedNumbers.format(it, locale) }.orEmpty(),
                             irpfPercent = LocalizedNumbers.format(income.irpfPercent, locale),
                             notas = income.notas ?: ""
                         )
@@ -149,6 +172,12 @@ class EditIncomeViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun updateTaxes(rows: List<TaxFormRow>) { _form.update { it.copy(taxes = rows) } }
+    fun updateTaxBase(value: String) { _form.update { it.copy(taxBase = value) } }
+    fun addTax(locale: Locale) {
+        _form.update { form -> form.copy(taxes = form.taxes + TaxFormRow()) }
     }
 
     fun updateConcepto(value: String) { _form.update { it.copy(concepto = value) } }
@@ -189,10 +218,22 @@ class EditIncomeViewModel @Inject constructor(
     fun updateIvaPercent(value: String) { _form.update { it.copy(ivaPercent = value) } }
     fun updateIrpfPercent(value: String) { _form.update { it.copy(irpfPercent = value) } }
     fun updateNotas(value: String) { _form.update { it.copy(notas = value) } }
+    fun updateDocumentField(field: String, value: String) {
+        _form.update { when (field) {
+            "number" -> it.copy(documentNumber = value)
+            "issuerTaxId" -> it.copy(issuerTaxId = value)
+            "workerId" -> it.copy(workerId = value)
+            "payPeriod" -> it.copy(payPeriod = value)
+            "paymentKind" -> it.copy(paymentKind = value)
+            "payrollReference" -> it.copy(payrollReference = value)
+            "kind" -> it.copy(documentKind = value)
+            else -> it
+        } }
+    }
 
-    fun saveIncome(locale: Locale = Locale.getDefault()) {
+    fun saveIncome(locale: Locale = Locale.getDefault(), distinctFrom: Set<String> = emptySet()) {
         if (_uiState.value.saveState == SaveState.Saving || _uiState.value.saveState == SaveState.Success) return
-        _uiState.update { it.copy(saveState = SaveState.Saving) }
+        _uiState.update { it.copy(saveState = SaveState.Saving, duplicates = emptyList()) }
         viewModelScope.launch {
             val form = _form.value
             val monto = LocalizedNumbers.parse(form.monto, locale)
@@ -210,10 +251,19 @@ class EditIncomeViewModel @Inject constructor(
                 _uiState.update { it.copy(saveState = SaveState.Error(context.getString(R.string.validation_gross_net_positive))) }
                 return@launch
             }
-            if (iva == null || !iva.isFinite() || iva !in 0.0..100.0 ||
+            if ((form.taxes.isEmpty() && form.ivaPercent.isNotBlank() && (iva == null || !iva.isFinite() || iva !in 0.0..100.0)) ||
                 irpf == null || !irpf.isFinite() || irpf !in 0.0..100.0
             ) {
                 _uiState.update { it.copy(saveState = SaveState.Error(context.getString(R.string.validation_percentages_range))) }
+                return@launch
+            }
+            val parsedTaxes: List<DocumentTax>? = TaxFormRow.parseAll(form.taxes, locale, form.moneda)
+            val base: Double? = LocalizedNumbers.parse(form.taxBase, locale)
+            val withholding: Double? = if (irpf == originalIncome?.irpfPercent) originalIncome?.evidence?.document?.withholdingAmount
+                else base?.times(irpf / 100.0)
+            val taxTotals = if (!parsedTaxes.isNullOrEmpty()) reconcileTaxForm(parsedTaxes, monto, base, withholding, form.moneda) else null
+            if (parsedTaxes == null || (form.taxes.isNotEmpty() && (taxTotals == null || (form.taxBase.isNotBlank() && base == null)))) {
+                _uiState.update { it.copy(saveState = SaveState.Error(context.getString(com.gastos.common.R.string.taxes_inconsistent))) }
                 return@launch
             }
             val currency = form.moneda.trim().uppercase()
@@ -233,6 +283,27 @@ class EditIncomeViewModel @Inject constructor(
                 // original (no se editan desde el formulario).
                 val original = originalIncome
                 val income = Income(
+                    taxes = parsedTaxes,
+                    evidence = (original?.evidence ?: DocumentEvidence(ScannedDocument())).copy(
+                        distinctFrom = distinctFrom,
+                        document = (original?.evidence?.document ?: ScannedDocument()).copy(
+                            date = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(java.util.Date(form.fecha)),
+                            kind = form.documentKind.takeIf(String::isNotBlank),
+                            number = form.documentNumber.takeIf(String::isNotBlank),
+                            issuerTaxId = form.issuerTaxId.takeIf(String::isNotBlank),
+                            issuer = form.fuente.takeIf(String::isNotBlank) ?: form.concepto,
+                            workerId = form.workerId.takeIf(String::isNotBlank),
+                            payPeriod = form.payPeriod.takeIf(String::isNotBlank),
+                            paymentKind = form.paymentKind.takeIf(String::isNotBlank),
+                            payrollReference = form.payrollReference.takeIf(String::isNotBlank),
+                            currency = currency, total = monto, gross = devengado, net = neto,
+                            taxes = parsedTaxes, taxesComplete = if (parsedTaxes.isNotEmpty()) true else null,
+                            taxBase = taxTotals?.base ?: original?.evidence?.document?.taxBase,
+                            vatAmount = taxTotals?.charges ?: original?.evidence?.document?.vatAmount,
+                            withholdingAmount = taxTotals?.withholding ?: original?.evidence?.document?.withholdingAmount,
+                            vatPercent = if (parsedTaxes.isNotEmpty()) DocumentTaxes.singleRate(parsedTaxes) else iva, withholdingPercent = irpf
+                        )
+                    ),
                     documentUuid = original?.documentUuid ?: java.util.UUID.randomUUID().toString(),
                     driveAccountId = original?.driveAccountId,
                     driveContentHash = original?.driveContentHash,
@@ -244,13 +315,13 @@ class EditIncomeViewModel @Inject constructor(
                     fecha = form.fecha,
                     concepto = form.concepto.trim(),
                     monto = monto,
-                    totalDevengado = devengado ?: monto,
-                    totalNeto = neto ?: monto,
+                    totalDevengado = devengado ?: 0.0,
+                    totalNeto = neto ?: 0.0,
                     moneda = currency,
                     fuente = form.fuente.trim().takeIf { it.isNotBlank() },
                     categoria = TransactionCategories.canonicalIncomeCategory(form.categoria),
                     subcategoria = TransactionCategories.normalizeCategory(form.subcategoria),
-                    ivaPercent = iva,
+                    ivaPercent = if (parsedTaxes.isNotEmpty()) DocumentTaxes.singleRate(parsedTaxes) else iva,
                     irpfPercent = irpf,
                     imagenUri = original?.imagenUri,
                     notas = form.notas.trim().takeIf { it.isNotBlank() },
@@ -278,6 +349,9 @@ class EditIncomeViewModel @Inject constructor(
 
             } catch (cancelled: CancellationException) {
                 throw cancelled
+            } catch (duplicate: DuplicateDocumentException) {
+                duplicateForm = form
+                _uiState.update { it.copy(duplicates = duplicate.matches, saveState = SaveState.Error(context.getString(R.string.document_duplicate))) }
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -286,6 +360,15 @@ class EditIncomeViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun dismissDuplicate() { _uiState.update { it.copy(duplicates = emptyList()) } }
+
+    fun confirmDistinct(locale: Locale) {
+        val matches: List<DuplicateMatch> = _uiState.value.duplicates
+        if (matches.any { it.strength == DuplicateStrength.STRONG }) return
+        val confirmed: Set<String> = if (_form.value == duplicateForm) matches.map { it.existing.version }.toSet() else emptySet()
+        saveIncome(locale, confirmed)
     }
 
     fun clearSaveResult() {

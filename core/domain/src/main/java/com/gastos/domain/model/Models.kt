@@ -3,6 +3,7 @@ package com.gastos.domain.model
 enum class InvoiceType { GASTO, INGRESO }
 
 data class Invoice(
+    val evidence: DocumentEvidence? = null,
     val documentUuid: String = java.util.UUID.randomUUID().toString(),
     val driveAccountId: String? = null,
     val driveContentHash: String? = null,
@@ -18,7 +19,7 @@ data class Invoice(
     val numeroFactura: String? = null,
     val baseImponible: Double? = null,
     val cuotaIva: Double? = null,
-    val ivaPercent: Double = 21.0,
+    val ivaPercent: Double? = 21.0,
     val irpfPercent: Double = 0.0,
     val paisCodigo: String = "ES",
     val nifEmisor: String? = null,
@@ -30,10 +31,16 @@ data class Invoice(
     val ocrRawText: String? = null,
     val notas: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val taxes: List<DocumentTax> = emptyList()
 ) {
     /** Convierte una factura tipo INGRESO a un Income para persistirlo en la tabla correcta. */
     fun toIncome(): Income = Income(
+        taxes = taxes,
+        evidence = (evidence ?: DocumentEvidence(ScannedDocument())).copy(document =
+            (evidence?.document ?: ScannedDocument()).copy(kind = "factura_emitida", country = paisCodigo,
+                number = numeroFactura, issuer = proveedor, issuerTaxId = nifEmisor, recipientTaxId = nifReceptor,
+                taxBase = baseImponible, vatAmount = cuotaIva, vatPercent = ivaPercent, taxes = taxes)),
         documentUuid = documentUuid,
         driveAccountId = driveAccountId,
         driveContentHash = driveContentHash,
@@ -64,17 +71,18 @@ data class Product(
     val cantidad: Double = 1.0,
     val precioUnitario: Double,
     val subtotal: Double = cantidad * precioUnitario,
-    val ivaPercent: Double = 21.0,
+    val ivaPercent: Double? = 21.0,
     /** Cuota de IVA contenida en [subtotal]; los precios capturados incluyen IVA. */
-    val ivaAmount: Double = if (ivaPercent > 0.0) {
-        subtotal * ivaPercent / (100.0 + ivaPercent)
-    } else {
-        0.0
-    },
-    val createdAt: Long = System.currentTimeMillis()
-)
+    val ivaAmount: Double? = ivaPercent?.let { subtotal * it / (100.0 + it) },
+    val createdAt: Long = System.currentTimeMillis(),
+    val pricesIncludeTax: Boolean = true,
+    val taxes: List<DocumentTax> = emptyList()
+) {
+    val totalIncludingTax: Double? get() = if (pricesIncludeTax) subtotal else ivaAmount?.let { subtotal + it }
+}
 
 data class Income(
+    val evidence: DocumentEvidence? = null,
     val documentUuid: String = java.util.UUID.randomUUID().toString(),
     val driveAccountId: String? = null,
     val driveContentHash: String? = null,
@@ -89,7 +97,7 @@ data class Income(
     val fuente: String? = null,
     val categoria: String? = null,
     val subcategoria: String? = null,
-    val ivaPercent: Double = 0.0,
+    val ivaPercent: Double? = 0.0,
     val irpfPercent: Double = 0.0,
     val imagenUri: String? = null,
     val driveFileId: String? = null,
@@ -97,7 +105,8 @@ data class Income(
     val driveUploadPending: Boolean = false,
     val notas: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val taxes: List<DocumentTax> = emptyList()
 )
 
 data class CountryFiscalConfig(

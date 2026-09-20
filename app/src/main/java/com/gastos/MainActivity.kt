@@ -211,6 +211,7 @@ fun FinAIApp(
             // Pantallas secundarias (sin bottom bar)
             composable(Routes.CHATBOT) {
                 ChatbotScreen(
+                    onOpenDocument = { record -> navController.navigate(if (record.isIncome) "edit_income/${record.localId}" else "edit_invoice/${record.localId}") },
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
