@@ -1,5 +1,6 @@
 package com.gastos.feature.ai
 
+import com.gastos.domain.model.OcrProfile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
@@ -9,8 +10,47 @@ import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.*
 import org.junit.Test
+import org.json.JSONObject
 
 class GeminiFallbackTest {
+    private fun imageRequest() = request.copy(contents = listOf(GeminiContent("user",
+        inlineDataParts = listOf(GeminiInlineDataPart("image/jpeg", "synthetic")))))
+
+    @Test fun `OCR moves straight to the next model and avoids recent service failures on the next document`() = runTest {
+        val calls = mutableListOf<String>()
+        val waits = mutableListOf<Long>()
+        val client = GeminiRestClient(GeminiTransport { _, _, model, _, _ ->
+            calls += model
+            if (model == GeminiRestClient.PRIMARY_MODEL) response(503, "{}") else response(200, success("ok"))
+        }, { waits += it }, { 0L }, { _, _, _ -> })
+        repeat(2) { assertEquals("ok", client.generateContent(imageRequest())) }
+        assertEquals(listOf(GeminiRestClient.PRIMARY_MODEL, GeminiRestClient.FALLBACK_MODEL, GeminiRestClient.FALLBACK_MODEL), calls)
+        assertTrue(waits.isEmpty())
+        assertEquals("ok", client.generateContent(imageRequest().copy(apiKey = "another-test-key")))
+        assertEquals(listOf(GeminiRestClient.PRIMARY_MODEL, GeminiRestClient.FALLBACK_MODEL), calls.takeLast(2))
+    }
+
+    @Test fun `OCR retry delay supplied by Google is still respected when changing model`() = runTest {
+        val waits = mutableListOf<Long>()
+        val client = GeminiRestClient(GeminiTransport { _, _, model, _, _ ->
+            if (model == GeminiRestClient.PRIMARY_MODEL)
+                response(429, """{"error":{"details":[{"retryDelay":"1.5s"}]}}""")
+            else response(200, success("ok"))
+        }, { waits += it }, { 0L }, { _, _, _ -> })
+        assertEquals("ok", client.generateContent(imageRequest()))
+        assertEquals(listOf(1500L), waits)
+    }
+
+    @Test fun `OCR cooldown preserves quota cause and never leaks from one key to another`() = runTest {
+        val calls = mutableListOf<String>()
+        val quota = """{"error":{"details":[{"violations":[{"quotaId":"RequestsPerDay","quotaDimensions":{"model":"flash"}}]}]}}"""
+        val client = client(calls, ArrayDeque(List(3) { 429 to quota }))
+        repeat(2) {
+            try { client.generateContent(imageRequest()); fail() }
+            catch (error: GeminiApiException) { assertEquals(GeminiFailure.DAILY_QUOTA, error.category) }
+        }
+        assertEquals(3, calls.size)
+    }
     private val request = GeminiGenerateRequest("synthetic-key", "test", emptyList())
     private fun response(code: Int, body: String) = Response.Builder().request(Request.Builder().url("https://example.test").build())
         .protocol(Protocol.HTTP_1_1).code(code).message("test").body(body.toResponseBody()).build()
@@ -34,6 +74,36 @@ class GeminiFallbackTest {
         val client = client(calls, ArrayDeque(listOf(503 to "{}", 503 to "{}", 503 to "{}", 200 to success("lite"))))
         assertEquals("lite", client.generateContent(request))
         assertEquals(listOf("gemini-3.6-flash", "gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"), calls)
+    }
+    @Test fun `fast reading and detailed rereading preserve schema and image through Lite fallback`() = runTest {
+        for (profile in OcrProfile.entries) {
+            val calls = mutableListOf<String>()
+            val payloads = mutableListOf<JSONObject>()
+            val client = GeminiRestClient(GeminiTransport { body, key, model, stream, _ ->
+                assertEquals("synthetic-key", key)
+                assertFalse(stream)
+                calls += model
+                payloads += JSONObject(body)
+                if (model == GeminiRestClient.LITE_FALLBACK_MODEL) response(200, success("valid"))
+                else response(503, "{}")
+            }, {}, { 0L }, { _, _, _ -> })
+            val operation = imageRequest().copy(generationConfig = GeminiGenerationConfig(
+                thinkingLevel = profile.thinkingLevel,
+                responseMimeType = "application/json",
+                responseSchema = JSONObject("""{"type":"OBJECT","properties":{"total":{"type":"NUMBER"}}}"""),
+                mediaResolution = "MEDIA_RESOLUTION_HIGH"
+            ))
+            assertEquals("valid", client.generateContent(operation) { it == "valid" })
+            assertEquals(listOf("gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"), calls)
+            payloads.forEach { payload ->
+                val config = payload.getJSONObject("generationConfig")
+                assertEquals(profile.thinkingLevel, config.getJSONObject("thinkingConfig").getString("thinkingLevel"))
+                assertEquals("application/json", config.getString("responseMimeType"))
+                assertEquals("NUMBER", config.getJSONObject("responseSchema").getJSONObject("properties").getJSONObject("total").getString("type"))
+                assertEquals("MEDIA_RESOLUTION_HIGH", config.getString("mediaResolution"))
+                assertEquals(payloads.first().getJSONArray("contents").toString(), payload.getJSONArray("contents").toString())
+            }
+        }
     }
     @Test fun `per-model quota on both Flash models skips retries and reaches Lite`() = runTest {
         val quota = """{"error":{"details":[{"violations":[{"quotaId":"GenerateRequestsPerDay","quotaDimensions":{"model":"flash"}}]}]}}"""
@@ -125,7 +195,7 @@ class GeminiFallbackTest {
             }, {}, { 0L }, { _,_,_ -> })
             val operation=if (image) request.copy(contents=listOf(GeminiContent("user",inlineDataParts=listOf(GeminiInlineDataPart("image/jpeg","synthetic"))))) else request
             try { client.generateContent(operation); fail() } catch (_: GeminiApiException) { }
-            assertEquals(4,deadlines.size)
+            assertEquals(if (image) 3 else 4,deadlines.size)
             assertTrue(deadlines.all { it in 1..(if(image) 45_000L else 22_500L) })
         }
     }

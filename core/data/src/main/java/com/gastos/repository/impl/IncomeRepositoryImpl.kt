@@ -1,5 +1,8 @@
 package com.gastos.repository.impl
 
+import androidx.room.withTransaction
+import com.gastos.local.database.AppDatabase
+import com.gastos.domain.model.documentIdentity
 import com.gastos.data.local.entity.toDomain
 import com.gastos.data.local.entity.toEntity
 import com.gastos.local.dao.IncomeDao
@@ -12,7 +15,8 @@ import javax.inject.Singleton
 
 @Singleton
 class IncomeRepositoryImpl @Inject constructor(
-    private val incomeDao: IncomeDao
+    private val incomeDao: IncomeDao,
+    private val database: AppDatabase
 ) : IncomeRepository {
 
     override fun getAllIncomes(): Flow<List<Income>> =
@@ -28,10 +32,17 @@ class IncomeRepositoryImpl @Inject constructor(
         incomeDao.getIncomeById(id)?.toDomain()
 
     override suspend fun insertIncome(income: Income): Long =
-        incomeDao.insertIncomeEntity(income.toEntity().copy(updatedAt = System.currentTimeMillis()))
+        database.withTransaction {
+            DocumentGuard(database).check(income.documentIdentity())
+            incomeDao.insertIncomeEntity(income.toEntity().copy(updatedAt = System.currentTimeMillis()))
+        }
 
-    override suspend fun updateIncome(income: Income) =
-        incomeDao.updatePreservingImageState(income.toEntity().copy(updatedAt = System.currentTimeMillis()))
+    override suspend fun updateIncome(income: Income) {
+        database.withTransaction {
+            DocumentGuard(database).check(income.documentIdentity())
+            incomeDao.updatePreservingImageState(income.toEntity().copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
 
     override suspend fun updateImageSync(id: Long, documentUuid: String, sourceUri: String?, metadata: com.gastos.domain.model.DriveImageMetadata): Boolean =
         incomeDao.updateImageSync(id, documentUuid, sourceUri, metadata.fileId, metadata.webViewLink,

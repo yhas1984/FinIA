@@ -1,0 +1,6 @@
+
+com.gastos.feature.ai.DocumentReaderAndroidTest:.....
+
+Time: 0,086
+
+OK (5 tests)

@@ -2,7 +2,7 @@ package com.gastos.feature.incomes
 
 import android.content.Context
 import com.gastos.common.SaveState
-import com.gastos.domain.model.Income
+import com.gastos.domain.model.*
 import com.gastos.repository.IncomeRepository
 import com.gastos.feature.backup.SheetsSyncManager
 import io.mockk.*
@@ -27,6 +27,22 @@ class EditIncomeSaveRegressionTest {
     private val es = Locale.forLanguageTag("es-ES")
     @Before fun before() { Dispatchers.setMain(dispatcher) }
     @After fun after() { Dispatchers.resetMain() }
+    @Test fun `issued invoice editing preserves multiple taxes and blocks inconsistent totals`() = runTest(dispatcher) {
+        val taxes = listOf(DocumentTax("GST", 5.0, 100.0, 5.0, TaxTreatment.TAXABLE), DocumentTax("PST", 7.0, 100.0, 7.0, TaxTreatment.TAXABLE))
+        val original = Income(id = 1, fecha = 1, concepto = "Synthetic", monto = 112.0, moneda = "CAD", taxes = taxes, ivaPercent = null,
+            evidence = DocumentEvidence(ScannedDocument(kind = "factura_emitida", taxBase = 100.0, vatAmount = 12.0, taxes = taxes)))
+        coEvery { repo.getIncomeById(1) } returns original
+        val vm = EditIncomeViewModel(context, repo, sync)
+        vm.loadIncome(1, es); advanceUntilIdle()
+        assertEquals("", vm.form.value.ivaPercent)
+        vm.updateMonto("120"); vm.saveIncome(es); advanceUntilIdle()
+        assertTrue(vm.uiState.value.saveState is SaveState.Error)
+        coVerify(exactly = 0) { repo.updateIncome(any()) }
+        vm.updateMonto("112"); vm.updateConcepto("Edited"); vm.saveIncome(es); advanceUntilIdle()
+        assertEquals(SaveState.Success, vm.uiState.value.saveState)
+        coVerify { repo.updateIncome(match { it.taxes == taxes && it.ivaPercent == null && it.evidence!!.document.vatAmount == 12.0 }) }
+    }
+
     @Test fun `invalid percentage and database failure preserve entered values`() = runTest(dispatcher) {
         val vm=EditIncomeViewModel(context,repo,sync)
         vm.updateConcepto("Synthetic")

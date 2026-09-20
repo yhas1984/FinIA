@@ -1,0 +1,15 @@
+<resources>
+    <string name="document_duplicate">This document may already be registered</string>
+    <string name="document_duplicate_help">Review the identity and amounts. A confirmed duplicate cannot be saved again.</string>
+    <string name="document_distinct">I confirm this is a different document</string>
+    <string name="document_correct">Review fields</string>
+    <string name="document_identity">Document identity (optional)</string>
+    <string name="document_invoice">Issued invoice</string>
+    <string name="document_payroll">Payslip</string>
+    <string name="document_number">Full invoice number</string>
+    <string name="document_issuer_tax">Issuer / employer tax identifier</string>
+    <string name="document_worker">Worker identifier</string>
+    <string name="document_period">Printed pay period</string>
+    <string name="document_payment_kind">Printed payment kind</string>
+    <string name="document_payroll_reference">Payslip reference</string>
+</resources>

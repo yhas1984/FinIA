@@ -16,6 +16,74 @@ import java.io.RandomAccessFile
 import java.nio.file.Files
 
 class DataOnlyBackupTest {
+    @Test fun `encrypted complete and data-only restore preserve mixed international taxes and unknown line VAT`() = runTest {
+        for (mode in BackupMode.entries) Fixture().use { f ->
+            val taxes = listOf(DocumentTax("GST", 5.0, 100.0, 5.0, TaxTreatment.TAXABLE),
+                DocumentTax("PST", 7.0, 100.0, 7.0, TaxTreatment.TAXABLE))
+            f.data.value = f.original.copy(invoices = listOf(f.invoice.copy(taxes = taxes, ivaPercent = null, moneda = "CAD", total = 112.0)),
+                incomes = listOf(f.income.copy(taxes = taxes, ivaPercent = null)),
+                products = f.original.products.map { it.copy(taxes = taxes, ivaPercent = null, ivaAmount = null) })
+            val archive = f.archive(mode)
+            f.service.restore(archive.inputStream(), f.password.copyOf())
+            assertEquals(taxes, f.data.value.invoices.single().taxes)
+            assertEquals(taxes, f.data.value.incomes.single().taxes)
+            assertEquals(taxes, f.data.value.products.single().taxes)
+            assertNull(f.data.value.invoices.single().ivaPercent)
+            assertNull(f.data.value.incomes.single().ivaPercent)
+            assertNull(f.data.value.products.single().ivaAmount)
+            assertEquals("expense-photo", f.data.value.invoices.single().driveFileId)
+        }
+    }
+    @Test fun `restore with insufficient free storage leaves data and images untouched`() = runTest {
+        Fixture().use { f ->
+            val archive = f.archive(BackupMode.COMPLETE)
+            val lowSpace = mockk<File> { every { usableSpace } returns 32L * 1024 * 1024 }
+            every { f.context.filesDir } returns lowSpace
+            try { f.service.restore(archive.inputStream(), f.password.copyOf()); fail() }
+            catch (_: IllegalArgumentException) { }
+            assertEquals(0, f.data.commits)
+            assertEquals(f.original, f.data.value)
+            coVerify(exactly = 0) { f.storage.stageRestoreFiles(any()) }
+            verify(exactly = 0) { f.storage.activateRestoreStage() }
+        }
+    }
+    @Test fun `complete backup streams and restores more than 300 MiB without staging all export photos`() = runTest {
+        Fixture().use { f ->
+            val photoSize = 40L * 1024 * 1024
+            RandomAccessFile(f.photo, "rw").use { it.setLength(photoSize) }
+            f.data.value = f.original.copy(invoices = (1L..8L).map { id ->
+                f.invoice.copy(id = id, documentUuid = "synthetic-$id")
+            }, products = emptyList(), incomes = emptyList())
+            coEvery { f.storage.stageRestoreFiles(any()) } answers {
+                val files = firstArg<Map<String, File>>()
+                assertEquals(8, files.size)
+                assertEquals(photoSize * 8, files.values.sumOf(File::length))
+                files.mapValues { "restored:${it.key}" }
+            }
+            val archive = File(f.root, "complete.finai")
+            val preview = f.service.createArchive(archive, BackupMode.COMPLETE)
+            assertEquals(8, preview.imageCount)
+            assertTrue(f.context.cacheDir.listFiles().orEmpty().none { it.name.startsWith("backup_export_") })
+            val restored = f.service.restore(archive.inputStream(), f.password.copyOf())
+            assertEquals(8, restored.restoredImages)
+            assertEquals(8, f.data.value.invoices.size)
+            assertTrue(f.data.value.invoices.all { it.ivaPercent == 10.0 })
+        }
+    }
+    @Test fun `encrypted data backup keeps document identity provenance and product tax basis`() = runTest {
+        Fixture().use { f ->
+            val evidence = DocumentEvidence(ScannedDocument(kind = "nomina", payrollReference = "PAY-001", workerId = "WORKER-01",
+                payPeriod = "2026-09", paymentKind = "ordinary", issuerTaxId = "SYNTHETIC", contributionBase = 2500.0),
+                sourceSha256 = "synthetic-hash", correctedFields = setOf("date"), originalExtraction = "synthetic OCR")
+            f.data.value = f.original.copy(incomes = listOf(f.income.copy(evidence = evidence)),
+                products = f.original.products.map { it.copy(pricesIncludeTax = false) })
+            val archive = f.archive()
+            f.service.restore(archive.inputStream(), f.password.copyOf())
+            assertEquals(evidence, f.data.value.incomes.single().evidence)
+            assertFalse(f.data.value.products.single().pricesIncludeTax)
+            coVerify(exactly = 0) { f.cache.resolve(any(), any(), any(), any()) }
+        }
+    }
     private class Data(var value: BackupDataset) : BackupDataRepository {
         var marker: String? = null
         var commits = 0
@@ -53,6 +121,7 @@ class DataOnlyBackupTest {
         val data = Data(original)
         val settings = Settings()
         val storage = mockk<InvoiceImageStorage>(relaxed = true) {
+            every { mutationMutex } returns kotlinx.coroutines.sync.Mutex()
             every { managedFile("local-photo") } returns photo
             every { managedFile(null) } returns null
             coEvery { stageRestoreFiles(any()) } answers { firstArg<Map<String, File>>().mapValues { "restored:${it.key}" } }
@@ -80,9 +149,9 @@ class DataOnlyBackupTest {
             assertTrue(archive.size < 100_000)
             val result = f.service.restore(archive.inputStream(), f.password.copyOf())
             assertEquals(0, result.restoredImages)
-            assertEquals(10.0, f.data.value.invoices.single().ivaPercent, 0.0)
-            assertEquals(4.0, f.data.value.incomes.single().ivaPercent, 0.0)
-            assertEquals(0.0, f.data.value.products.single().ivaPercent, 0.0)
+            assertEquals(10.0, f.data.value.invoices.single().ivaPercent!!, 0.0)
+            assertEquals(4.0, f.data.value.incomes.single().ivaPercent!!, 0.0)
+            assertEquals(0.0, f.data.value.products.single().ivaPercent!!, 0.0)
             assertEquals(f.invoice.documentUuid, f.data.value.invoices.single().documentUuid)
             assertEquals("local-photo", f.data.value.invoices.single().imagenUri)
             assertEquals("income-photo", f.data.value.incomes.single().driveFileId)
@@ -116,7 +185,7 @@ class DataOnlyBackupTest {
             val archive = f.archive(BackupMode.COMPLETE)
             assertEquals(2, f.service.inspect(archive.inputStream()).imageCount)
             f.service.restore(archive.inputStream(), f.password.copyOf())
-            assertEquals(10.0, f.data.value.invoices.single().ivaPercent, 0.0)
+            assertEquals(10.0, f.data.value.invoices.single().ivaPercent!!, 0.0)
             coVerify(exactly = 2) { f.cache.resolve(any(), any(), any(), any()) }
             coEvery { f.cache.resolve(any(), any(), any(), any()) } throws ImageAccessException("REMOTE_FILE_MISSING")
             try { f.archive(BackupMode.COMPLETE); fail() } catch (_: ImageAccessException) { }
@@ -132,7 +201,7 @@ class DataOnlyBackupTest {
             try { f.service.restore(archive.inputStream(), f.password.copyOf()); fail() } catch (_: SimulatedCrash) { }
             f.service.recoverInterruptedRestore()
             assertNull(f.journal.read())
-            assertEquals(10.0, f.data.value.invoices.single().ivaPercent, 0.0)
+            assertEquals(10.0, f.data.value.invoices.single().ivaPercent!!, 0.0)
             verify(exactly = 0) { f.storage.activateRestoreStage() }
             verify(exactly = 0) { f.storage.rollbackRestoreStage() }
             coVerify(exactly = 0) { f.outbox.reconcile(any(), any(), match { it.isNotEmpty() }, any()) }
@@ -179,8 +248,8 @@ class DataOnlyBackupTest {
             assertEquals(f.photo.readText(),expensePhoto.readText())
             assertEquals(f.photo.readText(),incomePhoto.readText())
             assertNotEquals(expensePhoto,incomePhoto)
-            assertEquals(10.0,expense.ivaPercent,0.0)
-            assertEquals(4.0,income.ivaPercent,0.0)
+            assertEquals(10.0,expense.ivaPercent!!,0.0)
+            assertEquals(4.0,income.ivaPercent!!,0.0)
             coVerify(exactly=2) { drive.downloadImage(any(),any(),any()) }
             coVerify(exactly=0) { drive.delete(any(),any()) }
         }

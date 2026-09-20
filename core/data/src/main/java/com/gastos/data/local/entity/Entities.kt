@@ -7,8 +7,12 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.gastos.domain.model.InvoiceType
 
-@Entity(tableName = "invoices", indices = [Index(value = ["documentUuid"], unique = true)])
+@Entity(tableName = "invoices", indices = [Index(value = ["documentUuid"], unique = true), Index("documentKey"), Index("sourceSha256")])
 data class InvoiceEntity(
+    @ColumnInfo(defaultValue = "'[]'") val taxesJson: String = "[]",
+    val evidenceJson: String? = null,
+    val documentKey: String? = null,
+    val sourceSha256: String? = null,
     @ColumnInfo(defaultValue = "''") val documentUuid: String = java.util.UUID.randomUUID().toString(),
     val driveAccountId: String? = null,
     val driveContentHash: String? = null,
@@ -24,7 +28,7 @@ data class InvoiceEntity(
     val numeroFactura: String? = null,
     val baseImponible: Double? = null,
     val cuotaIva: Double? = null,
-    val ivaPercent: Double = 21.0,
+    val ivaPercent: Double? = 21.0,
     val irpfPercent: Double = 0.0,
     val paisCodigo: String = "ES",
     val nifEmisor: String? = null,
@@ -52,23 +56,25 @@ data class InvoiceEntity(
     indices = [Index("invoiceId")]
 )
 data class ProductEntity(
+    @ColumnInfo(defaultValue = "'[]'") val taxesJson: String = "[]",
+    @ColumnInfo(defaultValue = "1") val pricesIncludeTax: Boolean = true,
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val invoiceId: Long,
     val descripcion: String,
     val cantidad: Double = 1.0,
     val precioUnitario: Double,
     val subtotal: Double = cantidad * precioUnitario,
-    val ivaPercent: Double = 21.0,
-    val ivaAmount: Double = if (ivaPercent > 0.0) {
-        subtotal * ivaPercent / (100.0 + ivaPercent)
-    } else {
-        0.0
-    },
+    val ivaPercent: Double? = 21.0,
+    val ivaAmount: Double? = ivaPercent?.let { subtotal * it / (100.0 + it) },
     val createdAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "incomes", indices = [Index(value = ["documentUuid"], unique = true)])
+@Entity(tableName = "incomes", indices = [Index(value = ["documentUuid"], unique = true), Index("documentKey"), Index("sourceSha256")])
 data class IncomeEntity(
+    @ColumnInfo(defaultValue = "'[]'") val taxesJson: String = "[]",
+    val evidenceJson: String? = null,
+    val documentKey: String? = null,
+    val sourceSha256: String? = null,
     @ColumnInfo(defaultValue = "''") val documentUuid: String = java.util.UUID.randomUUID().toString(),
     val driveAccountId: String? = null,
     val driveContentHash: String? = null,
@@ -83,7 +89,7 @@ data class IncomeEntity(
     val fuente: String? = null,
     val categoria: String? = null,
     val subcategoria: String? = null,
-    val ivaPercent: Double = 0.0,
+    val ivaPercent: Double? = 0.0,
     val irpfPercent: Double = 0.0,
     val imagenUri: String? = null,
     val driveFileId: String? = null,

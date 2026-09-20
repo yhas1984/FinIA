@@ -318,6 +318,8 @@ private fun IncomeCard(
                 }
             }
 
+            com.gastos.common.TaxBreakdownSummary(income.taxes, income.moneda)
+
             com.gastos.feature.backup.DocumentImageButton(
                 localUri = income.imagenUri, fileId = income.driveFileId,
                 accountId = income.driveAccountId, contentHash = income.driveContentHash)

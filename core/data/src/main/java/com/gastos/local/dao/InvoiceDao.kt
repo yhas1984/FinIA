@@ -7,6 +7,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface InvoiceDao {
+    @Query("SELECT * FROM invoices WHERE documentKey = :key OR sourceSha256 = :hash OR documentKey IS NULL")
+    suspend fun documentCandidates(key: String?, hash: String?): List<InvoiceEntity>
+
+    @Query("SELECT * FROM invoices")
+    suspend fun documentRecords(): List<InvoiceEntity>
+
 
     @Query("SELECT * FROM invoices ORDER BY fecha DESC")
     fun getAllInvoices(): Flow<List<InvoiceEntity>>
@@ -23,7 +29,7 @@ interface InvoiceDao {
     @Query("SELECT * FROM invoices WHERE id = :id")
     suspend fun getInvoiceById(id: Long): InvoiceEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertInvoice(invoice: InvoiceEntity): Long
 
     @Update

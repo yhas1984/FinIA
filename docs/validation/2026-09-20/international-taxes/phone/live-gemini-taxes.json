@@ -1,0 +1,23 @@
+{
+  "keyConfigured": true,
+  "syntheticOnly": true,
+  "ledgerWrites": 0,
+  "reads": [
+    {
+      "fixture": "es-three-rates",
+      "durationMs": 6962,
+      "result": "Ready",
+      "documentKind": "factura_recibida",
+      "printedValuesPreserved": true,
+      "readyToSave": true
+    },
+    {
+      "fixture": "ca-shared-base",
+      "durationMs": 7495,
+      "result": "Ready",
+      "documentKind": "factura_recibida",
+      "printedValuesPreserved": true,
+      "readyToSave": true
+    }
+  ]
+}

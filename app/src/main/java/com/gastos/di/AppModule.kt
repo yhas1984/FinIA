@@ -244,6 +244,22 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE products ADD COLUMN pricesIncludeTax INTEGER NOT NULL DEFAULT 1")
+        listOf("invoices", "incomes").forEach { table ->
+            db.execSQL("ALTER TABLE $table ADD COLUMN evidenceJson TEXT")
+            db.execSQL("ALTER TABLE $table ADD COLUMN documentKey TEXT")
+            db.execSQL("ALTER TABLE $table ADD COLUMN sourceSha256 TEXT")
+            db.execSQL("CREATE INDEX index_${table}_documentKey ON $table(documentKey)")
+            db.execSQL("CREATE INDEX index_${table}_sourceSha256 ON $table(sourceSha256)")
+        }
+        // Historical identities are read from actual stored fields. No historic row is merged.
+        db.execSQL("CREATE TABLE IF NOT EXISTS document_drafts (uuid TEXT NOT NULL PRIMARY KEY, sourceSha256 TEXT NOT NULL, imageUri TEXT NOT NULL, evidenceJson TEXT, status TEXT NOT NULL, error TEXT, createdAt INTEGER NOT NULL)")
+        db.execSQL("CREATE UNIQUE INDEX index_document_drafts_sourceSha256 ON document_drafts(sourceSha256)")
+    }
+}
+
 val MIGRATION_11_12 = object : Migration(11, 12) {
     override fun migrate(db: SupportSQLiteDatabase) {
         for (table in listOf("invoices", "incomes")) {
@@ -324,7 +340,9 @@ object AppModule {
                 MIGRATION_8_9,
                 MIGRATION_9_10,
                 MIGRATION_10_11,
-                MIGRATION_11_12
+                MIGRATION_11_12,
+                MIGRATION_12_13,
+                MIGRATION_13_14
             )
             .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()

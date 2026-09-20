@@ -50,6 +50,7 @@ class LegacyBackupRestoreTest {
             coEvery { restoreSettings(any()) } just Runs
         }
         val imageStorage: InvoiceImageStorage = mockk {
+            every { mutationMutex } returns kotlinx.coroutines.sync.Mutex()
             coEvery { stageRestoreFiles(emptyMap()) } returns emptyMap()
             every { activateRestoreStage() } just Runs
             every { rollbackRestoreStage() } just Runs

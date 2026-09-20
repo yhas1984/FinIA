@@ -225,9 +225,8 @@
     <string name="refresh_exchange_rates">Actualizar tasas</string>
     <string name="backup_complete_prepare_failed">No se pudo preparar la copia completa.</string>
     <string name="backup_image_limit">Una imagen supera 50 MiB. Exporta solo datos.</string>
-    <string name="backup_images_limit">Las imágenes superan 300 MiB. Exporta solo datos.</string>
+    <string name="backup_storage_insufficient">No hay suficiente espacio libre para restaurar las fotografías. Libera espacio e inténtalo de nuevo.</string>
     <string name="backup_image_unrecoverable">Una imagen no se puede recuperar. Exporta solo datos.</string>
     <string name="backup_image_count_limit">Hay demasiadas imágenes. Exporta solo datos.</string>
     <string name="backup_json_limit">Los datos superan el límite de 25 MiB.</string>
-    <string name="backup_complete_limit">La copia completa supera 300 MiB. Exporta solo datos.</string>
 </resources>

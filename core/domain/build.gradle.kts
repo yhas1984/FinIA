@@ -1,4 +1,5 @@
 plugins {
+    alias(libs.plugins.kotlin.serialization)
     id("com.android.library")
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.google.devtools.ksp)
@@ -21,6 +22,7 @@ android {
 }
 
 dependencies {
+    api(libs.kotlinx.serialization.json)
     testImplementation(libs.junit)
     implementation(libs.coroutines.core)
 

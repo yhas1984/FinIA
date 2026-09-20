@@ -1,0 +1,12 @@
+Performing Streamed Install
+Success
+Starting: Intent { cmp=com.gastos.ingresos/com.gastos.MainActivity }
+Status: ok
+Activity: com.gastos.ingresos/com.gastos.MainActivity
+ThisTime: 960
+TotalTime: 960
+WaitTime: 970
+Complete
+    versionCode=22 minSdk=26 targetSdk=36
+    versionName=1.8.5
+Foreground activity confirmed after launch; process remained running; crash log buffer empty.

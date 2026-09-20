@@ -72,7 +72,9 @@ class BackupArchiveService @Inject constructor(
             ?.forEach(File::delete)
     }
 
-    suspend fun recoverInterruptedRestore() = withContext(Dispatchers.IO) {
+    suspend fun recoverInterruptedRestore() = imageStorage.mutationMutex.withLock { recoverInterruptedRestoreLocked() }
+
+    private suspend fun recoverInterruptedRestoreLocked() = withContext(Dispatchers.IO) {
         val journal = restoreJournal.read()
         val committedRestoreId = dataRepository.committedRestoreId()
         if (journal == null) {
@@ -138,27 +140,19 @@ class BackupArchiveService @Inject constructor(
 
     private suspend fun createArchiveLocked(output: OutputStream, mode: BackupMode): BackupPreview {
         val material = keyStore.requireMaterial()
-        val exportImages = File(context.cacheDir, "backup_export_${UUID.randomUUID()}")
         return try {
             val dataset = dataRepository.snapshot()
             val settings = settingsProvider.snapshotSettings()
             val createdAt = System.currentTimeMillis()
             var payload = dataset.toDto(createdAt, settings, imageStorage, mode)
-            val imageFiles = mutableMapOf<String, File>()
+            val imageSources = linkedMapOf<String, suspend () -> File>()
             if (mode == BackupMode.COMPLETE) {
-                check(exportImages.mkdirs()) { context.getString(R.string.backup_complete_prepare_failed) }
-                var imageBytes = 0L
-                suspend fun include(uuid: String, kind: String, local: String?, remote: String?, account: String?, hash: String?): String? {
+                fun include(uuid: String, kind: String, local: String?, remote: String?, account: String?, hash: String?): String? {
                     if (local == null && remote == null) return null
-                    val source = imageCache.resolve(local, remote, account, hash)
-                    require(source.length() <= MAX_SINGLE_IMAGE_BYTES) { context.getString(R.string.backup_image_limit) }
-                    imageBytes += source.length()
-                    require(imageBytes <= MAX_UNCOMPRESSED_BYTES) { context.getString(R.string.backup_images_limit) }
                     val name = "${kind}_${uuid}.jpg"
                     require(isSafeImageFileName(name))
-                    val copy = File(exportImages, name)
-                    source.copyTo(copy)
-                    imageFiles[name] = copy
+                    require(name !in imageSources) { "Duplicate document identity in backup" }
+                    imageSources[name] = { imageCache.resolve(local, remote, account, hash) }
                     return name
                 }
                 payload = payload.copy(
@@ -172,13 +166,10 @@ class BackupArchiveService @Inject constructor(
                         require(!dto.hadImage || record.imagenUri != null || record.driveFileId != null) { context.getString(R.string.backup_image_unrecoverable) }
                         dto.copy(imageFileName = include(record.documentUuid, "income", record.imagenUri, record.driveFileId, record.driveAccountId, record.driveContentHash))
                     })
-                require(imageFiles.size < MAX_ENTRIES) { context.getString(R.string.backup_image_count_limit) }
+                require(imageSources.size < MAX_ENTRIES) { context.getString(R.string.backup_image_count_limit) }
             }
             val payloadBytes = json.encodeToString(payload).toByteArray(Charsets.UTF_8)
             require(payloadBytes.size <= MAX_JSON_BYTES) { context.getString(R.string.backup_json_limit) }
-            if (mode == BackupMode.COMPLETE) require(payloadBytes.size + imageFiles.values.sumOf(File::length) <= MAX_UNCOMPRESSED_BYTES) {
-                context.getString(R.string.backup_complete_limit)
-            }
 
             val appVersion = appVersion()
             val header = EncryptedBackupHeader(
@@ -191,7 +182,7 @@ class BackupArchiveService @Inject constructor(
                 invoiceCount = payload.invoices.size,
                 productCount = payload.products.size,
                 incomeCount = payload.incomes.size,
-                imageCount = imageFiles.size,
+                imageCount = imageSources.size,
                 kdfIterations = material.iterations,
                 salt = BackupCrypto.encode(material.salt),
                 keyIv = BackupCrypto.encode(material.keyIv),
@@ -209,16 +200,18 @@ class BackupArchiveService @Inject constructor(
                     zip.putNextEntry(ZipEntry(PAYLOAD_ENTRY))
                     zip.write(payloadBytes)
                     zip.closeEntry()
-                    imageFiles.forEach { (fileName, file) ->
+                    imageSources.forEach { (fileName, resolve) ->
+                        currentCoroutineContext().ensureActive()
+                        val file = resolve()
+                        require(file.length() <= MAX_SINGLE_IMAGE_BYTES) { context.getString(R.string.backup_image_limit) }
                         zip.putNextEntry(ZipEntry("$IMAGES_PREFIX$fileName"))
-                        file.inputStream().use { it.copyTo(zip) }
+                        file.inputStream().use { it.copyLimitedToCancellable(zip, MAX_SINGLE_IMAGE_BYTES) }
                         zip.closeEntry()
                     }
                 }
             }
             header.toPreview()
         } finally {
-            exportImages.deleteRecursively()
             material.dataKey.fill(0)
         }
     }
@@ -234,7 +227,7 @@ class BackupArchiveService @Inject constructor(
     ): BackupRestoreResult =
         withContext(Dispatchers.IO) {
             archiveMutex.withLock {
-                restoreLocked(input, password, beginCommit)
+                imageStorage.mutationMutex.withLock { restoreLocked(input, password, beginCommit) }
             }
         }
 
@@ -257,6 +250,7 @@ class BackupArchiveService @Inject constructor(
         val stagingDir = File(context.cacheDir, "backup_restore_${System.nanoTime()}")
         check(stagingDir.mkdirs()) { "No se pudo preparar la restauración." }
         return try {
+            requireRestoreSpace(0)
             val restored = readEncryptedPayload(
                 input = buffered,
                 header = header,
@@ -273,6 +267,7 @@ class BackupArchiveService @Inject constructor(
             val sheetRowsToDelete = sheetRowsToDelete(previousDataset, restored.payload)
             val remoteFilesToDelete = emptyList<RestoreJournalRemoteFile>()
             val imagesChanged = header.mode == BackupMode.COMPLETE
+            if (imagesChanged) requireRestoreSpace(restored.images.values.sumOf(File::length))
             val restoredUris = if (imagesChanged) imageStorage.stageRestoreFiles(restored.images) else emptyMap()
             val dataset = restored.payload.toDataset(restoredUris).let { incoming ->
                 if (imagesChanged) incoming else incoming.copy(
@@ -441,7 +436,6 @@ class BackupArchiveService @Inject constructor(
     ): RestoredArchive {
         var payload: BackupPayloadDto? = null
         val images = mutableMapOf<String, File>()
-        var totalBytes = 0L
         var entryCount = 0
         val legacyPayload = if (header.formatVersion == LEGACY_BACKUP_FORMAT_VERSION) {
             File(stagingDir, LEGACY_PAYLOAD_FILE).also { destination ->
@@ -453,7 +447,7 @@ class BackupArchiveService @Inject constructor(
                         header = header,
                         headerBytes = headerBytes,
                         dataKey = dataKey,
-                        checkCancellation = restoreContext::ensureActive
+                        checkCancellation = { restoreContext.ensureActive(); requireRestoreSpace(0) }
                     )
                 }
             }
@@ -477,7 +471,6 @@ class BackupArchiveService @Inject constructor(
                     entry.name == PAYLOAD_ENTRY -> {
                         require(payload == null) { "El backup contiene datos duplicados." }
                         val bytes = zip.readLimitedCancellable(MAX_JSON_BYTES)
-                        totalBytes += bytes.size
                         payload = json.decodeFromString(bytes.toString(Charsets.UTF_8))
                     }
                     entry.name.startsWith(IMAGES_PREFIX) -> {
@@ -487,15 +480,16 @@ class BackupArchiveService @Inject constructor(
                         }
                         val destination = File(stagingDir, fileName)
                         require(fileName !in images) { "El backup contiene imágenes duplicadas." }
-                        val copied = destination.outputStream().use { output ->
+                        destination.outputStream().use { output ->
                             zip.copyLimitedToCancellable(output, MAX_SINGLE_IMAGE_BYTES)
                         }
-                        totalBytes += copied
                         images[fileName] = destination
                     }
                     else -> throw IllegalArgumentException("Entrada desconocida en el backup: ${entry.name}")
                 }
-                require(totalBytes <= MAX_UNCOMPRESSED_BYTES) { "El backup es demasiado grande." }
+                // Per-entry sizes, entry count and available storage bound extraction; there is
+                // no arbitrary 300 MiB limit on a user's complete photo collection.
+                requireRestoreSpace(0)
                 zip.closeEntry()
             }
         }
@@ -618,9 +612,16 @@ class BackupArchiveService @Inject constructor(
             if (count < 0) break
             total += count
             require(total <= maxBytes) { "Una entrada del backup supera el tamaño permitido." }
+            if (output !is ZipOutputStream && total % (1024 * 1024) < count) requireRestoreSpace(0)
             output.write(buffer, 0, count)
         }
         return total
+    }
+
+    private fun requireRestoreSpace(additionalBytes: Long) {
+        require(context.filesDir.usableSpace >= additionalBytes + STORAGE_RESERVE_BYTES) {
+            context.getString(R.string.backup_storage_insufficient)
+        }
     }
 
     private companion object {
@@ -634,7 +635,7 @@ class BackupArchiveService @Inject constructor(
         const val MAX_HEADER_BYTES = 64 * 1024
         const val MAX_JSON_BYTES = 25L * 1024 * 1024
         const val MAX_SINGLE_IMAGE_BYTES = 50L * 1024 * 1024
-        const val MAX_UNCOMPRESSED_BYTES = 300L * 1024 * 1024
+        const val STORAGE_RESERVE_BYTES = 64L * 1024 * 1024
         const val MAX_ENTRIES = 2_000
         val SAFE_IMAGE_NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]*")
     }

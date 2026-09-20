@@ -3,6 +3,8 @@ package com.gastos.data.local.entity
 import com.gastos.domain.model.*
 
 fun InvoiceEntity.toDomain(): Invoice = Invoice(
+    taxes = DocumentTaxCodec.decode(taxesJson),
+    evidence = DocumentEvidenceCodec.decode(evidenceJson),
     documentUuid = documentUuid,
     driveAccountId = driveAccountId,
     driveContentHash = driveContentHash,
@@ -34,6 +36,10 @@ fun InvoiceEntity.toDomain(): Invoice = Invoice(
 )
 
 fun Invoice.toEntity(): InvoiceEntity = InvoiceEntity(
+    taxesJson = DocumentTaxCodec.encode(taxes),
+    evidenceJson = evidence?.let(DocumentEvidenceCodec::encode),
+    documentKey = documentIdentity().key,
+    sourceSha256 = evidence?.sourceSha256,
     documentUuid = documentUuid,
     driveAccountId = driveAccountId,
     driveContentHash = driveContentHash,
@@ -65,6 +71,8 @@ fun Invoice.toEntity(): InvoiceEntity = InvoiceEntity(
 )
 
 fun ProductEntity.toDomain(): Product = Product(
+    taxes = DocumentTaxCodec.decode(taxesJson),
+    pricesIncludeTax = pricesIncludeTax,
     id = id,
     invoiceId = invoiceId,
     descripcion = descripcion,
@@ -77,6 +85,8 @@ fun ProductEntity.toDomain(): Product = Product(
 )
 
 fun Product.toEntity(): ProductEntity = ProductEntity(
+    taxesJson = DocumentTaxCodec.encode(taxes),
+    pricesIncludeTax = pricesIncludeTax,
     id = id,
     invoiceId = invoiceId,
     descripcion = descripcion,
@@ -89,6 +99,8 @@ fun Product.toEntity(): ProductEntity = ProductEntity(
 )
 
 fun IncomeEntity.toDomain(): Income = Income(
+    taxes = DocumentTaxCodec.decode(taxesJson),
+    evidence = DocumentEvidenceCodec.decode(evidenceJson),
     documentUuid = documentUuid,
     driveAccountId = driveAccountId,
     driveContentHash = driveContentHash,
@@ -115,6 +127,10 @@ fun IncomeEntity.toDomain(): Income = Income(
 )
 
 fun Income.toEntity(): IncomeEntity = IncomeEntity(
+    taxesJson = DocumentTaxCodec.encode(taxes),
+    evidenceJson = evidence?.let(DocumentEvidenceCodec::encode),
+    documentKey = documentIdentity().key,
+    sourceSha256 = evidence?.sourceSha256,
     documentUuid = documentUuid,
     driveAccountId = driveAccountId,
     driveContentHash = driveContentHash,

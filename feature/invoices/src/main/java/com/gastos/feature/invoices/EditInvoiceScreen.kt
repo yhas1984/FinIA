@@ -57,6 +57,24 @@ fun EditInvoiceScreen(
         }
     }
 
+    if (uiState.duplicates.isNotEmpty()) {
+        AlertDialog(onDismissRequest = viewModel::dismissDuplicate,
+            title = { Text(stringResource(R.string.document_duplicate)) },
+            text = { Column {
+                uiState.duplicates.forEach { match ->
+                    val record = match.existing
+                    Text("${record.issuer} · ${record.number.orEmpty()} · ${record.date} · ${record.amount} ${record.currency}")
+                }
+                Text(stringResource(R.string.document_duplicate_help))
+            } },
+            confirmButton = {
+                if (uiState.duplicates.none { it.strength == com.gastos.domain.model.DuplicateStrength.STRONG }) {
+                    TextButton(onClick = { viewModel.confirmDistinct(locale) }) { Text(stringResource(R.string.document_distinct)) }
+                }
+            },
+            dismissButton = { TextButton(onClick = viewModel::dismissDuplicate) { Text(stringResource(R.string.document_correct)) } })
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -174,7 +192,7 @@ fun EditInvoiceScreen(
                 OutlinedTextField(
                     value = form.cuotaIva,
                     onValueChange = { viewModel.updateCuotaIva(it) },
-                    label = { Text(stringResource(R.string.vat_amount)) },
+                    label = { Text(stringResource(if (form.taxes.isEmpty()) R.string.vat_amount else com.gastos.common.R.string.taxes_total_label)) },
                     modifier = Modifier.weight(1f),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
@@ -307,7 +325,7 @@ fun EditInvoiceScreen(
 
             // IVA e IRPF
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
+                if (form.taxes.isEmpty()) OutlinedTextField(
                     value = form.ivaPercent,
                     onValueChange = { viewModel.updateIvaPercent(it) },
                     label = { Text(stringResource(R.string.vat_percent)) },
@@ -315,7 +333,7 @@ fun EditInvoiceScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true
                 )
-                OutlinedTextField(
+                if (form.taxes.none { it.effect == com.gastos.domain.model.TaxEffect.WITHHOLDING }) OutlinedTextField(
                     value = form.irpfPercent,
                     onValueChange = { viewModel.updateIrpfPercent(it) },
                     label = { Text(stringResource(R.string.irpf_percent)) },
@@ -325,12 +343,14 @@ fun EditInvoiceScreen(
                 )
             }
 
+            com.gastos.common.TaxBreakdownEditor(form.taxes, form.moneda, locale, viewModel::updateTaxes, { viewModel.addTax(locale) })
+
             // Desglose fiscal en vivo
             form.recalcFiscal(locale)?.let { fb ->
                 Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text(stringResource(R.string.base_vat_irpf_breakdown, String.format("%.2f", fb.baseImponible), form.moneda), style = MaterialTheme.typography.bodySmall)
-                        Text(stringResource(R.string.vat_breakdown, String.format("%.2f", fb.ivaAmount), form.moneda), style = MaterialTheme.typography.bodySmall)
+                        fb.baseImponible?.let { Text(stringResource(R.string.base_vat_irpf_breakdown, LocalizedNumbers.format(it, locale), form.moneda), style = MaterialTheme.typography.bodySmall) }
+                        fb.ivaAmount?.let { Text(stringResource(com.gastos.common.R.string.taxes_total, LocalizedNumbers.format(it, locale), form.moneda), style = MaterialTheme.typography.bodySmall) }
                         if (fb.irpfAmount > 0) Text(stringResource(R.string.irpf_breakdown, String.format("%.2f", fb.irpfAmount), form.moneda), style = MaterialTheme.typography.bodySmall)
                     }
                 }

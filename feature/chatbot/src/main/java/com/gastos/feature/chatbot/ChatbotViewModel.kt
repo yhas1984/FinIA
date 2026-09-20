@@ -770,7 +770,7 @@ class ChatbotViewModel @Inject constructor(
             if (!invoice.total.isFinite() || invoice.total <= 0.0) {
                 return context.getString(R.string.chatbot_invalid_amount)
             }
-            if (!invoice.ivaPercent.isFinite() || invoice.ivaPercent !in 0.0..100.0 ||
+            if ((invoice.ivaPercent?.let { rate -> !rate.isFinite() || rate < 0.0 } == true) ||
                 !invoice.irpfPercent.isFinite() || invoice.irpfPercent !in 0.0..100.0
             ) return context.getString(R.string.chatbot_invalid_tax_percentages)
             if (invoice.proveedor.isBlank()) return context.getString(R.string.chatbot_invalid_provider)
@@ -782,7 +782,7 @@ class ChatbotViewModel @Inject constructor(
             if (!income.monto.isFinite() || income.monto <= 0.0) {
                 return context.getString(R.string.chatbot_invalid_amount)
             }
-            if (!income.ivaPercent.isFinite() || income.ivaPercent !in 0.0..100.0 ||
+            if ((income.ivaPercent?.let { rate -> !rate.isFinite() || rate < 0.0 } == true) ||
                 !income.irpfPercent.isFinite() || income.irpfPercent !in 0.0..100.0 ||
                 (income.totalDevengado != 0.0 && (!income.totalDevengado.isFinite() || income.totalDevengado <= 0.0)) ||
                 (income.totalNeto != 0.0 && (!income.totalNeto.isFinite() || income.totalNeto <= 0.0))
@@ -797,7 +797,7 @@ class ChatbotViewModel @Inject constructor(
                     !it.cantidad.isFinite() || it.cantidad <= 0.0 ||
                     !it.precioUnitario.isFinite() || it.precioUnitario < 0.0 ||
                     !it.subtotal.isFinite() || it.subtotal < 0.0 ||
-                    !it.ivaPercent.isFinite() || it.ivaPercent !in 0.0..100.0
+                    (it.ivaPercent?.let { rate -> !rate.isFinite() || rate < 0.0 } == true)
             }
         ) {
             return context.getString(R.string.chatbot_invalid_product_lines)
@@ -945,6 +945,7 @@ class ChatbotViewModel @Inject constructor(
             append("; producto=${resolvedQuery.item ?: "ninguno"}.")
         }
         val exclusions = linkedMapOf<String, MoneyRecord>()
+        val unknownProductTaxes = linkedMapOf<Long, com.gastos.domain.model.Product>()
         fun tracked(id: String, label: String, amount: Double, currency: String): Double? {
             val converted = exchangeRateProvider.convert(amount, currency, target)
             if (converted == null) exclusions[id] = MoneyRecord(id, label, amount, currency)
@@ -965,14 +966,25 @@ class ChatbotViewModel @Inject constructor(
                 relevant.forEach { appendLine("${it.description}: ${it.amount} ${it.currency}") }
                 appendLine(context.getString(R.string.refresh_exchange_rates))
             }
-            return ExecutedFinancialQuery(warning + text, contextText + "\n" + warning)
+            val taxWarning = if (unknownProductTaxes.isEmpty()) "" else buildString {
+                appendLine(context.getString(com.gastos.common.R.string.taxes_partial_products))
+                unknownProductTaxes.values.forEach { product -> appendLine("${product.descripcion}: ${product.subtotal} ${invoiceById[product.invoiceId]?.moneda.orEmpty()} (before tax)") }
+            }
+            val taxContext = buildString {
+                appendLine("Recorded tax components, original currency. Bases may overlap; do not add them. Missing detail is unknown, not zero:")
+                filteredInvoices.filter { it.taxes.isNotEmpty() }.forEach { appendLine("${it.documentUuid}: ${com.gastos.domain.model.DocumentTaxes.describe(it.taxes, it.moneda)}") }
+                filteredIncomes.filter { it.taxes.isNotEmpty() }.forEach { appendLine("${it.documentUuid}: ${com.gastos.domain.model.DocumentTaxes.describe(it.taxes, it.moneda)}") }
+            }
+            return ExecutedFinancialQuery(warning + taxWarning + text, contextText + "\n" + warning + taxWarning + taxContext)
         }
         fun convertedInvoiceAmount(invoice: com.gastos.domain.model.Invoice): Double? =
             tracked("${invoice.tipo}:${invoice.documentUuid}", invoice.proveedor, invoice.total, invoice.moneda)
         fun convertedIncomeAmount(income: Income): Double? =
             tracked("INGRESO:${income.documentUuid}", income.concepto, income.monto, income.moneda)
-        fun convertedProductAmount(product: com.gastos.domain.model.Product): Double? =
-            tracked("PRODUCT:${product.id}", product.descripcion, product.subtotal, invoiceById[product.invoiceId]?.moneda.orEmpty())
+        fun convertedProductAmount(product: com.gastos.domain.model.Product): Double? {
+            val amount: Double = product.totalIncludingTax ?: run { unknownProductTaxes[product.id] = product; return null }
+            return tracked("PRODUCT:${product.id}", product.descripcion, amount, invoiceById[product.invoiceId]?.moneda.orEmpty())
+        }
         if (resolvedQueryType == "productos_por_comercio") {
             if (periodProducts.isEmpty() && resolvedProvider != null) {
                 val fallback = lookupOutsideRange(
@@ -1346,39 +1358,6 @@ class ChatbotViewModel @Inject constructor(
     fun stopVoiceInput() {
         voiceRecognitionService.stopListening()
         _uiState.update { it.copy(isListening = false) }
-    }
-
-    fun processImage(uri: Uri) {
-        if (_uiState.value.isProcessing) return
-        _uiState.update {
-            it.copy(messages = it.messages + ChatMessage.User(context.getString(R.string.chatbot_scanning_image)), isProcessing = true)
-        }
-
-        viewModelScope.launch {
-            var persistedUri: Uri? = null
-            var locallySaved = false
-            try {
-                val stableUri = invoiceImageStorage.persist(uri)
-                persistedUri = stableUri
-                invoiceImageStorage.deleteTemporaryCameraCopy(uri)
-                val result = aiService.processInvoiceFromImage(stableUri)
-                handleAIResult(result, includeInContext = false, onLocalSaved = { locallySaved = true })
-                if (!result.success || (result.invoice == null && result.income == null)) {
-                    invoiceImageStorage.delete(persistedUri.toString())
-                }
-            } catch (cancelled: CancellationException) {
-                if (!locallySaved) invoiceImageStorage.delete(persistedUri?.toString())
-                throw cancelled
-            } catch (e: Exception) {
-                if (!locallySaved) invoiceImageStorage.delete(persistedUri?.toString())
-                _uiState.update {
-                    it.copy(
-                        messages = it.messages + ChatMessage.AI(context.getString(R.string.chatbot_scan_error, e.message ?: "")),
-                        isProcessing = false
-                    )
-                }
-            }
-        }
     }
 
     fun clearChat() {

@@ -1,0 +1,6 @@
+<resources>
+    <string name="document_duplicate">This document may already be registered</string>
+    <string name="document_duplicate_help">Review the identity and amounts. A confirmed duplicate cannot be saved again.</string>
+    <string name="document_distinct">I confirm this is a different document</string>
+    <string name="document_correct">Review fields</string>
+</resources>

@@ -3,4 +3,5 @@
     <cache-path name="camera" path="camera/" />
     <files-path name="exports" path="exports/" />
     <files-path name="invoice_images" path="invoice_images/" />
+    <files-path name="document_drafts" path="document_drafts/" />
 </paths>

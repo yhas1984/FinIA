@@ -1,0 +1,22 @@
+{
+  "versionName": "1.8.5",
+  "versionCode": 22,
+  "package": "com.gastos.ingresos",
+  "debuggable": false,
+  "premiumBackendRequired": true,
+  "premiumBackendConfigurationPresent": true,
+  "signingCertificateSha256": "995ade3eadc204324b2df7e7756fb7aa5f68e66b1f63a3dde8d3a444a67f01f6",
+  "bundletool": "1.18.3",
+  "artifacts": [
+    {
+      "name": "FinAI-1.8.5-v22.aab",
+      "bytes": 9576669,
+      "sha256": "d3efb7fa77f26202750503abf8e6eeee426ed3689584bfeff66d3312f905a440"
+    },
+    {
+      "name": "FinAI-1.8.5-v22-universal.apk",
+      "bytes": 5625970,
+      "sha256": "a98cd382034bd4c387d0cf0cc8b24e797462f531d21776709004415039576d4c"
+    }
+  ]
+}

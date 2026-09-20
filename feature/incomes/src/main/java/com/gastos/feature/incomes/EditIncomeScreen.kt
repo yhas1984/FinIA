@@ -41,6 +41,7 @@ fun EditIncomeScreen(
     var showCurrencyPicker by remember { mutableStateOf(false) }
     var showCategoryPicker by remember { mutableStateOf(false) }
     var showSubcategoryPicker by remember { mutableStateOf(false) }
+    var showDocumentFields by remember { mutableStateOf(false) }
 
     LaunchedEffect(incomeId) {
         if (incomeId > 0) {
@@ -53,6 +54,24 @@ fun EditIncomeScreen(
             viewModel.clearSaveResult()
             onNavigateBack()
         }
+    }
+
+    if (uiState.duplicates.isNotEmpty()) {
+        AlertDialog(onDismissRequest = viewModel::dismissDuplicate,
+            title = { Text(stringResource(R.string.document_duplicate)) },
+            text = { Column {
+                uiState.duplicates.forEach { match ->
+                    val record = match.existing
+                    Text("${record.issuer} · ${record.number.orEmpty()} · ${record.date} · ${record.amount} ${record.currency}")
+                }
+                Text(stringResource(R.string.document_duplicate_help))
+            } },
+            confirmButton = {
+                if (uiState.duplicates.none { it.strength == com.gastos.domain.model.DuplicateStrength.STRONG }) {
+                    TextButton(onClick = { viewModel.confirmDistinct(locale) }) { Text(stringResource(R.string.document_distinct)) }
+                }
+            },
+            dismissButton = { TextButton(onClick = viewModel::dismissDuplicate) { Text(stringResource(R.string.document_correct)) } })
     }
 
     Scaffold(
@@ -277,6 +296,26 @@ fun EditIncomeScreen(
                 }
             }
 
+            TextButton(onClick = { showDocumentFields = !showDocumentFields }) { Text(stringResource(R.string.document_identity)) }
+            if (showDocumentFields) {
+                Row {
+                    FilterChip(selected = form.documentKind == "factura_emitida", onClick = { viewModel.updateDocumentField("kind", "factura_emitida") }, label = { Text(stringResource(R.string.document_invoice)) })
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip(selected = form.documentKind == "nomina", onClick = { viewModel.updateDocumentField("kind", "nomina") }, label = { Text(stringResource(R.string.document_payroll)) })
+                }
+                listOf(
+                    Triple("number", form.documentNumber, R.string.document_number),
+                    Triple("issuerTaxId", form.issuerTaxId, R.string.document_issuer_tax),
+                    Triple("workerId", form.workerId, R.string.document_worker),
+                    Triple("payPeriod", form.payPeriod, R.string.document_period),
+                    Triple("paymentKind", form.paymentKind, R.string.document_payment_kind),
+                    Triple("payrollReference", form.payrollReference, R.string.document_payroll_reference)
+                ).forEach { (field, value, label) ->
+                    OutlinedTextField(value, onValueChange = { viewModel.updateDocumentField(field, it) },
+                        label = { Text(stringResource(label)) }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+
             // Devengado (bruto) y Líquido (neto)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
@@ -302,7 +341,7 @@ fun EditIncomeScreen(
             // Cálculo automático: si hay devengado e IRPF, mostrar neto
             val dev = LocalizedNumbers.parse(form.totalDevengado, locale) ?: 0.0
             val irpf = LocalizedNumbers.parse(form.irpfPercent, locale) ?: 0.0
-            if (dev > 0 && irpf > 0) {
+            if (dev > 0 && irpf > 0 && form.documentKind != "nomina") {
                 val netoCalc = dev * (1.0 - irpf / 100.0)
                 Text(
                     stringResource(R.string.calculated_net, String.format("%.2f", netoCalc), form.moneda),
@@ -323,7 +362,7 @@ fun EditIncomeScreen(
 
             // IVA e IRPF
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
+                if (form.taxes.isEmpty()) OutlinedTextField(
                     value = form.ivaPercent,
                     onValueChange = { viewModel.updateIvaPercent(it) },
                     label = { Text(stringResource(R.string.vat_percent)) },
@@ -331,7 +370,7 @@ fun EditIncomeScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true
                 )
-                OutlinedTextField(
+                if (form.taxes.none { it.effect == com.gastos.domain.model.TaxEffect.WITHHOLDING }) OutlinedTextField(
                     value = form.irpfPercent,
                     onValueChange = { viewModel.updateIrpfPercent(it) },
                     label = { Text(stringResource(R.string.irpf_percent)) },
@@ -340,6 +379,11 @@ fun EditIncomeScreen(
                     singleLine = true
                 )
             }
+
+            com.gastos.common.TaxBreakdownEditor(form.taxes, form.moneda, locale, viewModel::updateTaxes, { viewModel.addTax(locale) })
+            if (form.taxes.isNotEmpty()) OutlinedTextField(form.taxBase, viewModel::updateTaxBase,
+                label = { Text(stringResource(com.gastos.common.R.string.taxes_base)) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
 
             // Notas
             OutlinedTextField(

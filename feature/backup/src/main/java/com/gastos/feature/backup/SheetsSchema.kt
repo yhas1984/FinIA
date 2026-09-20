@@ -1,6 +1,7 @@
 package com.gastos.feature.backup
 
 import com.gastos.domain.model.sumAvailable
+import com.gastos.domain.model.DocumentTaxCodec
 import com.gastos.domain.model.Income
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.Product
@@ -12,7 +13,7 @@ import java.util.Date
 import java.util.Locale
 
 internal object SheetsSchema {
-    const val SCHEMA_VERSION = 7
+    const val SCHEMA_VERSION = 8
     const val SCHEMA_LOCALE_ES = "es"
     const val SCHEMA_LOCALE_EN = "en"
     const val LEGACY_NOMINAS = "Nóminas"
@@ -47,10 +48,10 @@ internal object SheetsSchema {
         ingresosTitle = "Ingresos",
         productosTitle = "Productos",
         resumenTitle = "Resumen",
-        recibidasHeaders = listOf("Nº Factura", "Fecha", "NIF País", "NIF Emisor", "Emisor (Razón Social)", "Base Imponible", "Tipo IVA", "Cuota IVA", "Recargo Eq.", "IRPF %", "Total antes de retención", "Moneda", "Categoría", "Notas", "ID", "Foto Drive", "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"),
-        productosHeaders = listOf("Descripción", "Cantidad", "Precio Unitario", "Subtotal", "IVA %", "Total (IVA incluido)", "Factura (Proveedor)", "InvoiceID", "ProductID", "Precio Unitario Original", "Subtotal Original", "Total Original (IVA incluido)", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"),
-        ingresosHeaders = listOf("Concepto", "Fecha", "Importe", "Devengado", "Líquido", "IRPF %", "Moneda", "Fuente", "Categoría", "Notas", "ID", "Importe Original", "Devengado Original", "Líquido Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión"),
-        summaryTitle = "Resumen Financiero (AEAT)", summaryUpdatedLabel = "Fecha actualización", summaryCurrencyLabel = "Moneda informe", summaryExpensesLabel = "Total Gastos", summaryIncomeLabel = "Total Ingresos", summaryBalanceLabel = "Balance", summaryPendingLabel = "Conversiones pendientes", conversionOkLabel = "OK", conversionLocalLabel = "Moneda local", conversionPendingLabel = "Tasa pendiente"
+        recibidasHeaders = listOf("Nº Factura", "Fecha", "NIF País", "NIF Emisor", "Emisor (Razón Social)", "Base Imponible", "Impuesto %", "Cuota de impuestos", "Recargo Eq.", "IRPF %", "Total antes de retención", "Moneda", "Categoría", "Notas", "ID", "Foto Drive", "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)"),
+        productosHeaders = listOf("Descripción", "Cantidad", "Precio Unitario", "Subtotal", "Impuesto %", "Total (IVA incluido)", "Factura (Proveedor)", "InvoiceID", "ProductID", "Precio Unitario Original", "Subtotal Original", "Total Original (IVA incluido)", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)"),
+        ingresosHeaders = listOf("Concepto", "Fecha", "Importe", "Devengado", "Líquido", "IRPF %", "Moneda", "Fuente", "Categoría", "Notas", "ID", "Importe Original", "Devengado Original", "Líquido Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)"),
+        summaryTitle = "Resumen Financiero", summaryUpdatedLabel = "Fecha actualización", summaryCurrencyLabel = "Moneda informe", summaryExpensesLabel = "Total Gastos", summaryIncomeLabel = "Total Ingresos", summaryBalanceLabel = "Balance", summaryPendingLabel = "Conversiones pendientes", conversionOkLabel = "OK", conversionLocalLabel = "Moneda local", conversionPendingLabel = "Tasa pendiente"
     )
     val en = Descriptor(
         locale = LocaleCode.EN,
@@ -58,10 +59,10 @@ internal object SheetsSchema {
         ingresosTitle = "Income",
         productosTitle = "Products",
         resumenTitle = "Summary",
-        recibidasHeaders = listOf("Invoice No.", "Date", "Country VAT ID", "Issuer VAT ID", "Issuer (Legal Name)", "Tax Base", "VAT %", "VAT Amount", "Surcharge", "Withholding %", "Total before withholding", "Currency", "Category", "Notes", "ID", "Drive Photo", "Original Total", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status"),
-        productosHeaders = listOf("Description", "Quantity", "Unit Price", "Subtotal", "VAT %", "Total (VAT included)", "Invoice (Supplier)", "InvoiceID", "ProductID", "Original Unit Price", "Original Subtotal", "Original Total (VAT included)", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status"),
-        ingresosHeaders = listOf("Concept", "Date", "Amount", "Accrued", "Net", "Withholding %", "Currency", "Source", "Category", "Notes", "ID", "Original Amount", "Original Accrued", "Original Net", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status"),
-        summaryTitle = "Financial Summary (AEAT)", summaryUpdatedLabel = "Updated", summaryCurrencyLabel = "Report currency", summaryExpensesLabel = "Total expenses", summaryIncomeLabel = "Total income", summaryBalanceLabel = "Balance", summaryPendingLabel = "Pending conversions", conversionOkLabel = CONVERSION_OK, conversionLocalLabel = "local currency", conversionPendingLabel = "pending rate"
+        recibidasHeaders = listOf("Invoice No.", "Date", "Country VAT ID", "Issuer VAT ID", "Issuer (Legal Name)", "Tax Base", "Tax %", "Tax Amount", "Surcharge", "Withholding %", "Document total", "Currency", "Category", "Notes", "ID", "Drive Photo", "Original Total", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)"),
+        productosHeaders = listOf("Description", "Quantity", "Unit Price", "Subtotal", "Tax %", "Total (VAT included)", "Invoice (Supplier)", "InvoiceID", "ProductID", "Original Unit Price", "Original Subtotal", "Original Total (VAT included)", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)"),
+        ingresosHeaders = listOf("Concept", "Date", "Amount", "Accrued", "Net", "Withholding %", "Currency", "Source", "Category", "Notes", "ID", "Original Amount", "Original Accrued", "Original Net", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)"),
+        summaryTitle = "Financial Summary", summaryUpdatedLabel = "Updated", summaryCurrencyLabel = "Report currency", summaryExpensesLabel = "Total expenses", summaryIncomeLabel = "Total income", summaryBalanceLabel = "Balance", summaryPendingLabel = "Pending conversions", conversionOkLabel = CONVERSION_OK, conversionLocalLabel = "local currency", conversionPendingLabel = "pending rate"
     )
 
     val RECIBIDAS: String get() = es.recibidasTitle
@@ -74,11 +75,11 @@ internal object SheetsSchema {
     val ingresosHeaders: List<Any> get() = es.ingresosHeaders
 
     const val RECIBIDAS_KEY_COLUMN = "O"
-    const val RECIBIDAS_LAST_COLUMN = "U"
+    const val RECIBIDAS_LAST_COLUMN = "V"
     const val INGRESOS_KEY_COLUMN = "K"
-    const val INGRESOS_LAST_COLUMN = "R"
+    const val INGRESOS_LAST_COLUMN = "S"
     const val PRODUCTOS_PARENT_COLUMN = "H"
-    const val PRODUCTOS_LAST_COLUMN = "P"
+    const val PRODUCTOS_LAST_COLUMN = "Q"
 
     fun descriptor(locale: LocaleCode): Descriptor = if (locale == LocaleCode.EN) en else es
 
@@ -214,7 +215,7 @@ internal object SheetsSchema {
         val convertedBase = invoice.baseImponible?.let {
             conversion.convert(it, invoice.moneda).convertedAmount
         } ?: convertedTotal?.let {
-            if (invoice.ivaPercent > 0) round2(it / (1 + invoice.ivaPercent / 100.0)) else round2(it)
+            invoice.ivaPercent?.let { rate -> round2(it / (1 + rate / 100.0)) }
         }
         val convertedQuota = invoice.cuotaIva?.let {
             conversion.convert(it, invoice.moneda).convertedAmount
@@ -230,7 +231,7 @@ internal object SheetsSchema {
             invoice.nifEmisor ?: "",
             invoice.proveedor,
             convertedBase ?: "",
-            invoice.ivaPercent,
+            invoice.ivaPercent ?: "",
             convertedQuota ?: "",
             0.0,
             invoice.irpfPercent,
@@ -244,7 +245,8 @@ internal object SheetsSchema {
             total.originalCurrency,
             total.appliedRate ?: "",
             total.rateTimestampLabel,
-            total.status
+            total.status,
+            DocumentTaxCodec.encode(invoice.taxes)
         )
     }
 
@@ -272,7 +274,8 @@ internal object SheetsSchema {
             amount.originalCurrency,
             amount.appliedRate ?: "",
             amount.rateTimestampLabel,
-            amount.status
+            amount.status,
+            DocumentTaxCodec.encode(income.taxes)
         )
     }
 
@@ -286,26 +289,28 @@ internal object SheetsSchema {
         val subtotal = conversion.convert(product.subtotal, originalCurrency)
         // El OCR y el modelo de dominio definen precio/subtotal como importes
         // finales con IVA incluido. No se vuelve a sumar aquí.
-        val totalWithVatOriginal = product.subtotal
-        val totalWithVat = conversion.convert(totalWithVatOriginal, originalCurrency)
+        val totalWithVatOriginal = product.totalIncludingTax
+        val totalWithVat = totalWithVatOriginal?.let { conversion.convert(it, originalCurrency) }
+            ?: subtotal.copy(convertedAmount = null, status = if (conversion.locale == LocaleCode.ES) "Impuesto no identificado" else "Unidentified tax")
         val primary = if (subtotal.status == descriptor(conversion.locale).conversionPendingLabel) subtotal else totalWithVat
         return listOf(
             product.descripcion,
             product.cantidad,
             unit.convertedAmount ?: "",
             subtotal.convertedAmount ?: "",
-            product.ivaPercent,
+            product.ivaPercent ?: "",
             totalWithVat.convertedAmount ?: "",
             provider,
             product.invoiceId,
             product.id,
             unit.originalAmount,
             subtotal.originalAmount,
-            totalWithVat.originalAmount,
+            totalWithVatOriginal ?: "",
             primary.originalCurrency,
             primary.appliedRate ?: "",
             primary.rateTimestampLabel,
-            primary.status
+            primary.status,
+            DocumentTaxCodec.encode(product.taxes)
         )
     }
 

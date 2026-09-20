@@ -1,0 +1,20 @@
+
+com.gastos.di.DocumentCaptureDatabaseTest:.....
+com.gastos.di.DocumentCaptureUiTest:...
+com.gastos.di.DocumentTaxUiTest:..
+com.gastos.di.Migration10To11Test:.
+com.gastos.di.Migration11To12Test:.
+com.gastos.di.Migration1To8Test:.
+com.gastos.di.Migration4To5Test:.
+com.gastos.di.Migration5To6Test:.
+com.gastos.di.Migration6To7Test:.
+com.gastos.di.Migration7To8Test:.
+com.gastos.di.Migration8To9Test:.
+com.gastos.di.Migration9To10Test:.
+com.gastos.di.RemoteSyncOutboxDatabaseTest:.
+com.gastos.di.RemoteSyncOutboxMigrationTest:..
+com.gastos.di.TaxMigrationTest:..
+
+Time: 14,954
+
+OK (24 tests)

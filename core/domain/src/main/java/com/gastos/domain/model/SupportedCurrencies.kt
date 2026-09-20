@@ -11,7 +11,8 @@ import java.util.Locale
 val SUPPORTED_CURRENCIES: List<String> = listOf(
     "EUR", "USD", "MXN", "ARS", "COP", "CLP", "PEN",
     "BOB", "GTQ", "NIO", "PYG", "UYU", "VES"
-)
+).let { preferred -> preferred + Currency.getAvailableCurrencies().filter { it.defaultFractionDigits >= 0 }
+    .map { it.currencyCode }.filterNot { it in preferred }.sorted() }
 
 private val FISCAL_COUNTRY_NAMES: Map<String, String> = linkedMapOf(
     "ES" to "España",

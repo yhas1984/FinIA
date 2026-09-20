@@ -35,15 +35,15 @@ class Migration11To12Test {
             db.execSQL("INSERT INTO incomes (id,fecha,concepto,monto,totalDevengado,totalNeto,moneda,ivaPercent,irpfPercent,imagenUri,createdAt,updatedAt) VALUES (7,1,'Synthetic income',104,104,104,'EUR',4,0,'content://synthetic/income',1,2)")
             db.version = 11
         }
-        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_11_12).build()
+        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14).build()
         try {
             val invoice = database.invoiceDao().getInvoiceById(7)!!
             val income = database.incomeDao().getIncomeById(7)!!
             assertNotEquals(invoice.documentUuid, income.documentUuid)
             UUID.fromString(invoice.documentUuid)
             UUID.fromString(income.documentUuid)
-            assertEquals(10.0, invoice.ivaPercent, 0.0)
-            assertEquals(4.0, income.ivaPercent, 0.0)
+            assertEquals(10.0, invoice.ivaPercent!!, 0.0)
+            assertEquals(4.0, income.ivaPercent!!, 0.0)
             assertEquals("legacy-file", invoice.driveFileId)
             assertTrue(income.driveUploadPending)
             database.openHelper.writableDatabase.query("SELECT invoiceId,ivaPercent FROM products WHERE id=8").use {
@@ -54,7 +54,7 @@ class Migration11To12Test {
             database.invoiceDao().updatePreservingImageState(invoice.copy(total = 104.0, ivaPercent = 4.0))
             val edited = database.invoiceDao().getInvoiceById(7)!!
             assertEquals("verified-file", edited.driveFileId)
-            assertEquals(4.0, edited.ivaPercent, 0.0)
+            assertEquals(4.0, edited.ivaPercent!!, 0.0)
             assertEquals(0, database.invoiceDao().updateImageSync(7, UUID.randomUUID().toString(), null,
                 "wrong-file", null, false, "account-b", null, null))
             database.invoiceDao().deleteByIdentity(7, UUID.randomUUID().toString())

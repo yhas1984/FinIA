@@ -5,6 +5,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.catch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -46,7 +47,8 @@ internal data class GeminiGenerationConfig(
 
 internal enum class GeminiFailure { RECOVERABLE, DAILY_QUOTA, GLOBAL_QUOTA, AUTH, BAD_REQUEST, SAFETY, INVALID_OUTPUT, MODEL_UNAVAILABLE }
 internal class GeminiApiException(val statusCode: Int, message: String,
-    val category: GeminiFailure = GeminiFailure.RECOVERABLE, val retryAfterMillis: Long = 0) : IOException(message)
+    val category: GeminiFailure = GeminiFailure.RECOVERABLE, val retryAfterMillis: Long = 0,
+    val diagnostics: String? = null) : IOException(message)
 
 internal fun interface GeminiTransport {
     suspend fun execute(body: String, key: String, model: String, stream: Boolean, timeoutMillis: Long): okhttp3.Response
@@ -72,6 +74,8 @@ class GeminiRestClient internal constructor(
     private val jitter: () -> Long,
     private val log: (String, Long, String) -> Unit
 ) {
+    private data class ModelPause(val untilNanos: Long, val failure: GeminiApiException)
+    private val unavailableUntil = java.util.concurrent.ConcurrentHashMap<String, ModelPause>()
     @Inject constructor() : this(GoogleGeminiTransport(), { delay(it) }, { kotlin.random.Random.nextLong(0, 251) },
         { model, duration, category -> SafeLog.d("Gemini", "model=$model durationMs=$duration category=$category") })
 
@@ -79,14 +83,31 @@ class GeminiRestClient internal constructor(
         val budget = budget(request)
         withTimeoutOrNull(budget) {
             attempts(request, stream = false) { response ->
-                val text = JSONObject(runInterruptible { response.body?.string().orEmpty() }).extractCandidateText()
-                if (text.isBlank() || !validate(text)) throw GeminiApiException(200, "Invalid model output", GeminiFailure.INVALID_OUTPUT)
+                val envelope = JSONObject(runInterruptible { response.body?.string().orEmpty() })
+                val text = envelope.extractCandidateText()
+                if (text.isBlank() || !validate(text)) {
+                    val candidate = envelope.optJSONArray("candidates")?.optJSONObject(0)
+                    val finish = candidate?.optString("finishReason").orEmpty().filter { it in 'A'..'Z' || it == '_' }.take(48)
+                    val diagnostics = "textChars=${text.length} candidates=${envelope.optJSONArray("candidates")?.length() ?: 0} finish=$finish parts=${candidate?.optJSONObject("content")?.optJSONArray("parts")?.length() ?: 0}"
+                    throw GeminiApiException(200, "Invalid model output", GeminiFailure.INVALID_OUTPUT, diagnostics = diagnostics)
+                }
                 text
             }
         } ?: throw GeminiApiException(408, "Gemini operation timed out")
     }
 
     internal fun streamGenerateContent(request: GeminiGenerateRequest): Flow<String> = flow {
+        var failure: Throwable? = null
+        // Drain delivered fragments before reporting a terminal network/model error.
+        // Throwing upstream of flowOn can cancel its channel and lose buffered text.
+        streamChunks(request).catch { error ->
+            if (error is CancellationException) throw error
+            failure = error
+        }.flowOn(Dispatchers.IO).collect { emit(it) }
+        failure?.let { throw it }
+    }
+
+    private fun streamChunks(request: GeminiGenerateRequest): Flow<String> = flow {
         var emitted = false
         val completed = withTimeoutOrNull(budget(request)) {
             attempts(request, stream = true, mayRetry = { !emitted }) { response ->
@@ -117,53 +138,77 @@ class GeminiRestClient internal constructor(
             true
         }
         if (completed == null) throw GeminiApiException(408, "Gemini operation timed out")
-    }.flowOn(Dispatchers.IO)
+    }
 
     private suspend fun <T> attempts(request: GeminiGenerateRequest, stream: Boolean,
         mayRetry: () -> Boolean = { true }, consume: suspend (okhttp3.Response) -> T): T {
         val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(budget(request))
+        val models = if (isImageRequest(request)) OCR_MODELS else ATTEMPT_MODELS
+        val keyFingerprint = java.security.MessageDigest.getInstance("SHA-256").digest(request.apiKey.toByteArray())
+            .joinToString("") { "%02x".format(it) }
         var step = 0
         var last: Exception? = null
-        while (step < ATTEMPT_MODELS.size) {
+        while (step < models.size) {
             currentCoroutineContext().ensureActive()
-            val model = ATTEMPT_MODELS[step]
+            val model = models[step]
+            val cacheKey = "$keyFingerprint:$model"
+            val pause = unavailableUntil[cacheKey]
+            if (isImageRequest(request) && pause != null && pause.untilNanos > System.nanoTime()) {
+                last = pause.failure
+                step++
+                continue
+            }
             val started = System.nanoTime()
             try {
                 val remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime())
                 if (remainingMillis <= 0) throw GeminiApiException(408, "Gemini operation timed out")
                 val response = transport.execute(request.toJson().toString(), request.apiKey, model, stream,
-                    minOf(budget(request) / ATTEMPT_MODELS.size, remainingMillis))
+                    minOf(budget(request) / models.size, remainingMillis))
                 val value = response.use {
                     if (!it.isSuccessful) throw classifyError(it.code, runInterruptible { it.body?.string() }, it.header("Retry-After"))
                     consume(it)
                 }
                 log(model, (System.nanoTime() - started) / 1_000_000, "SUCCESS")
+                unavailableUntil.remove(cacheKey)
                 return value
             } catch (cancelled: CancellationException) { throw cancelled
             } catch (error: Exception) {
                 val failure = when (error) {
                     is GeminiApiException -> error
+                    is java.io.InterruptedIOException -> GeminiApiException(408, "Reading timed out")
                     is IOException -> GeminiApiException(503, "Connection interrupted")
                     is org.json.JSONException -> GeminiApiException(200, "Invalid model output", GeminiFailure.INVALID_OUTPUT)
                     else -> throw error
                 }
-                log(model, (System.nanoTime() - started) / 1_000_000, failure.category.name)
+                log(model, (System.nanoTime() - started) / 1_000_000,
+                    "${failure.category.name} status=${failure.statusCode}" + (failure.diagnostics?.let { " $it" } ?: ""))
                 if (!mayRetry() || failure.category in setOf(GeminiFailure.AUTH, GeminiFailure.BAD_REQUEST,
                         GeminiFailure.SAFETY, GeminiFailure.GLOBAL_QUOTA)) throw failure
                 last = failure
-                step = if (failure.category in setOf(GeminiFailure.DAILY_QUOTA, GeminiFailure.INVALID_OUTPUT, GeminiFailure.MODEL_UNAVAILABLE)) {
+                if (isImageRequest(request) && failure.category in setOf(GeminiFailure.DAILY_QUOTA, GeminiFailure.MODEL_UNAVAILABLE, GeminiFailure.RECOVERABLE)) {
+                    val cooldown = when (failure.category) {
+                        GeminiFailure.DAILY_QUOTA, GeminiFailure.MODEL_UNAVAILABLE -> 300_000L
+                        else -> 30_000L
+                    }
+                    if (unavailableUntil.size > 30) unavailableUntil.clear()
+                    unavailableUntil[cacheKey] = ModelPause(System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(maxOf(cooldown, failure.retryAfterMillis)), failure)
+                }
+                val previousModel = model
+                step = if (!isImageRequest(request) && failure.category in setOf(GeminiFailure.DAILY_QUOTA, GeminiFailure.INVALID_OUTPUT, GeminiFailure.MODEL_UNAVAILABLE)) {
                     if (step < 2) 2 else step + 1
                 } else step + 1
-                if (step < ATTEMPT_MODELS.size) {
+                if (step < models.size) {
                     val serverDelay = if (failure.category == GeminiFailure.DAILY_QUOTA) 0 else failure.retryAfterMillis
-                    wait(maxOf(serverDelay, (500L shl step) + jitter()))
+                    val backoff = if (isImageRequest(request) && models[step] != previousModel) 0L else (500L shl step) + jitter()
+                    if (maxOf(serverDelay, backoff) > 0) wait(maxOf(serverDelay, backoff))
                 }
             }
         }
         throw requireNotNull(last)
     }
 
-    private fun budget(request: GeminiGenerateRequest) = if (request.contents.any { it.inlineDataParts.isNotEmpty() }) 180_000L else 90_000L
+    private fun isImageRequest(request: GeminiGenerateRequest): Boolean = request.contents.any { it.inlineDataParts.isNotEmpty() }
+    private fun budget(request: GeminiGenerateRequest): Long = if (isImageRequest(request)) 135_000L else 90_000L
 
     private fun JSONObject.extractCandidateText(): String {
         optJSONObject("error")?.let { throw classifyError(it.optInt("code", 503), toString(), null) }
@@ -186,6 +231,7 @@ class GeminiRestClient internal constructor(
         const val FALLBACK_MODEL = "gemini-3.8-flash"
         const val LITE_FALLBACK_MODEL = "gemini-3.5-flash-lite"
         private val ATTEMPT_MODELS = listOf(PRIMARY_MODEL, PRIMARY_MODEL, FALLBACK_MODEL, LITE_FALLBACK_MODEL)
+        private val OCR_MODELS = listOf(PRIMARY_MODEL, FALLBACK_MODEL, LITE_FALLBACK_MODEL)
         private const val JSON_MIME = "application/json"
         internal fun classifyError(status: Int, raw: String?, retryAfter: String?): GeminiApiException {
             val error = runCatching { JSONObject(raw.orEmpty()).optJSONObject("error") }.getOrNull()

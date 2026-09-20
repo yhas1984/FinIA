@@ -103,7 +103,7 @@ class Migration1To8Test {
                 MIGRATION_8_9,
                 MIGRATION_9_10,
                 MIGRATION_10_11,
-                MIGRATION_11_12
+                MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14
             )
             .build()
         database.openHelper.writableDatabase.use { sqlite ->

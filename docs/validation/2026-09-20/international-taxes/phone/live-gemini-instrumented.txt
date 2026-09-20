@@ -1,0 +1,6 @@
+
+com.gastos.di.LiveGeminiSmokeTest:.
+
+Time: 14,856
+
+OK (1 test)
