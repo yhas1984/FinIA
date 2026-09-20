@@ -466,7 +466,7 @@ class DashboardViewModelTest {
             // slot persistido pero no debe alterar los índices de pantalla.
             vm.moveWidget(from = 2, to = 0)
 
-            val state = awaitStable { it.widgetOrder.first() == DashboardWidget.CALENDAR.id }
+            val state = awaitStable { it.widgetOrder.firstOrNull() == DashboardWidget.CALENDAR.id }
             assertEquals(DashboardWidget.CALENDAR.id, state.widgetOrder[0])
             assertEquals(DashboardWidget.CASHFLOW.id, state.widgetOrder[1])
             assertEquals(DashboardWidget.BALANCE.id, state.widgetOrder[2])
@@ -488,7 +488,7 @@ class DashboardViewModelTest {
         firstViewModel.uiState.test {
             awaitStable { it.widgetOrder.isNotEmpty() }
             firstViewModel.moveWidget(from = 0, to = 2)
-            awaitStable { it.widgetOrder[2] == DashboardWidget.BALANCE.id }
+            awaitStable { it.widgetOrder.getOrNull(2) == DashboardWidget.BALANCE.id }
             cancelAndConsumeRemainingEvents()
         }
 
@@ -498,7 +498,7 @@ class DashboardViewModelTest {
             persistLayoutUpdates = true
         )
         recreatedViewModel.uiState.test {
-            val restored = awaitStable { it.widgetOrder[2] == DashboardWidget.BALANCE.id }
+            val restored = awaitStable { it.widgetOrder.getOrNull(2) == DashboardWidget.BALANCE.id }
             assertEquals(DashboardWidget.BALANCE.id, restored.widgetOrder[2])
             cancelAndConsumeRemainingEvents()
         }
