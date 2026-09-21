@@ -65,7 +65,7 @@ class InvoiceDriveService @Inject constructor(
     suspend fun upload(requested: Income, stillCurrent: suspend () -> Boolean = { true }): IncomeDriveUploadResult = requestMutex.withLock {
         val income = incomeRepository.getIncomeById(requested.id)?.takeIf { it.documentUuid == requested.documentUuid }
             ?: return@withLock IncomeDriveUploadResult(requested, false, "CANCELLED", permanent = true)
-        val ref = DocumentImage(income.id, income.documentUuid, DocumentKind.INCOME, income.imagenUri,
+        val ref = DocumentImage(income.id, income.documentUuid, if (income.id < 0) DocumentKind.EXPENSE else DocumentKind.INCOME, income.imagenUri,
             income.driveFileId, income.driveWebViewLink, income.driveUploadPending, income.driveAccountId, income.driveContentHash)
         val result = uploadDocument(ref, stillCurrent) { metadata ->
             incomeRepository.updateImageSync(income.id, income.documentUuid, income.imagenUri, metadata)
@@ -178,20 +178,22 @@ class InvoiceDriveService @Inject constructor(
         val uuid = file.appProperties?.get("finaiUuid")
         return if (uuid != null) uuid == ref.uuid && file.appProperties?.get("finaiKind") == ref.kind.name
         else ref.kind == DocumentKind.EXPENSE && file.id == ref.fileId &&
-            file.appProperties?.get("finaiInvoiceId") == ref.id.toString()
+            file.appProperties?.get("finaiInvoiceId") == kotlin.math.abs(ref.id).toString()
     }
 
     private suspend fun getFileOrNull(drive: Drive, id: String): DriveFile? = try {
         runInterruptible { drive.files().get(id).setFields(FILE_FIELDS).execute() }
     } catch (error: GoogleJsonResponseException) { if (error.statusCode == 404) null else throw error }
 
-    suspend fun enqueueDelete(invoice: Invoice, consent: Boolean = false) {
+    suspend fun enqueueDelete(invoice: Invoice, consent: Boolean = false, prepared: Boolean = false) {
         remoteSyncOutbox.enqueue(RemoteSyncTarget.INVOICE_DRIVE, invoice.id, RemoteSyncAction.DELETE,
-            invoice.driveFileId, invoice.documentUuid, invoice.driveAccountId, consent)
+            invoice.driveFileId, invoice.documentUuid, invoice.driveAccountId, consent,
+            status = if (prepared) RemoteSyncStatus.PREPARED else RemoteSyncStatus.PENDING)
     }
-    suspend fun enqueueDelete(income: Income, consent: Boolean = false) {
+    suspend fun enqueueDelete(income: Income, consent: Boolean = false, prepared: Boolean = false) {
         remoteSyncOutbox.enqueue(RemoteSyncTarget.INCOME_DRIVE, income.id, RemoteSyncAction.DELETE,
-            income.driveFileId, income.documentUuid, income.driveAccountId, consent)
+            income.driveFileId, income.documentUuid, income.driveAccountId, consent,
+            status = if (prepared) RemoteSyncStatus.PREPARED else RemoteSyncStatus.PENDING)
     }
 
     suspend fun delete(remoteFileId: String, accountId: String? = null): Boolean = withContext(Dispatchers.IO) {

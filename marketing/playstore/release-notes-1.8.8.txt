@@ -1,0 +1,6 @@
+<es-ES>
+Mejoramos la lectura de facturas y nóminas, incluidos descuentos y varios impuestos. El progreso aparece dentro del chat y Gemini evita esperas innecesarias. Sheets sincroniza los cambios en un único libro. También mejoramos Drive, las copias cifradas, la restauración y los informes PDF/CSV. Corregimos las categorías vacías y los porcentajes repetidos en el desglose fiscal.
+</es-ES>
+<en-US>
+Improved invoice and payslip reading, including discounts and multiple taxes. Progress now appears inside the chat, and Gemini avoids unnecessary waits. Sheets syncs changes to a single workbook. We also improved Drive, encrypted backups, restoration and PDF/CSV reports. Fixed empty categories and repeated percentages in tax breakdowns.
+</en-US>

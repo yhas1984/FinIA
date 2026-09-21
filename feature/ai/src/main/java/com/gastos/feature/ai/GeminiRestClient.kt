@@ -114,6 +114,9 @@ class GeminiRestClient internal constructor(
                 val reader = response.body?.charStream()?.buffered() ?: throw GeminiApiException(200, "Empty response", GeminiFailure.INVALID_OUTPUT)
                 var event = StringBuilder()
                 var finished = false
+                val bufferedCommand = StringBuilder()
+                var structured: Boolean? = null
+                var receivedText = false
                 suspend fun publish() {
                     val raw = event.toString()
                     event = StringBuilder()
@@ -122,18 +125,35 @@ class GeminiRestClient internal constructor(
                     val chunk = JSONObject(raw)
                     val finish = chunk.optJSONArray("candidates")?.optJSONObject(0)?.optString("finishReason").orEmpty()
                     val text = chunk.extractCandidateText()
-                    if (text.isNotBlank()) { emitted = true; emit(text) }
+                    if (text.isNotEmpty()) {
+                        receivedText = receivedText || text.isNotBlank()
+                        if (structured == null && text.isNotBlank()) {
+                            val first: Char = text.trimStart().first()
+                            structured = first == '{' || first == '`'
+                        }
+                        if (structured == false) { emitted = true; emit(text) }
+                        else bufferedCommand.append(text)
+                    }
                     if (finish == "STOP") finished = true
                     else if (finish.isNotBlank()) throw GeminiApiException(200, "Incomplete response", GeminiFailure.INVALID_OUTPUT)
                 }
-                while (true) {
+                // STOP/[DONE] completes the response even if Google keeps the socket open.
+                while (!finished) {
                     currentCoroutineContext().ensureActive()
                     val line = runInterruptible(Dispatchers.IO) { reader.readLine() } ?: break
                     if (line.isBlank()) publish()
                     else if (line.startsWith("data:")) event.append(line.removePrefix("data:").trim())
                 }
                 publish()
-                if (!emitted || !finished) throw GeminiApiException(200, "Incomplete response", GeminiFailure.INVALID_OUTPUT)
+                if (!receivedText || !finished) throw GeminiApiException(200, "Incomplete response", GeminiFailure.INVALID_OUTPUT)
+                if (structured != false) {
+                    // No command fragment has reached the UI or persistence, so a broken
+                    // response can safely use the next model without duplicating a movement.
+                    try { CommandResponseEnvelope.parse(bufferedCommand.toString()) }
+                    catch (_: Exception) { throw GeminiApiException(200, "Invalid command output", GeminiFailure.INVALID_OUTPUT) }
+                    emitted = true
+                    emit(bufferedCommand.toString())
+                }
             }
             true
         }

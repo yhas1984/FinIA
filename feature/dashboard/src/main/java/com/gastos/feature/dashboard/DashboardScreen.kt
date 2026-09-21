@@ -415,7 +415,6 @@ private fun DashboardWidgetContent(
                 ConversionWidget(uiState = uiState, fmt = fmt, monthLabel = monthLabel, appLocale = appLocale)
             }
         }
-        DashboardWidget.CHAT_CTA.id -> ChatCtaWidget(onNavigateToChat = onNavigateToChat)
     }
 }
 
@@ -605,46 +604,6 @@ private fun ConversionWidget(
         )
         uiState.convertedRecords.forEach { rec ->
             ConversionRow(rec = rec, defaultCurrency = uiState.defaultCurrency, fmt = fmt)
-        }
-    }
-}
-
-@Composable
-private fun ChatCtaWidget(onNavigateToChat: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onNavigateToChat,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.chat_with_finai),
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.chat_with_finai_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.Chat,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(32.dp)
-            )
         }
     }
 }

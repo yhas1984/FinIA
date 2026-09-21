@@ -51,11 +51,13 @@ class DocumentCaptureViewModelTest {
     @Test fun `existing draft resumes without another model request`() = runTest(dispatcher) {
         val incomplete = evidence.copy(document = evidence.document.copy(date = null))
         coEvery { store.start(any()) } returns CaptureStart.Draft(draft.copy(evidenceJson = DocumentEvidenceCodec.encode(incomplete)), true)
+        coEvery { store.save(any(), any()) } returns CaptureSave.Saved(incomplete.toInvoice("uuid", "photo").first.copy(id = 8))
         model.processImage(uri)
         advanceUntilIdle()
-        assertEquals(incomplete, model.state.value.evidence)
+        assertEquals(8L, model.state.value.saved!!.localId)
+        assertNull(model.state.value.selected)
         coVerify(exactly = 0) { reader.readDocument(any(), any()) }
-        coVerify(exactly = 0) { store.save(any(), any()) }
+        coVerify(exactly = 1) { store.save("uuid", incomplete) }
     }
 
     @Test fun `failed reading keeps the photo and error without creating editable invented data`() = runTest(dispatcher) {
@@ -74,16 +76,19 @@ class DocumentCaptureViewModelTest {
         coVerify(exactly = 2) { reader.readDocument(any(), OcrProfile.FAST) }
     }
 
-    @Test fun `financial doubt persists draft and never rereads or saves automatically`() = runTest(dispatcher) {
+    @Test fun `legacy review result saves automatically without checking optional details`() = runTest(dispatcher) {
         coEvery { store.start(any()) } returns CaptureStart.Draft(draft, false)
         val missing = evidence.copy(document = evidence.document.copy(date = null))
         coEvery { reader.readDocument(any(), any()) } returns DocumentReadResult.NeedsReview(missing, DocumentValidator.validate(missing).issues)
+        coEvery { store.save(any(), any()) } returns CaptureSave.Saved(missing.toInvoice("uuid", "photo").first.copy(id = 8))
         model.processImage(uri)
         advanceUntilIdle()
-        assertNotNull(model.state.value.selected)
+        assertNull(model.state.value.selected)
+        assertEquals(8L, model.state.value.saved!!.localId)
+        assertTrue(model.state.value.issues.isEmpty())
         coVerify(exactly = 1) { reader.readDocument(any(), OcrProfile.FAST) }
         coVerify(exactly = 1) { store.update("uuid", any(), null) }
-        coVerify(exactly = 0) { store.save(any(), any()) }
+        coVerify(exactly = 1) { store.save(any(), any()) }
     }
 
     @Test fun `remote failure after local commit remains saved and double tap does not duplicate`() = runTest(dispatcher) {
@@ -124,39 +129,42 @@ class DocumentCaptureViewModelTest {
         coVerify(exactly = 0) { reader.readDocument(any(), any()) }
     }
 
-    @Test fun `dismissed uncertain document remains available and unsaved when reopened`() = runTest(dispatcher) {
-        val incomplete = evidence.copy(document = evidence.document.copy(date = null))
+    @Test fun `dismissed storage failure can save on reopening without another extraction`() = runTest(dispatcher) {
+        val incomplete = evidence.copy(document = evidence.document.copy(linesComplete = false, total = 125.0))
         val pending = draft.copy(evidenceJson = DocumentEvidenceCodec.encode(incomplete))
         coEvery { store.start(any()) } returns CaptureStart.Draft(draft, false)
         coEvery { store.get("uuid") } returns pending
         coEvery { reader.readDocument(any(), any()) } returns DocumentReadResult.NeedsReview(incomplete, DocumentValidator.validate(incomplete).issues)
+        coEvery { store.save(any(), any()) } throws IllegalStateException("storage unavailable")
         model.processImage(uri)
         advanceUntilIdle()
         model.dismissNotice()
         assertNull(model.state.value.selected)
+        coEvery { store.save(any(), any()) } returns CaptureSave.Saved(incomplete.toInvoice("uuid", "photo").first.copy(id = 8))
         model.open(pending)
         advanceUntilIdle()
-        assertNull(model.state.value.evidence!!.document.date)
-        assertEquals(100.0, model.state.value.evidence!!.document.total!!, 0.0)
+        assertNull(model.state.value.selected)
+        assertEquals(125.0, model.state.value.saved!!.amount, 0.0)
         coVerify(exactly = 1) { reader.readDocument(any(), any()) }
-        coVerify(exactly = 0) { store.save(any(), any()) }
+        coVerify(exactly = 2) { store.save(any(), any()) }
         coVerify(exactly = 0) { store.discard(any()) }
     }
 
-    @Test fun `uncertain reading retries only on request and then saves a coherent document`() = runTest(dispatcher) {
-        val incomplete = evidence.copy(document = evidence.document.copy(date = null))
+    @Test fun `save retry reuses extraction rather than making another model call`() = runTest(dispatcher) {
+        val incomplete = evidence.copy(document = evidence.document.copy(linesComplete = false))
         coEvery { store.start(any()) } returns CaptureStart.Draft(draft, false)
         coEvery { reader.readDocument(any(), OcrProfile.FAST) } returns DocumentReadResult.NeedsReview(incomplete, DocumentValidator.validate(incomplete).issues)
-        coEvery { reader.readDocument(any(), OcrProfile.THOROUGH) } returns DocumentReadResult.Ready(evidence)
-        coEvery { store.save(any(), any()) } returns CaptureSave.Saved(evidence.toInvoice("uuid", "photo").first.copy(id = 8))
+        coEvery { store.save(any(), any()) } throws IllegalStateException("storage unavailable")
         model.processImage(uri)
         advanceUntilIdle()
-        coVerify(exactly = 0) { store.save(any(), any()) }
+        coVerify(exactly = 1) { store.save(any(), any()) }
+        coEvery { store.save(any(), any()) } returns CaptureSave.Saved(incomplete.toInvoice("uuid", "photo").first.copy(id = 8))
         model.reread()
         advanceUntilIdle()
         assertEquals(8L, model.state.value.saved!!.localId)
-        coVerify(exactly = 1) { reader.readDocument(any(), OcrProfile.THOROUGH) }
-        coVerify(exactly = 1) { store.save(any(), any()) }
+        coVerify(exactly = 1) { reader.readDocument(any(), OcrProfile.FAST) }
+        coVerify(exactly = 0) { reader.readDocument(any(), OcrProfile.THOROUGH) }
+        coVerify(exactly = 2) { store.save(any(), any()) }
     }
 
     @Test fun `strong duplicate cannot be confirmed as distinct`() = runTest(dispatcher) {
@@ -219,9 +227,10 @@ class DocumentCaptureViewModelTest {
     }
 
     @Test fun `discard failure keeps the pending photo accessible for another attempt`() = runTest(dispatcher) {
-        val incomplete = evidence.copy(document = evidence.document.copy(date = null))
+        val incomplete = evidence.copy(document = evidence.document.copy(total = null))
         val pending = draft.copy(evidenceJson = DocumentEvidenceCodec.encode(incomplete))
         coEvery { store.get("uuid") } returns pending
+        coEvery { store.save(any(), any()) } returns CaptureSave.UnreadableAmount
         coEvery { store.discard("uuid") } throws IllegalStateException("storage unavailable")
         model.open(pending)
         advanceUntilIdle()
@@ -230,6 +239,6 @@ class DocumentCaptureViewModelTest {
         assertFalse(model.state.value.busy)
         assertEquals(pending, model.state.value.selected)
         assertEquals(incomplete, model.state.value.evidence)
-        coVerify(exactly = 0) { store.save(any(), any()) }
+        coVerify(exactly = 1) { store.save(any(), any()) }
     }
 }

@@ -10,13 +10,22 @@ sealed interface DocumentReadResult {
     data class Failure(val message: String) : DocumentReadResult
 }
 
-/** Parsing does not repair evidence. Invalid/absent values remain visible in the draft. */
+/** Preserve the extraction and accept partial details without an accounting review gate. */
 internal object DocumentReader {
-    fun parse(response: String): DocumentReadResult {
+    fun commandTaxes(json: JSONObject, currency: String): List<DocumentTax> {
+        val invalid: MutableSet<String> = mutableSetOf()
+        validateTaxInput(json, "taxes", invalid, mutableMapOf())
+        val taxes: List<DocumentTax> = readTaxes(json)
+        require(invalid.isEmpty() && DocumentTaxes.validate(taxes, currency).isEmpty()) { "Invalid tax breakdown" }
+        return taxes
+    }
+    fun parse(response: String, defaultCurrency: String = "EUR"): DocumentReadResult {
         val raw: String = Regex("\\{[\\s\\S]*\\}").find(response)?.value ?: response
         val json: JSONObject = JSONObject(raw)
         fun text(key: String): String? = readText(json, key)
         fun number(key: String): Double? = readNumber(json, key)
+        val invalid: MutableSet<String> = mutableSetOf()
+        val payroll: PayrollDetails? = if (text("tipo_documento") == "nomina") PayrollReader.read(json, invalid) else null
         val products: org.json.JSONArray? = json.optJSONArray("productos")
         val lines: List<ScannedLine> = (0 until (products?.length() ?: 0)).map { index ->
             val line: JSONObject = products?.optJSONObject(index) ?: JSONObject()
@@ -32,10 +41,12 @@ internal object DocumentReader {
             total = number("total"), taxBase = number("base_imponible"), vatAmount = number("cuota_iva"), vatPercent = number("tipo_iva"),
             withholdingPercent = number("retencion_irpf"), withholdingAmount = number("importe_retencion"), discount = number("descuento"),
             priceBasis = text("precios_impuestos"), gross = number("devengado"), net = number("liquido"), contributionBase = number("base_cotizacion"),
-            socialSecurity = number("seguridad_social"), payrollReference = text("referencia_nomina"), workerId = text("identificador_trabajador"),
+            // The legacy scalar has no column provenance. With typed payroll evidence,
+            // only the verified payment deductions can supply this aggregate.
+            socialSecurity = if (payroll != null) null else number("seguridad_social"), payrollReference = text("referencia_nomina"), workerId = text("identificador_trabajador"),
             payPeriod = text("periodo_liquidacion"), paymentKind = text("tipo_pago"), lines = lines,
-            linesComplete = if (json.has("productos_completos") && !json.isNull("productos_completos")) json.optBoolean("productos_completos") else null)
-        val invalid: MutableSet<String> = mutableSetOf()
+            linesComplete = if (json.has("productos_completos") && !json.isNull("productos_completos")) json.optBoolean("productos_completos") else null,
+            payroll = payroll)
         val originals: MutableMap<String, String> = mutableMapOf()
         validateTaxInput(json, "taxes", invalid, originals)
         val numericKeys: Map<String, String> = mapOf("total" to "total", "base_imponible" to "taxBase", "cuota_iva" to "vatAmount",
@@ -55,9 +66,11 @@ internal object DocumentReader {
             }
         }
         val source: DocumentEvidence = DocumentEvidence(document, originalExtraction = raw, invalidFields = invalid, fieldEdits = originals)
-        val validation: ValidatedDocument = DocumentValidator.validate(source)
-        val evidence: DocumentEvidence = source.copy(document = validation.document, derivedFields = validation.derivedFields)
-        return if (validation.issues.isEmpty()) DocumentReadResult.Ready(evidence) else DocumentReadResult.NeedsReview(evidence, validation.issues)
+        val prepared: DocumentEvidence = DocumentExtraction.prepare(source)
+        if (DocumentExtraction.amount(prepared.document) == null) throw UnreadableDocumentAmountException()
+        val evidence: DocumentEvidence = if (prepared.document.currency == null) prepared.copy(
+            document = prepared.document.copy(currency = defaultCurrency), derivedFields = prepared.derivedFields + "currency") else prepared
+        return DocumentReadResult.Ready(evidence)
     }
 
     private fun readTaxes(json: JSONObject): List<DocumentTax> {

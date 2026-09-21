@@ -96,34 +96,37 @@ fun Income.documentIdentity(): DocumentIdentity = DocumentIdentity(documentUuid,
     evidence?.document?.number, evidence?.document?.issuerTaxId, evidence, updatedAt)
 private fun documentDate(value: Long): String = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(value))
 
-/** Called only after validation; absent optional data stays absent in evidence. */
-fun DocumentEvidence.toInvoice(uuid: String, imageUri: String): Pair<Invoice, List<Product>> {
-    val validation: ValidatedDocument = DocumentValidator.validate(this)
-    require(validation.issues.isEmpty()) { "Unreviewed document" }
-    val d: ScannedDocument = validation.document
-    val stored: DocumentEvidence = copy(document = d, derivedFields = derivedFields + validation.derivedFields)
-    val invoice: Invoice = Invoice(taxes = d.taxes, documentUuid = uuid, evidence = stored, fecha = requireNotNull(DocumentValidator.parseDate(d.date)),
-        proveedor = requireNotNull(d.issuer), tipo = if (d.kind == "factura_emitida") InvoiceType.INGRESO else InvoiceType.GASTO,
-        moneda = requireNotNull(d.currency), total = requireNotNull(d.total), numeroFactura = d.number, baseImponible = d.taxBase,
+/** The printed total is authoritative. Optional details never block capture. */
+fun DocumentEvidence.toInvoice(uuid: String, imageUri: String, capturedAt: Long = System.currentTimeMillis()): Pair<Invoice, List<Product>> {
+    val stored: DocumentEvidence = DocumentExtraction.prepare(this)
+    val d: ScannedDocument = stored.document
+    val amount: Double = DocumentExtraction.amount(d) ?: throw UnreadableDocumentAmountException()
+    val invoice: Invoice = Invoice(taxes = d.taxes, documentUuid = uuid, evidence = stored, fecha = DocumentValidator.parseDate(d.date) ?: capturedAt,
+        proveedor = d.issuer.orEmpty(), tipo = if (d.kind == "factura_emitida") InvoiceType.INGRESO else InvoiceType.GASTO,
+        moneda = d.currency ?: "EUR", total = amount, numeroFactura = d.number, baseImponible = d.taxBase,
         cuotaIva = d.vatAmount, ivaPercent = d.vatPercent, irpfPercent = d.withholdingPercent ?: 0.0,
         paisCodigo = d.country.orEmpty(), nifEmisor = d.issuerTaxId, nifReceptor = d.recipientTaxId, categoria = d.category,
         subcategoria = d.subcategory, imagenUri = imageUri, driveUploadPending = true, ocrRawText = originalExtraction)
-    val products: List<Product> = d.lines.map { line ->
+    val products: List<Product> = d.lines.mapNotNull { line ->
+        // Partial rows remain in evidence; do not manufacture quantities or prices for the product table.
+        val description: String = line.description?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+        val quantity: Double = line.quantity?.takeIf(Double::isFinite) ?: return@mapNotNull null
+        val price: Double = line.unitPrice?.takeIf(Double::isFinite) ?: return@mapNotNull null
+        val subtotal: Double = line.subtotal?.takeIf(Double::isFinite) ?: return@mapNotNull null
         val vat: Double? = line.vatPercent
-        val subtotal: Double = requireNotNull(line.subtotal)
-        Product(taxes = line.taxes, pricesIncludeTax = d.priceBasis != "tax_excluded", invoiceId = 0, descripcion = requireNotNull(line.description), cantidad = requireNotNull(line.quantity),
-            precioUnitario = requireNotNull(line.unitPrice), subtotal = subtotal, ivaPercent = vat,
+        Product(taxes = line.taxes, pricesIncludeTax = d.priceBasis != "tax_excluded", invoiceId = 0, descripcion = description, cantidad = quantity,
+            precioUnitario = price, subtotal = subtotal, ivaPercent = vat,
             ivaAmount = DocumentTaxes.lineTax(line, d.priceBasis))
     }
     return invoice to products
 }
 
-fun DocumentEvidence.toPayroll(uuid: String, imageUri: String): Income {
-    val validation: ValidatedDocument = DocumentValidator.validate(this)
-    require(validation.issues.isEmpty()) { "Unreviewed payroll" }
-    val d: ScannedDocument = validation.document
-    return Income(taxes = d.taxes, documentUuid = uuid, evidence = copy(document = d, derivedFields = derivedFields + validation.derivedFields), fecha = requireNotNull(DocumentValidator.parseDate(d.date)),
-        concepto = requireNotNull(d.issuer), fuente = d.issuer, monto = requireNotNull(d.net), totalDevengado = d.gross ?: 0.0,
-        totalNeto = d.net, moneda = requireNotNull(d.currency), categoria = d.category, subcategoria = d.subcategory,
+fun DocumentEvidence.toPayroll(uuid: String, imageUri: String, capturedAt: Long = System.currentTimeMillis()): Income {
+    val stored: DocumentEvidence = DocumentExtraction.prepare(this)
+    val d: ScannedDocument = stored.document
+    val amount: Double = DocumentExtraction.amount(d) ?: throw UnreadableDocumentAmountException()
+    return Income(taxes = d.taxes, documentUuid = uuid, evidence = stored, fecha = DocumentValidator.parseDate(d.date) ?: capturedAt,
+        concepto = d.issuer.orEmpty(), fuente = d.issuer, monto = amount, totalDevengado = d.gross ?: 0.0,
+        totalNeto = amount, moneda = d.currency ?: "EUR", categoria = d.category, subcategoria = d.subcategory,
         irpfPercent = d.withholdingPercent ?: 0.0, imagenUri = imageUri, driveUploadPending = true)
 }

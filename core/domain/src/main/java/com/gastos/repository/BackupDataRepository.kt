@@ -11,7 +11,8 @@ data class BackupDataset(
     val products: List<Product>,
     val incomes: List<Income>,
     val fiscalConfigs: List<CountryFiscalConfig>,
-    val chatMessages: List<ChatMessageRecord>
+    val chatMessages: List<ChatMessageRecord>,
+    val commandOperations: List<com.gastos.domain.model.CommandOperation> = emptyList()
 )
 
 data class RestorableSettings(
@@ -26,6 +27,15 @@ data class RestorableSettings(
 
 interface BackupDataRepository {
     suspend fun snapshot(): BackupDataset
+    suspend fun financialSnapshot(): BackupDataset = snapshot()
+    suspend fun documentSnapshot(income: Boolean, id: Long): BackupDataset {
+        val all = financialSnapshot()
+        val invoiceId = if (income && id < 0) -id else id
+        return BackupDataset(
+            all.invoices.filter { it.id == invoiceId && (it.tipo == com.gastos.domain.model.InvoiceType.INGRESO) == income && (!income || id < 0) },
+            all.products.filter { it.invoiceId == invoiceId && (!income || id < 0) },
+            all.incomes.filter { income && it.id == id }, emptyList(), emptyList())
+    }
     suspend fun replaceAll(dataset: BackupDataset)
     suspend fun replaceAllWithRestoreMarker(dataset: BackupDataset, restoreId: String)
     suspend fun committedRestoreId(): String?

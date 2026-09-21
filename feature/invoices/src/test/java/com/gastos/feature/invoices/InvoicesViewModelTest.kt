@@ -67,6 +67,21 @@ class InvoicesViewModelTest {
         return InvoicesViewModel(context, repo, sync, exchange, currency, drive, imageStorage, premium)
     }
 
+    @Test fun `selecting the active type does not start an endless loading state`() = runTest(dispatcher) {
+        val vm = newViewModel(listOf(invoice(1, 10.0, "EUR")))
+        vm.uiState.test {
+            var state = awaitItem()
+            while (state.isLoading) state = awaitItem()
+            vm.filterByType(null)
+            org.junit.Assert.assertFalse(vm.uiState.value.isLoading)
+            vm.filterByType(InvoiceType.GASTO)
+            while (vm.uiState.value.isLoading) awaitItem()
+            vm.filterByType(InvoiceType.GASTO)
+            org.junit.Assert.assertFalse(vm.uiState.value.isLoading)
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
     @Test
     fun `recomputeTotal excluye gastos sin tasa`() = runTest(dispatcher) {
         val invoices = listOf(

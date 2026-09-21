@@ -17,6 +17,7 @@ class RemoteSyncProcessorTest {
     @Test
     fun `income upsert waits for awaited manager call and clears outbox on success`() = runTest {
         val outbox = mockk<RemoteSyncOutboxRepository>(relaxed = true)
+        coEvery { outbox.isCurrent(any()) } returns true
         val invoiceRepo = mockk<InvoiceRepository>()
         val incomeRepo = mockk<IncomeRepository>()
         val drive = mockk<InvoiceDriveService>(relaxed = true)
@@ -25,17 +26,18 @@ class RemoteSyncProcessorTest {
         coEvery { outbox.withCurrent<Boolean>(any(), any()) } coAnswers {
             secondArg<suspend () -> Boolean>().invoke()
         }
-        coEvery { sheets.performIncomeUpsert(7) } returns true
+        coEvery { sheets.process(any()) } returns true
         val processor = RemoteSyncProcessor(outbox, invoiceRepo, incomeRepo, drive, sheets)
         val outcome = processor.process(RemoteSyncOutboxEntity("INCOME_SHEETS:7", RemoteSyncTarget.INCOME_SHEETS, 7, RemoteSyncAction.UPSERT))
         assertEquals(RemoteSyncOutcome.SUCCESS, outcome)
         coVerify(exactly = 1) { outbox.delete(match { it.targetKey == "INCOME_SHEETS:7" }) }
-        coVerify(exactly = 1) { sheets.performIncomeUpsert(7) }
+        coVerify(exactly = 1) { sheets.process(any()) }
     }
 
     @Test
     fun `missing income delete still dispatches delete and clears outbox on success`() = runTest {
         val outbox = mockk<RemoteSyncOutboxRepository>(relaxed = true)
+        coEvery { outbox.isCurrent(any()) } returns true
         val invoiceRepo = mockk<InvoiceRepository>(relaxed = true)
         val incomeRepo = mockk<IncomeRepository>()
         val drive = mockk<InvoiceDriveService>(relaxed = true)
@@ -44,17 +46,18 @@ class RemoteSyncProcessorTest {
         coEvery { outbox.withCurrent<Boolean>(any(), any()) } coAnswers {
             secondArg<suspend () -> Boolean>().invoke()
         }
-        coEvery { sheets.performIncomeDelete(7) } returns true
+        coEvery { sheets.process(any()) } returns true
         val processor = RemoteSyncProcessor(outbox, invoiceRepo, incomeRepo, drive, sheets)
         val outcome = processor.process(RemoteSyncOutboxEntity("INCOME_SHEETS:7", RemoteSyncTarget.INCOME_SHEETS, 7, RemoteSyncAction.DELETE))
         assertEquals(RemoteSyncOutcome.SUCCESS, outcome)
         coVerify(exactly = 1) { outbox.delete(match { it.targetKey == "INCOME_SHEETS:7" }) }
-        coVerify(exactly = 1) { sheets.performIncomeDelete(7) }
+        coVerify(exactly = 1) { sheets.process(any()) }
     }
 
     @Test
     fun `failed drive upload with pending stays for retry`() = runTest {
         val outbox = mockk<RemoteSyncOutboxRepository>(relaxed = true)
+        coEvery { outbox.isCurrent(any()) } returns true
         val invoiceRepo = mockk<InvoiceRepository>()
         val incomeRepo = mockk<IncomeRepository>(relaxed = true)
         val drive = mockk<InvoiceDriveService>()

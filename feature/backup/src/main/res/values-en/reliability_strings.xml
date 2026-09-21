@@ -1,0 +1,30 @@
+<resources>
+    <string name="export_report">Export report</string>
+    <string name="save_report">Save</string>
+    <string name="share_report">Share</string>
+    <string name="cancel_report">Cancel</string>
+    <string name="report_ready">Report ready.</string>
+    <string name="cloud_list_error">Could not refresh the backup list. You can try again.</string>
+    <string name="create_backup">Create backup</string>
+    <string name="refresh_backup_list">Refresh list</string>
+    <string name="sync_changes">Sync changes</string>
+    <string name="sheets_advanced">Advanced options</string>
+    <string name="sheets_rebuild">Rebuild FinAI data</string>
+    <string name="sheets_takeover">Use this phone to sync</string>
+    <string name="sheets_queue_state">Pending: %1$d · Failed: %2$d</string>
+    <string name="sheets_rebuild_explanation">A private recovery copy will be saved on this phone before updating FinAI data in the same workbook. Personal sheets and columns will be preserved. No additional workbook will be created in Drive.</string>
+    <string name="sheets_takeover_explanation">This phone will sync the workbook. The other phone will stop syncing. Restore your data on this phone and stop synchronization on the previous phone before continuing.</string>
+    <string name="confirm_sheet_action">Continue</string>
+    <string name="sheets_error_other_device">Another phone syncs this workbook. You can transfer synchronization in Advanced options.</string>
+    <string name="sheets_error_version">This workbook uses a structure this version of FinAI cannot update. Its data has been preserved.</string>
+    <string name="sheets_error_identity">Some rows or columns cannot be identified safely. Review the workbook before syncing again.</string>
+    <string name="sheets_error_safety_copy">The safety copy could not be verified. The workbook has not been rebuilt.</string>
+    <string name="sheets_error_account">Connect the Google account and workbook associated with the pending changes. Your records remain saved in FinAI.</string>
+    <string name="sheets_error_network">Sheets is currently unavailable. Changes remain pending and will be retried.</string>
+    <string name="sheets_error_generic">Could not sync Sheets. Your data remains saved in FinAI. Check permissions and try again.</string>
+    <string name="sheets_syncing_changes">Syncing changes…</string>
+    <string name="sheets_all_synced">All changes are synced.</string>
+    <string name="sheets_error_creation_pending">Checking whether Google created the workbook. Sync again; another workbook will not be created while this is being confirmed.</string>
+    <string name="sheets_error_link_unavailable">The linked workbook cannot be opened. Check its access in Drive; another workbook will not be created automatically.</string>
+    <string name="sheets_error_link_trashed">The linked workbook is in Drive trash. Restore it to sync with the same workbook. Your data remains saved in FinAI.</string>
+</resources>

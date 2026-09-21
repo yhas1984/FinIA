@@ -1,0 +1,30 @@
+<resources>
+    <string name="export_report">Exportar informe</string>
+    <string name="save_report">Guardar</string>
+    <string name="share_report">Compartir</string>
+    <string name="cancel_report">Cancelar</string>
+    <string name="report_ready">Informe preparado.</string>
+    <string name="cloud_list_error">No se pudo actualizar la lista de copias. Puedes volver a intentarlo.</string>
+    <string name="create_backup">Crear copia</string>
+    <string name="refresh_backup_list">Actualizar lista</string>
+    <string name="sync_changes">Sincronizar cambios</string>
+    <string name="sheets_advanced">Opciones avanzadas</string>
+    <string name="sheets_rebuild">Reconstruir datos de FinAI</string>
+    <string name="sheets_takeover">Usar este teléfono para sincronizar</string>
+    <string name="sheets_queue_state">Pendientes: %1$d · Fallidas: %2$d</string>
+    <string name="sheets_rebuild_explanation">Se guardará una copia de recuperación privada en este teléfono y se actualizarán los datos de FinAI en el mismo libro. Las hojas y columnas personales se conservarán. No se creará otro libro en Drive.</string>
+    <string name="sheets_takeover_explanation">Este teléfono será el encargado de sincronizar el libro. El otro teléfono dejará de hacerlo. Restaura primero tus datos en este teléfono y detén la sincronización en el anterior antes de continuar.</string>
+    <string name="confirm_sheet_action">Continuar</string>
+    <string name="sheets_error_other_device">Otro teléfono sincroniza este libro. Puedes transferir la sincronización desde Opciones avanzadas.</string>
+    <string name="sheets_error_version">Este libro usa una estructura que esta versión de FinAI no puede actualizar. Sus datos se han conservado.</string>
+    <string name="sheets_error_identity">Hay filas o columnas que no se pueden identificar con seguridad. Revisa el libro antes de volver a sincronizar.</string>
+    <string name="sheets_error_safety_copy">No se pudo verificar la copia de seguridad del libro. No se ha reconstruido.</string>
+    <string name="sheets_error_account">Conecta la cuenta de Google y el libro asociados a los cambios pendientes. Los movimientos siguen guardados en FinAI.</string>
+    <string name="sheets_error_network">Sheets no está disponible ahora. Los cambios siguen pendientes y se volverá a intentar.</string>
+    <string name="sheets_error_generic">No se pudo sincronizar Sheets. Los datos siguen guardados en FinAI. Revisa los permisos y vuelve a intentarlo.</string>
+    <string name="sheets_syncing_changes">Sincronizando cambios…</string>
+    <string name="sheets_all_synced">Todos los cambios están sincronizados.</string>
+    <string name="sheets_error_creation_pending">Estamos comprobando si Google creó el libro. Vuelve a sincronizar; no se creará otro mientras se confirma.</string>
+    <string name="sheets_error_link_unavailable">No se puede abrir el libro vinculado. Revisa su acceso en Drive; no se creará otro automáticamente.</string>
+    <string name="sheets_error_link_trashed">El libro vinculado está en la papelera de Drive. Recupéralo para sincronizar en el mismo libro. Tus datos siguen guardados en FinAI.</string>
+</resources>

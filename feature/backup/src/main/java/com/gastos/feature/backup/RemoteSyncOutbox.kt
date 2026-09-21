@@ -13,7 +13,7 @@ import androidx.room.Transaction
 import java.util.UUID
 
 enum class RemoteSyncTarget { INVOICE_DRIVE, INCOME_DRIVE, EXPENSE_SHEETS, INCOME_SHEETS }
-enum class RemoteSyncStatus { PENDING, WAITING_AUTH, FAILED }
+enum class RemoteSyncStatus { PENDING, WAITING_AUTH, FAILED, PREPARED }
 
 enum class RemoteSyncAction { UPSERT, DELETE }
 
@@ -37,6 +37,7 @@ data class RemoteSyncOutboxEntity(
     @ColumnInfo(defaultValue = "''") val operationId: String = UUID.randomUUID().toString(),
     @ColumnInfo(defaultValue = "''") val documentUuid: String = "",
     val accountId: String? = null,
+    val spreadsheetId: String? = null,
     @ColumnInfo(defaultValue = "0") val deleteConsent: Boolean = false,
     @ColumnInfo(defaultValue = "'PENDING'") val status: RemoteSyncStatus = RemoteSyncStatus.PENDING,
     @ColumnInfo(defaultValue = "0") val attempts: Int = 0,
@@ -77,6 +78,9 @@ abstract class RemoteSyncOutboxDao {
     abstract suspend fun updateFailure(key: String, operationId: String, attempts: Int, nextAt: Long,
         status: RemoteSyncStatus, error: String?)
 
+    @Query("UPDATE remote_sync_outbox SET accountId = :account, spreadsheetId = :book, documentUuid = :uuid WHERE targetKey = :key AND operationId = :operation")
+    abstract suspend fun bind(key: String, operation: String, account: String, book: String, uuid: String)
+
     @Query("DELETE FROM remote_sync_outbox")
     abstract suspend fun clear()
 
@@ -87,7 +91,7 @@ abstract class RemoteSyncOutboxDao {
     }
 }
 
-@Database(entities = [RemoteSyncOutboxEntity::class], version = 4, exportSchema = false)
+@Database(entities = [RemoteSyncOutboxEntity::class], version = 5, exportSchema = false)
 abstract class RemoteSyncOutboxDatabase : RoomDatabase() {
     abstract fun dao(): RemoteSyncOutboxDao
 }

@@ -28,7 +28,7 @@ class AIServiceInvoiceParsingTest {
         for (rows in listOf("[4]", "{}", "[{\"nombre\":\"VAT\",\"importe\":\"abc\",\"efecto\":\"CHARGE\"}]",
             "[{\"nombre\":\"VAT\",\"importe\":21,\"tratamiento\":\"unexpected\",\"efecto\":\"CHARGE\"}]")) {
             val json = source().put("impuestos_completos", true).put("impuestos", org.json.JSONTokener(rows).nextValue())
-            val read = parse(json) as DocumentReadResult.NeedsReview
+            val read = parse(json) as DocumentReadResult.Ready
             assertTrue(read.evidence.invalidFields.any { it.startsWith("taxes") })
         }
     }
@@ -65,51 +65,48 @@ class AIServiceInvoiceParsingTest {
         assertEquals(0.0, evidence(parse(json)).document.lines.single().vatPercent!!, 0.0)
     }
 
-    @Test fun `missing line tax inherits only unambiguous general rate and invalid rate stays a doubt`() {
+    @Test fun `missing line tax inherits only unambiguous general rate without blocking the printed amount`() {
         val json = source()
         json.getJSONArray("productos").getJSONObject(0).remove("iva_percent")
         assertEquals(21.0, evidence(parse(json)).document.lines.single().vatPercent!!, 0.0)
         json.getJSONArray("productos").getJSONObject(0).put("iva_percent", 150)
-        assertTrue(parse(json) is DocumentReadResult.NeedsReview)
+        assertTrue(parse(json) is DocumentReadResult.Ready)
         assertEquals(150.0, evidence(parse(json)).document.lines.single().vatPercent!!, 0.0)
     }
 
-    @Test fun `missing date or unsupported currency is a reviewable result not today's date or default currency`() {
+    @Test fun `missing date and unfamiliar currency do not block or overwrite extracted fields`() {
         val json = source().put("fecha", "").put("moneda", "XYZ")
-        val result = parse(json) as DocumentReadResult.NeedsReview
+        val result = parse(json) as DocumentReadResult.Ready
         assertNull(result.evidence.document.date)
         assertEquals("XYZ", result.evidence.document.currency)
-        assertTrue(result.issues.any { it.field == "date" })
-        assertTrue(result.issues.any { it.field == "currency" })
+        assertEquals(121.0, result.evidence.toInvoice("id", "photo", 123L).first.total, 0.0)
+        assertEquals(123L, result.evidence.toInvoice("id", "photo", 123L).first.fecha)
     }
 
     @Test fun `missing or malformed product rows are never omitted`() {
         val json = source()
         json.getJSONArray("productos").put(JSONObject("""{"descripcion":"Unreadable","cantidad":null,"precio_unitario":null,"subtotal":null}"""))
-        val result = parse(json) as DocumentReadResult.NeedsReview
+        val result = parse(json) as DocumentReadResult.Ready
         assertEquals(2, result.evidence.document.lines.size)
         assertNull(result.evidence.document.lines.last().quantity)
-        assertTrue(result.issues.any { it.field == "lines.1.quantity" })
+        assertEquals(121.0, result.evidence.toInvoice("id", "photo").first.total, 0.0)
     }
 
     @Test fun `decimal numeric strings work without locale grouping guesses`() {
         val json = source().put("total", "121,00")
         assertTrue(parse(json) is DocumentReadResult.Ready)
-        val result = parse(json.put("total", "1.234,56")) as DocumentReadResult.NeedsReview
-        assertTrue("total" in result.evidence.invalidFields)
-        assertEquals("1.234,56", result.evidence.fieldEdits["total"])
+        assertThrows(UnreadableDocumentAmountException::class.java) { parse(json.put("total", "1.234,56")) }
     }
 
     @Test fun `malformed optional tax is not hidden as absent`() {
-        val result = parse(source().put("retencion_irpf", "unknown")) as DocumentReadResult.NeedsReview
+        val result = parse(source().put("retencion_irpf", "unknown")) as DocumentReadResult.Ready
         assertTrue("withholdingPercent" in result.evidence.invalidFields)
     }
 
     @Test fun `payroll without net does not use gross or total`() {
-        val result = parse(source().put("tipo_documento", "nomina").put("devengado", 3000).put("liquido", JSONObject.NULL)) as DocumentReadResult.NeedsReview
-        assertNull(result.evidence.document.net)
-        assertEquals(3000.0, result.evidence.document.gross!!, 0.0)
-        assertTrue(result.issues.any { it.field == "net" })
+        assertThrows(UnreadableDocumentAmountException::class.java) {
+            parse(source().put("tipo_documento", "nomina").put("devengado", 3000).put("liquido", JSONObject.NULL))
+        }
     }
 
     @Test fun `payroll identity and contribution data survive parsing`() {
@@ -123,11 +120,22 @@ class AIServiceInvoiceParsingTest {
         assertEquals(150.0, document.socialSecurity!!, 0.0)
     }
 
-    @Test fun `inconsistent valid JSON is parsed successfully for review not automatically retried`() {
+    @Test fun `inconsistent breakdown saves the printed total without review`() {
         val response = source().put("total", 200).toString()
         assertTrue(runCatching { DocumentReader.parse(response) }.isSuccess)
-        assertTrue(DocumentReader.parse(response) is DocumentReadResult.NeedsReview)
+        val result = DocumentReader.parse(response) as DocumentReadResult.Ready
+        assertEquals(200.0, result.evidence.toInvoice("id", "photo").first.total, 0.0)
         assertFalse(runCatching { DocumentReader.parse("{broken") }.isSuccess)
+    }
+
+    @Test fun `missing completion flags accept receipts and use configured currency only when absent`() {
+        val json = source().put("tipo_documento", "ticket").put("productos_completos", false)
+            .put("impuestos_completos", false).put("moneda", JSONObject.NULL)
+        val result = DocumentReader.parse(json.toString(), "MXN") as DocumentReadResult.Ready
+        assertEquals("MXN", result.evidence.document.currency)
+        assertTrue("currency" in result.evidence.derivedFields)
+        assertFalse(result.evidence.document.linesComplete!!)
+        assertEquals(121.0, result.evidence.toInvoice("id", "photo").first.total, 0.0)
     }
 
     @Test fun `unreadable fiscal identity remains absent`() {

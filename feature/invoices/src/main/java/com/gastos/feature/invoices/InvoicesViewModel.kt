@@ -170,6 +170,7 @@ class InvoicesViewModel @Inject constructor(
     }
 
     fun filterByType(type: InvoiceType?) {
+        if (selectedType.value == type) return
         _uiState.update { it.copy(selectedType = type, isLoading = true) }
         selectedType.value = type
     }
@@ -219,11 +220,11 @@ class InvoicesViewModel @Inject constructor(
     fun deleteInvoice(invoice: Invoice, deleteRemoteImage: Boolean = false) {
         viewModelScope.launch {
             try {
-                invoiceRepository.deleteInvoice(invoice)
-                invoiceImageStorage.delete(invoice.imagenUri)
-                if (deleteRemoteImage) invoiceDriveService.enqueueDelete(invoice, consent = true)
-                // Propaga el borrado al Sheet (fila del gasto + sus productos).
-                sheetsSyncManager.deleteExpense(invoice.id)
+                sheetsSyncManager.deleteLocal(invoice) {
+                    if (deleteRemoteImage) invoiceDriveService.enqueueDelete(invoice, consent = true, prepared = true)
+                }
+                runCatching { invoiceImageStorage.delete(invoice.imagenUri) }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
             } catch (e: Exception) {
                 _uiState.update {
                         it.copy(error = e.message ?: context.getString(R.string.delete))

@@ -40,6 +40,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -130,12 +131,18 @@ class ChatbotViewModelTest {
             )
         )
 
+        val receipt = ChatMessageRecord(id = 4, role = "document", visibleText = "Saved 100 EUR", includeInContext = false)
+        coEvery { fixture.commandOperations.commit(any(), any(), any(), any()) } coAnswers {
+            fixture.persistedMessages.add(receipt)
+            fixture.documentMessages.value = listOf(receipt)
+            com.gastos.storage.CommandCommit(income = thirdArg<Income?>(), receipt = receipt)
+        }
         val viewModel = fixture.createViewModel()
         advanceUntilIdle()
         viewModel.sendMessage("Ingreso de 100 euros")
         advanceUntilIdle()
 
-        val modelMessage = fixture.persistedMessages.single { it.role == "model" }
+        val modelMessage = fixture.persistedMessages.single { it.role == "document" }
         assertFalse(modelMessage.includeInContext)
     }
 
@@ -168,12 +175,178 @@ class ChatbotViewModelTest {
         assertFalse(viewModel.uiState.value.canRetryIncomplete)
     }
 
+    @Test
+    fun `captured documents appear live exactly once and survive chat recreation`() = runTest(dispatcher) {
+        val fixture = fixture(isPremium = false)
+        val model = fixture.createViewModel()
+        advanceUntilIdle()
+        val receipt = ChatMessageRecord(id = 7, role = "document", visibleText = "Gasto registrado\nSynthetic\n100 EUR",
+            includeInContext = false, createdAt = 30)
+        fixture.documentMessages.value = listOf(receipt)
+        advanceUntilIdle()
+        assertEquals(listOf(receipt.visibleText), model.uiState.value.messages.map { it.text() })
+        fixture.documentMessages.value = listOf(receipt.copy(visibleText = "Updated receipt"))
+        advanceUntilIdle()
+        assertEquals(1, model.uiState.value.messages.size)
+        coEvery { fixture.chatMessageRepository.getMessages() } returns fixture.documentMessages.value
+        val recreated = fixture.createViewModel()
+        advanceUntilIdle()
+        assertEquals(model.uiState.value.messages, recreated.uiState.value.messages)
+        coJustRun { fixture.aiService.resetChat() }
+        coEvery { fixture.chatMessageRepository.clearAll() } answers { fixture.documentMessages.value = emptyList() }
+        model.clearChat()
+        advanceUntilIdle()
+        assertTrue(model.uiState.value.messages.isEmpty())
+        coVerify(exactly = 0) { fixture.aiService.processCommand(any()) }
+        verify(exactly = 0) { fixture.aiService.processCommandStreaming(any()) }
+    }
+
+    @Test
+    fun `document arriving during streaming preserves the active response`() = runTest(dispatcher) {
+        val fixture = fixture(isPremium = true)
+        val finish = CompletableDeferred<Unit>()
+        every { fixture.aiService.processCommandStreaming("Hola") } returns flow {
+            emit("Respuesta")
+            finish.await()
+            emit(" completa")
+        }
+        every { fixture.aiService.parseStreamingResult("Respuesta completa", "Hola") } returns
+            AIResult(success = true, message = "Respuesta completa")
+        val model = fixture.createViewModel()
+        advanceUntilIdle()
+        model.sendMessage("Hola")
+        advanceUntilIdle()
+        fixture.documentMessages.value = listOf(ChatMessageRecord(id = 1, role = "document", visibleText = "Gasto registrado", includeInContext = false))
+        advanceUntilIdle()
+        assertEquals("Respuesta", model.uiState.value.messages.last().text())
+        finish.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(1, model.uiState.value.messages.filterIsInstance<ChatMessage.Document>().size)
+        assertEquals("Respuesta completa", model.uiState.value.messages.filterIsInstance<ChatMessage.AI>().single().text)
+        assertEquals(3, model.uiState.value.messages.size)
+    }
+
+    @Test
+    fun `retry after a capture replaces the incomplete response and preserves the receipt`() = runTest(dispatcher) {
+        val fixture = fixture(isPremium = true)
+        val receipt = ChatMessageRecord(id = 3, role = "document", visibleText = "Ingreso registrado", includeInContext = false, createdAt = 30)
+        coEvery { fixture.chatMessageRepository.getMessages() } returns listOf(
+            ChatMessageRecord(id = 1, role = "user", visibleText = "Hola", createdAt = 10),
+            ChatMessageRecord(id = 2, role = "model_incomplete", visibleText = "Parcial", contextText = "Hola", createdAt = 20), receipt)
+        fixture.documentMessages.value = listOf(receipt)
+        coJustRun { fixture.chatMessageRepository.replaceLastIncomplete(any()) }
+        every { fixture.aiService.processCommandStreaming("Hola") } returns flowOf("Completa")
+        every { fixture.aiService.parseStreamingResult("Completa", "Hola") } returns AIResult(success = true, message = "Completa")
+        val model = fixture.createViewModel()
+        advanceUntilIdle()
+        assertTrue(model.uiState.value.canRetryIncomplete)
+        model.retryIncompleteResponse()
+        advanceUntilIdle()
+        assertEquals(1, model.uiState.value.messages.filterIsInstance<ChatMessage.Document>().size)
+        assertEquals(listOf("Completa"), model.uiState.value.messages.filterIsInstance<ChatMessage.AI>().map { it.text })
+        coVerify(exactly = 1) { fixture.chatMessageRepository.replaceLastIncomplete(any()) }
+        coVerify(exactly = 0) { fixture.chatMessageRepository.addMessage(any()) }
+    }
+
+    @Test
+    fun `invalid streamed date displays the validation error without exposing or saving the command`() = runTest(dispatcher) {
+        val fixture = fixture(isPremium = true)
+        val raw = "```json\n{\"action\":\"add_expense\",\"fecha\":\"2026-02-31\",\"total\":9}\n```"
+        every { fixture.aiService.processCommandStreaming("Gasto el 31/02/2026") } returns flowOf(raw)
+        every { fixture.aiService.parseStreamingResult(raw, any()) } returns AIResult(false, "Fecha inválida")
+        every { fixture.context.getString(R.string.chatbot_processing_error, any()) } answers { "Error: ${secondArg<Array<Any>>().single()}" }
+        val model = fixture.createViewModel()
+        advanceUntilIdle()
+        model.sendMessage("Gasto el 31/02/2026")
+        advanceUntilIdle()
+        assertEquals("Error: Fecha inválida", model.uiState.value.messages.last().text())
+        assertEquals("Error: Fecha inválida", fixture.persistedMessages.last().visibleText)
+        assertTrue(model.uiState.value.canRetryIncomplete)
+        assertFalse(fixture.persistedMessages.last().includeInContext)
+        coVerify(exactly = 0) { fixture.commandOperations.commit(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `failed local commit does not reveal the buffered structured command`() = runTest(dispatcher) {
+        val fixture = fixture(isPremium = true)
+        val raw = "{\"action\":\"add_income\",\"monto\":35}"
+        every { fixture.aiService.processCommandStreaming("Ingreso de 35 EUR") } returns flowOf(raw)
+        every { fixture.aiService.parseStreamingResult(raw, any()) } returns AIResult(
+            success = true, message = "", income = Income(fecha = 1L, concepto = "Test", monto = 35.0))
+        coEvery { fixture.commandOperations.commit(any(), any(), any(), any()) } throws java.io.IOException("Database unavailable")
+        val model = fixture.createViewModel()
+        advanceUntilIdle()
+        model.sendMessage("Ingreso de 35 EUR")
+        advanceUntilIdle()
+        assertFalse(model.uiState.value.messages.last().text().contains("action"))
+        assertFalse(fixture.persistedMessages.last().visibleText.contains("action"))
+        assertEquals("model_incomplete", fixture.persistedMessages.last().role)
+        assertTrue(model.uiState.value.canRetryIncomplete)
+        coVerify(exactly = 0) { fixture.commandOperations.finish(any()) }
+    }
+
+    @Test
+    fun `cancelled structured stream never persists raw JSON`() = runTest(dispatcher) {
+        val fixture = fixture(isPremium = true)
+        every { fixture.aiService.processCommandStreaming("Ingreso") } returns flow {
+            emit("{\"action\":\"add_income\"")
+            throw kotlinx.coroutines.CancellationException("Cancelled")
+        }
+        val model = fixture.createViewModel()
+        advanceUntilIdle()
+        model.sendMessage("Ingreso")
+        advanceUntilIdle()
+        assertEquals(R.string.chatbot_response_incomplete.toString(), model.uiState.value.messages.last().text())
+        assertEquals(R.string.chatbot_response_incomplete.toString(), fixture.persistedMessages.last().visibleText)
+        assertEquals("Ingreso", fixture.persistedMessages.last().contextText)
+        assertFalse(model.uiState.value.isProcessing)
+        coVerify(exactly = 0) { fixture.commandOperations.commit(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `restored legacy commands are not rendered replayed or sent back to Gemini`() = runTest(dispatcher) {
+        val fixture = fixture(isPremium = true)
+        val user = ChatMessageRecord(role = "user", visibleText = "{user text}", createdAt = 1)
+        val command = ChatMessageRecord(role = "model", visibleText = "```json\n{\"action\":\"add_expense\"}\n```", createdAt = 2)
+        val receipt = ChatMessageRecord(id = 3, role = "document", visibleText = "Saved receipt", createdAt = 3)
+        val partial = ChatMessageRecord(role = "model_incomplete", visibleText = "{\"action\":\"add_income\"\n\nIncomplete response",
+            contextText = "Ingreso", includeInContext = false, createdAt = 4)
+        fixture.documentMessages.value = listOf(receipt)
+        coEvery { fixture.chatMessageRepository.getMessages() } returns listOf(user, command, receipt, partial)
+        val model = fixture.createViewModel()
+        advanceUntilIdle()
+        assertEquals(user.visibleText, model.uiState.value.messages.first().text())
+        assertEquals(listOf(R.string.chatbot_response_unavailable.toString(), R.string.chatbot_response_unavailable.toString()),
+            model.uiState.value.messages.filterIsInstance<ChatMessage.AI>().map { it.text })
+        assertEquals(receipt.visibleText, model.uiState.value.messages.filterIsInstance<ChatMessage.Document>().single().text)
+        assertTrue(model.uiState.value.canRetryIncomplete)
+        assertTrue(fixture.persistedMessages.isEmpty())
+        coVerify { fixture.aiService.replaceChatHistory(listOf(user, receipt)) }
+        coVerify(exactly = 0) { fixture.commandOperations.commit(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `unrecognized structured responses do not become conversation text or history context`() = runTest(dispatcher) {
+        val fixture = fixture(isPremium = false)
+        val raw = "Here is the result: {\"action\":\"unsupported\"}"
+        coEvery { fixture.aiService.processCommand("Consulta") } returns AIResult(true, raw)
+        val model = fixture.createViewModel()
+        advanceUntilIdle()
+        model.sendMessage("Consulta")
+        advanceUntilIdle()
+        assertEquals(R.string.chatbot_response_unavailable.toString(), model.uiState.value.messages.last().text())
+        assertEquals(R.string.chatbot_response_unavailable.toString(), fixture.persistedMessages.last().visibleText)
+        assertNull(fixture.persistedMessages.last().contextText)
+        assertFalse(fixture.persistedMessages.last().includeInContext)
+    }
+
     private fun fixture(isPremium: Boolean): Fixture {
         val aiService = mockk<AIService>()
         val context = mockk<Context>(relaxed = true)
         val chatMessageRepository = mockk<ChatMessageRepository>()
         val premium = MutableStateFlow(isPremium)
         val persistedMessages = mutableListOf<ChatMessageRecord>()
+        val documentMessages = MutableStateFlow<List<ChatMessageRecord>>(emptyList())
         val invoiceRepository = mockk<InvoiceRepository>()
         val incomeRepository = mockk<IncomeRepository>()
         val productRepository = mockk<ProductRepository>()
@@ -182,6 +355,14 @@ class ChatbotViewModelTest {
         val invoiceDriveService = mockk<InvoiceDriveService>()
         val invoiceImageStorage = mockk<com.gastos.storage.InvoiceImageStorage>(relaxed = true)
         val saveInvoiceUseCase = mockk<SaveInvoiceUseCase>()
+        val commandOperations = mockk<com.gastos.storage.CommandOperationStore>(relaxed = true)
+        coEvery { commandOperations.latestPending() } returns null
+        coEvery { commandOperations.begin(any(), any()) } coAnswers {
+            val uuid = firstArg<String>()
+            val text = secondArg<String>()
+            if (persistedMessages.none { it.operationUuid == uuid }) persistedMessages.add(ChatMessageRecord(role = "user", visibleText = text, contextText = text, operationUuid = uuid))
+            com.gastos.domain.model.CommandOperation(uuid, text)
+        }
 
         every { aiService.isConfigured() } returns true
         every { context.getString(any()) } answers { firstArg<Int>().toString() }
@@ -192,6 +373,7 @@ class ChatbotViewModelTest {
         coJustRun { aiService.setPremiumLimits(any()) }
         coJustRun { aiService.replaceChatHistory(any()) }
         coEvery { chatMessageRepository.getMessages() } returns emptyList()
+        every { chatMessageRepository.observeDocumentMessages() } returns documentMessages
         coEvery { chatMessageRepository.addMessage(capture(persistedMessages)) } returns Unit
         every { invoiceRepository.getAllInvoices() } returns flowOf(emptyList())
         every { incomeRepository.getAllIncomes() } returns flowOf(emptyList())
@@ -204,6 +386,7 @@ class ChatbotViewModelTest {
             chatMessageRepository = chatMessageRepository,
             premium = premium,
             persistedMessages = persistedMessages,
+            documentMessages = documentMessages,
             invoiceRepository = invoiceRepository,
             incomeRepository = incomeRepository,
             productRepository = productRepository,
@@ -212,7 +395,8 @@ class ChatbotViewModelTest {
             invoiceDriveService = invoiceDriveService,
             remoteSyncOutboxRepository = mockk(relaxed = true),
             invoiceImageStorage = invoiceImageStorage,
-            saveInvoiceUseCase = saveInvoiceUseCase
+            saveInvoiceUseCase = saveInvoiceUseCase,
+            commandOperations = commandOperations
         )
     }
 
@@ -222,6 +406,7 @@ class ChatbotViewModelTest {
         val chatMessageRepository: ChatMessageRepository,
         val premium: MutableStateFlow<Boolean>,
         val persistedMessages: MutableList<ChatMessageRecord>,
+        val documentMessages: MutableStateFlow<List<ChatMessageRecord>>,
         val invoiceRepository: InvoiceRepository,
         val incomeRepository: IncomeRepository,
         val productRepository: ProductRepository,
@@ -230,7 +415,8 @@ class ChatbotViewModelTest {
         val invoiceDriveService: InvoiceDriveService,
         val remoteSyncOutboxRepository: RemoteSyncOutboxRepository,
         val invoiceImageStorage: com.gastos.storage.InvoiceImageStorage,
-        val saveInvoiceUseCase: SaveInvoiceUseCase
+        val saveInvoiceUseCase: SaveInvoiceUseCase,
+        val commandOperations: com.gastos.storage.CommandOperationStore
     ) {
         fun createViewModel() = ChatbotViewModel(
             context = context,
@@ -250,7 +436,8 @@ class ChatbotViewModelTest {
             saveInvoiceUseCase = saveInvoiceUseCase,
             saveIncomeUseCase = mockk(relaxed = true),
             exchangeRateProvider = exchangeRateProvider,
-            currencyPreference = currencyPreference
+            currencyPreference = currencyPreference,
+            commandOperations = commandOperations
         )
     }
 
@@ -258,5 +445,6 @@ class ChatbotViewModelTest {
         is ChatMessage.User -> text
         is ChatMessage.AI -> text
         is ChatMessage.System -> text
+        is ChatMessage.Document -> text
     }
 }

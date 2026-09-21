@@ -117,7 +117,10 @@ data class ChatMessageEntity(
     val visibleText: String,
     val contextText: String? = null,
     @ColumnInfo(defaultValue = "1") val includeInContext: Boolean = true,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val operationUuid: String? = null,
+    val documentUuid: String? = null,
+    val documentKind: String? = null
 )
 
 @Entity(tableName = "restore_markers")

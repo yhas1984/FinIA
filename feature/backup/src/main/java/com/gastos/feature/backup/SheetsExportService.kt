@@ -51,18 +51,7 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Exporta los datos de FinAI a un Google Sheet con estructura AEAT
- * (Orden HAC/773/2019) para España:
- *   • Facturas Recibidas (gastos del usuario como receptor)
- *   • Ingresos           (nóminas, ventas, honorarios, alquileres, etc.)
- *   • Productos          (precios con IVA incluido)
- *   • Resumen            (fórmulas SUM que recalculan al sincronizar)
- *
- * Usa la cuenta Google autenticada del dispositivo (OAuth) vía
- * GoogleSignIn. El total de una factura es el bruto con IVA antes de
- * retención; base y cuota se calculan como base = total/(1+iva%).
- */
+/** Google authentication and safe, account-scoped FinAI workbook access. */
 @Singleton
 class SheetsExportService @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -74,8 +63,8 @@ class SheetsExportService @Inject constructor(
 ) {
     companion object {
         // drive.file también autoriza la API de Sheets para archivos creados por FinAI.
-        private val DRIVE_FILE_SCOPE = Scope(DriveScopes.DRIVE_FILE)
-        private val DRIVE_APPDATA_SCOPE = Scope(DriveScopes.DRIVE_APPDATA)
+        private val DRIVE_FILE_SCOPE by lazy { Scope(DriveScopes.DRIVE_FILE) }
+        private val DRIVE_APPDATA_SCOPE by lazy { Scope(DriveScopes.DRIVE_APPDATA) }
         private const val SPREADSHEET_MIME_TYPE = "application/vnd.google-apps.spreadsheet"
         private const val FINAI_SHEET_PROPERTY = "finaiSpreadsheet"
         private const val FINAI_SCHEMA_VERSION_PROPERTY = "finaiSchemaVersion"
@@ -115,10 +104,6 @@ class SheetsExportService @Inject constructor(
     fun getLastSignedInAccount(): GoogleSignInAccount? =
         GoogleSignIn.getLastSignedInAccount(context)
 
-    /**
-     * Crea un spreadsheet nuevo o, si [existingSpreadsheetId] no está vacío,
-     * sobreescribe las hojas del spreadsheet existente con los datos actuales.
-     */
     suspend fun exportToSheets(
         account: GoogleSignInAccount,
         invoices: List<Invoice>,
@@ -127,126 +112,101 @@ class SheetsExportService @Inject constructor(
         existingSpreadsheetId: String = ""
     ): Pair<String, String> = operationCoordinator.mutex.withLock {
         withContext(Dispatchers.IO) {
-        // Función Premium: la exportación a Google Sheets requiere suscripción.
-        if (!premiumStatus.isPremium.value) {
-            throw IllegalStateException(context.getString(R.string.sheets_export_requires_premium))
-        }
-        // Credential OAuth a partir de la cuenta autenticada.
-        val credential = GoogleAccountCredential.usingOAuth2(
-            context,
-            listOf(DriveScopes.DRIVE_FILE)
-        ).setSelectedAccount(account.account)
-
-        val sheetsService = Sheets.Builder(
-            NetHttpTransport(),
-            GsonFactory.getDefaultInstance(),
-            credential
-        )
-            .setApplicationName("FinAI")
-            .build()
-        val driveService = Drive.Builder(
-            NetHttpTransport(),
-            GsonFactory.getDefaultInstance(),
-            credential
-        )
-            .setApplicationName("FinAI")
-            .build()
-
-        val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-
-        val spreadsheetId: String
-        var schemaLocale = resolveSchemaLocale()
-        val linkedSpreadsheetId = existingSpreadsheetId.ifBlank {
-            sheetsLinkStore.getSpreadsheetId(account)
-        }
-        val accountEmail = account.email
-            ?: error(context.getString(R.string.connected_google_account_missing_email))
-        val reusableSpreadsheet = findReusableSpreadsheet(
-            drive = driveService,
-            linkedSpreadsheetId = linkedSpreadsheetId,
-            legacySpreadsheetId = sheetsLinkStore.getLegacySpreadsheetId(),
-            accountEmail = accountEmail
-        )
-        if (reusableSpreadsheet != null) {
-            schemaLocale = resolveSpreadsheetLocale(driveService, sheetsService, reusableSpreadsheet.id) ?: schemaLocale
-            val descriptor = SheetsSchema.descriptor(schemaLocale)
-            val sheetTitles = listOf(descriptor.recibidasTitle, descriptor.ingresosTitle, descriptor.productosTitle, descriptor.resumenTitle)
-            // Reutilizar spreadsheet existente — limpiar hojas y reescribir.
-            spreadsheetId = reusableSpreadsheet.id
-            clearSheets(sheetsService, spreadsheetId, sheetTitles)
-            // Crear las hojas AEAT que falten en el sheet viejo (que
-            // puede tener "Gastos/Ingresos" de versiones anteriores).
-            ensureSheetsExist(sheetsService, spreadsheetId, sheetTitles)
-            markAsFinAiSpreadsheet(driveService, spreadsheetId, schemaLocale)
-        } else {
-            val descriptor = SheetsSchema.descriptor(schemaLocale)
-            val sheetTitles = listOf(descriptor.recibidasTitle, descriptor.ingresosTitle, descriptor.productosTitle, descriptor.resumenTitle)
-            // Crear spreadsheet nuevo con la primera hoja.
-            val spreadsheet = Spreadsheet()
-                .setProperties(
-                    SpreadsheetProperties().setTitle(context.getString(R.string.sheets_export_title, dateStr))
-                )
-                .setSheets(
-                    listOf(
-                        com.google.api.services.sheets.v4.model.Sheet()
-                            .setProperties(SheetProperties().setTitle(sheetTitles.first()))
-                    )
-                )
-            val created: Spreadsheet = sheetsService.spreadsheets().create(spreadsheet).execute()
-            spreadsheetId = created.spreadsheetId
-            markAsFinAiSpreadsheet(driveService, spreadsheetId, schemaLocale)
-
-            // Añadir las hojas restantes.
-            ensureSheetsExist(sheetsService, spreadsheetId, sheetTitles)
-        }
-        val descriptor = SheetsSchema.descriptor(schemaLocale)
-        sheetsLinkStore.setSpreadsheetId(account, spreadsheetId)
-        if (reusableSpreadsheet?.adoptedLegacyId == true) {
-            sheetsLinkStore.clearLegacySpreadsheetId()
-        }
-        deleteLegacySheets(
-            sheets = sheetsService,
-            id = spreadsheetId,
-            titles = listOf(SheetsSchema.LEGACY_NOMINAS)
-        )
-
-        // Poblar las hojas (estructura AEAT para España).
-        //   • Facturas Recibidas  ← Invoice con tipo=GASTO (gastos del usuario)
-        //   • Ingresos            ← todos los Income, incluidos salarios
-        // Los Invoice con tipo=INGRESO (factura_emitida) no se exportan:
-        // el usuario no genera facturas expedidas.
-        val recibidas = invoices.filter { it.tipo == InvoiceType.GASTO }
-        val conversion = SheetsSchema.ConversionSnapshot(
-            targetCurrency = currencyPreference.defaultCurrency.value,
-            locale = schemaLocale,
-            exchangeRateProvider = exchangeRateProvider
-        )
-        writeRecibidas(sheetsService, spreadsheetId, recibidas, conversion, descriptor)
-        writeIngresos(
-            sheetsService,
-            spreadsheetId,
-            incomes,
-            conversion,
-            descriptor
-        )
-        writeProductos(sheetsService, spreadsheetId, products, invoices, conversion, descriptor)
-        writeResumenAeat(
-            sheets = sheetsService,
-            id = spreadsheetId,
-            exportDate = dateStr,
-            invoices = invoices,
-            incomes = incomes,
-            conversion = conversion,
-            descriptor = descriptor
-        )
-
-        // Formatear cabeceras (negrita) en todas las hojas.
-        formatHeaders(sheetsService, spreadsheetId, listOf(descriptor.recibidasTitle, descriptor.ingresosTitle, descriptor.productosTitle, descriptor.resumenTitle))
-
-        val url = "https://docs.google.com/spreadsheets/d/$spreadsheetId/edit"
-        Pair(url, spreadsheetId)
+            check(premiumStatus.isPremium.value) { context.getString(R.string.sheets_export_requires_premium) }
+            val (sheets, drive) = services(account)
+            val linked = existingSpreadsheetId.ifBlank { sheetsLinkStore.getSpreadsheetId(account) }
+            val reusable = if (linked.isNotBlank()) {
+                // Permission and network errors must never create a replacement book silently.
+                SheetsWorkbookAccess.read(drive, linked)
+                SpreadsheetResolution(linked)
+            } else findReusableSpreadsheet(drive, "", sheetsLinkStore.getLegacySpreadsheetId(), requireNotNull(account.email))
+            val id = reusable?.id ?: SheetsWorkbookCreation(drive).create(sheetsLinkStore.pendingCreation(account)) {
+                sheetsLinkStore.recordCreation(account, it)
+            }
+            // Persist the link before population so an interrupted creation is resumed, not duplicated.
+            sheetsLinkStore.setSpreadsheetId(account, id)
+            val properties = SheetsWorkbookAccess.read(drive, id).appProperties.orEmpty()
+            val version = properties[FINAI_SCHEMA_VERSION_PROPERTY]?.toIntOrNull()
+            check(version == null || version <= SheetsSchema.SCHEMA_VERSION) { "SHEETS_NEWER_SCHEMA" }
+            check(properties[FINAI_SCHEMA_VERSION_PROPERTY] == null || version != null) { "SHEETS_UNKNOWN_SCHEMA" }
+            val locale = if (reusable == null) resolveSchemaLocale() else resolveSpreadsheetLocale(drive, sheets, id) ?: resolveSchemaLocale()
+            verifyWriter(drive, id, allowClaim = true)
+            if (reusable != null) createVerifiedCopy(sheets, account, id)
+            SheetsWorkbookEngine(sheets, id, conversion(locale)) { verifyWriter(drive, id) }.write(invoices, incomes, products,
+                full = true, initializeFilters = version != SheetsSchema.SCHEMA_VERSION, initializeWorkbook = properties["finaiInitializing"] == "true")
+            markAsFinAiSpreadsheet(drive, id, locale)
+            sheetsLinkStore.clearFingerprints(SheetsLinkStore.getAccountPreferenceKey(account.id, account.email), id)
+            if (reusable?.adoptedLegacyId == true) sheetsLinkStore.clearLegacySpreadsheetId()
+            "https://docs.google.com/spreadsheets/d/$id/edit" to id
         }
     }
+
+    internal suspend fun schemaVersion(account: GoogleSignInAccount, id: String): Int? = withContext(Dispatchers.IO) {
+        val raw = SheetsWorkbookAccess.read(services(account).second, id).appProperties?.get(FINAI_SCHEMA_VERSION_PROPERTY)
+        check(raw == null || raw.toIntOrNull() != null) { "SHEETS_UNKNOWN_SCHEMA" }
+        raw?.toIntOrNull()
+    }
+
+    internal suspend fun syncDocument(account: GoogleSignInAccount, id: String, invoices: List<Invoice>, incomes: List<Income>,
+        products: List<Product>, deleteUuid: String? = null) = syncDocuments(account, id, invoices, incomes, products, setOfNotNull(deleteUuid))
+
+    internal suspend fun syncDocuments(account: GoogleSignInAccount, id: String, invoices: List<Invoice>, incomes: List<Income>,
+        products: List<Product>, deleteUuids: Set<String> = emptySet()) = operationCoordinator.mutex.withLock {
+        withContext(Dispatchers.IO) {
+            check(premiumStatus.isPremium.value) { "PREMIUM_REQUIRED" }
+            check(sheetsLinkStore.getSpreadsheetId(account) == id && getLastSignedInAccount()?.let {
+                SheetsLinkStore.getAccountPreferenceKey(it.id, it.email) == SheetsLinkStore.getAccountPreferenceKey(account.id, account.email)
+            } == true) { "WRONG_ACCOUNT" }
+            val (sheets, drive) = services(account)
+            val properties = SheetsWorkbookAccess.read(drive, id).appProperties.orEmpty()
+            check(properties[FINAI_SCHEMA_VERSION_PROPERTY]?.toIntOrNull() == SheetsSchema.SCHEMA_VERSION) { "SHEETS_SCHEMA_REQUIRED" }
+            verifyWriter(drive, id)
+            SheetsWorkbookEngine(sheets, id, conversion(SheetsSchema.localeFromCode(properties[FINAI_SCHEMA_LOCALE_PROPERTY]))) { verifyWriter(drive, id) }
+                .write(invoices, incomes, products, deleteUuids = deleteUuids)
+        }
+    }
+
+    suspend fun takeOverWriter(account: GoogleSignInAccount, id: String) = operationCoordinator.mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val (_, drive) = services(account)
+            val old = SheetsWorkbookAccess.read(drive, id).appProperties.orEmpty()
+            check(old[FINAI_SCHEMA_VERSION_PROPERTY]?.toIntOrNull() == SheetsSchema.SCHEMA_VERSION) { "SHEETS_SCHEMA_REQUIRED" }
+            drive.files().update(id, DriveFile().setAppProperties(old + ("finaiWriterId" to sheetsLinkStore.writerId()))).execute()
+            verifyWriter(drive, id)
+        }
+    }
+
+    private fun verifyWriter(drive: Drive, id: String, allowClaim: Boolean = false) {
+        val old = SheetsWorkbookAccess.read(drive, id).appProperties.orEmpty()
+        val writer = old["finaiWriterId"]
+        check(writer == sheetsLinkStore.writerId() || writer == null && allowClaim) { "SHEETS_OTHER_DEVICE" }
+        if (writer == null) {
+            drive.files().update(id, DriveFile().setAppProperties(old + ("finaiWriterId" to sheetsLinkStore.writerId()))).execute()
+            check(drive.files().get(id).setFields("appProperties").execute().appProperties?.get("finaiWriterId") == sheetsLinkStore.writerId()) { "SHEETS_OTHER_DEVICE" }
+        }
+    }
+
+    private fun createVerifiedCopy(sheets: Sheets, account: GoogleSignInAccount, id: String) {
+        val source = sheets.spreadsheets().get(id).setIncludeGridData(true).execute()
+        try {
+            SheetsRecoverySnapshot.save(java.io.File(context.noBackupFilesDir, "sheets-recovery"),
+                SheetsLinkStore.getAccountPreferenceKey(account.id, account.email), source)
+        } catch (error: java.io.IOException) { throw IllegalStateException("SHEETS_BACKUP_UNVERIFIED", error) }
+    }
+
+    private fun services(account: GoogleSignInAccount): Pair<Sheets, Drive> {
+        val credential = GoogleAccountCredential.usingOAuth2(context, listOf(DriveScopes.DRIVE_FILE)).setSelectedAccount(account.account)
+        val initializer = com.google.api.client.http.HttpRequestInitializer { request ->
+            credential.initialize(request)
+            request.connectTimeout = 15_000
+            request.readTimeout = 60_000
+            request.numberOfRetries = 0 // The durable outbox re-reads remote identities before retrying.
+        }
+        return Sheets.Builder(NetHttpTransport(), GsonFactory.getDefaultInstance(), initializer).setApplicationName("FinAI").build() to
+            Drive.Builder(NetHttpTransport(), GsonFactory.getDefaultInstance(), initializer).setApplicationName("FinAI").build()
+    }
+
+    private fun conversion(locale: SheetsSchema.LocaleCode) = SheetsSchema.ConversionSnapshot(currencyPreference.defaultCurrency.value, locale, exchangeRateProvider)
 
     private suspend fun findReusableSpreadsheet(
         drive: Drive,
@@ -276,7 +236,10 @@ class SheetsExportService @Inject constructor(
             drive = drive,
             extraQuery = "name contains '$LEGACY_SHEET_NAME_PREFIX'"
         )
-        return selectNewestOwnedSpreadsheetId(legacyFiles, accountEmail)?.let { SpreadsheetResolution(it) }
+        val legacy = selectNewestOwnedSpreadsheetId(legacyFiles, accountEmail)
+        if (legacy != null) return SpreadsheetResolution(legacy)
+        // Recover a workbook created by older versions before their metadata/link could be written.
+        return selectNewestOwnedSpreadsheetId(listSpreadsheets(drive, "name = 'FinAI'"), accountEmail)?.let { SpreadsheetResolution(it) }
     }
 
     private suspend fun isUsableSpreadsheet(
@@ -295,20 +258,26 @@ class SheetsExportService @Inject constructor(
             }
             file.trashed != true && file.mimeType == SPREADSHEET_MIME_TYPE && hasRequiredOwner
         } catch (error: GoogleJsonResponseException) {
-            if (error.statusCode in setOf(401, 403, 404)) false else throw error
+            if (error.statusCode == 404) false else throw error
         }
     }
 
     private suspend fun listSpreadsheets(drive: Drive, extraQuery: String): List<DriveFile> = runInterruptible {
-        drive.files().list()
+        val files = mutableListOf<DriveFile>()
+        var page: String? = null
+        do {
+            val result = drive.files().list()
             .setSpaces("drive")
             .setQ("mimeType='$SPREADSHEET_MIME_TYPE' and trashed=false and $extraQuery")
             .setOrderBy("createdTime desc")
             .setPageSize(100)
-            .setFields("files(id,createdTime,owners(emailAddress))")
+            .setPageToken(page)
+            .setFields("nextPageToken,files(id,createdTime,owners(emailAddress),appProperties)")
             .execute()
-            .files
-            .orEmpty()
+            files += result.files.orEmpty().filter { it.appProperties?.get("finaiBackupOf") == null }
+            page = result.nextPageToken
+        } while (page != null)
+        files
     }
 
     private suspend fun markAsFinAiSpreadsheet(drive: Drive, spreadsheetId: String, locale: SheetsSchema.LocaleCode = SheetsSchema.LocaleCode.ES) {
@@ -316,10 +285,11 @@ class SheetsExportService @Inject constructor(
             drive.files().update(
                 spreadsheetId,
                 DriveFile().setAppProperties(
-                    mapOf(
+                    drive.files().get(spreadsheetId).setFields("appProperties").execute().appProperties.orEmpty() + mapOf(
                         FINAI_SHEET_PROPERTY to FINAI_SHEET_PROPERTY_VALUE,
                         FINAI_SCHEMA_VERSION_PROPERTY to SheetsSchema.SCHEMA_VERSION.toString(),
-                        FINAI_SCHEMA_LOCALE_PROPERTY to locale.code
+                        FINAI_SCHEMA_LOCALE_PROPERTY to locale.code,
+                        "finaiInitializing" to "false"
                     )
                 )
             )
@@ -333,289 +303,6 @@ class SheetsExportService @Inject constructor(
         val adoptedLegacyId: Boolean = false
     )
 
-    /**
-     * Escribe la hoja "Facturas Recibidas" (gastos del usuario como
-     * receptor) con columnas AEAT: Nº Factura, Fecha (dd/mm/yyyy),
-     * NIF País, NIF Emisor, Base Imponible, Tipo IVA, Cuota IVA,
-     * Recargo Eq., IRPF, Total, Moneda, Notas, el ID estable de Room y
-     * el enlace a la foto Premium guardada en Drive.
-     *
-     * Base / cuota se CALCULAN aquí en el export (sin migration de
-     * Room): base = total / (1 + iva%/100); cuota = total - base.
-     */
-    private fun writeRecibidas(
-        sheets: Sheets,
-        id: String,
-        recibidas: List<Invoice>,
-        conversion: SheetsSchema.ConversionSnapshot,
-        descriptor: SheetsSchema.Descriptor
-    ) {
-        val values = mutableListOf<List<Any>>(descriptor.recibidasHeaders)
-        values.addAll(recibidas.map { SheetsSchema.expenseRow(it, conversion) })
-        sheets.spreadsheets().values()
-            .update(id, "'${descriptor.recibidasTitle}'!A1", ValueRange().setValues(values))
-            .setValueInputOption("RAW")
-            .execute()
-    }
-
-    // (Facturas Expedidas retirada — el usuario no genera facturas emitidas)
-
-    /** Escribe todos los ingresos; los campos salariales son opcionales. */
-    private fun writeIngresos(
-        sheets: Sheets,
-        id: String,
-        incomes: List<Income>,
-        conversion: SheetsSchema.ConversionSnapshot,
-        descriptor: SheetsSchema.Descriptor
-    ) {
-        val values = mutableListOf<List<Any>>(descriptor.ingresosHeaders)
-        values.addAll(incomes.map { SheetsSchema.incomeRow(it, conversion) })
-        sheets.spreadsheets().values()
-            .update(id, "'${descriptor.ingresosTitle}'!A1", ValueRange().setValues(values))
-            .setValueInputOption("RAW")
-            .execute()
-    }
-
-    /**
-     * Hoja "Resumen" calculada con la misma conversión que usa la app.
-     * No depende de fórmulas remotas ni mezcla importes en monedas distintas.
-     */
-    private fun writeResumenAeat(
-        sheets: Sheets,
-        id: String,
-        exportDate: String,
-        invoices: List<Invoice>,
-        incomes: List<Income>,
-        conversion: SheetsSchema.ConversionSnapshot,
-        descriptor: SheetsSchema.Descriptor
-    ) {
-        val values = SheetsSchema.summaryRows(
-            descriptor = descriptor,
-            exportDate = exportDate,
-            reportCurrency = conversion.targetCurrency,
-            totals = SheetsSchema.summaryTotals(invoices, incomes, conversion)
-        )
-        sheets.spreadsheets().values()
-            .update(id, "'${descriptor.resumenTitle}'!A1", ValueRange().setValues(values))
-            .setValueInputOption("RAW")
-            .execute()
-    }
-
-    private fun writeProductos(
-        sheets: Sheets,
-        id: String,
-        products: List<Product>,
-        invoices: List<Invoice>,
-        conversion: SheetsSchema.ConversionSnapshot,
-        descriptor: SheetsSchema.Descriptor
-    ) {
-        val values = mutableListOf<List<Any>>(descriptor.productosHeaders)
-        val invMap = invoices
-            .filter { it.tipo == InvoiceType.GASTO }
-            .associateBy { it.id }
-        values.addAll(
-            products.mapNotNull { product ->
-                val invoice = invMap[product.invoiceId] ?: return@mapNotNull null
-                SheetsSchema.productRow(product, invoice.proveedor, invoice.moneda, conversion)
-            }
-        )
-        sheets.spreadsheets().values()
-            .update(id, "'${descriptor.productosTitle}'!A1", ValueRange().setValues(values))
-            .setValueInputOption("RAW")
-            .execute()
-    }
-
-    /**
-     * Limpia el contenido de las hojas indicadas y, además, resetea los
-     * formatos de celda heredados (p.ej. una columna C con formato DATE
-     * proveniente de un sheet viejo). Sin esta limpieza, `USER_ENTERED`
-     * puede interpretar "18.03" como fecha serial 46099 (hoy) al caer en
-     * una celda previamente formateada como fecha.
-     */
-    private fun clearSheets(sheets: Sheets, id: String, titles: List<String>) {
-        // 1) Limpiar valores en A2:Z (no toca cabecera).
-        //    IMPORTANTE: los nombres de hoja con espacios o acentos
-        //    ("Facturas Recibidas") requieren comillas
-        //    simples en A1 notation, si no la API devuelve 400
-        //    "Unable to parse range". Si la hoja no existe (reexport a
-        //    un sheet viejo con "Gastos/Ingresos"), se ignora el error
-        //    y seguimos — la reapertura más abajo la crea.
-        titles.forEach { title ->
-            try {
-                sheets.spreadsheets().values().clear(id, "'$title'!A2:Z", null).execute()
-            } catch (e: Exception) {
-                SafeLog.w("SheetsExport", "clearSheets: hoja '$title' no existe aún, se omite")
-            }
-        }
-
-        // 2) Resetear formatos en TODO el rango A1:Z1000 de cada hoja para
-        //    borrar cualquier formato de celda heredado/obsoleto. Se usa
-        //    updateCells con fields=userEnteredFormat y sin filas → limpia
-        //    el formato de todas las celdas del rango.
-        val meta = sheets.spreadsheets().get(id).setIncludeGridData(false).execute()
-        val sheetIdByTitle = meta.sheets.associate {
-            (it.properties.title as String) to (it.properties.sheetId as Int)
-        }
-        val requests = titles.mapNotNull { title ->
-            val sheetId = sheetIdByTitle[title] ?: return@mapNotNull null
-            Request().setRepeatCell(
-                RepeatCellRequest()
-                    .setFields("userEnteredFormat")
-                    .setRange(
-                        com.google.api.services.sheets.v4.model.GridRange()
-                            .setSheetId(sheetId)
-                            .setStartRowIndex(0)
-                            .setEndRowIndex(1000)
-                            .setStartColumnIndex(0)
-                            .setEndColumnIndex(26)
-                    )
-                    .setCell(com.google.api.services.sheets.v4.model.CellData())
-            )
-        }
-        if (requests.isNotEmpty()) {
-            sheets.spreadsheets().batchUpdate(
-                id,
-                BatchUpdateSpreadsheetRequest().setRequests(requests)
-            ).execute()
-        }
-    }
-
-    /**
-     * Garantiza que existan las hojas AEAT en el spreadsheet. Crea vía
-     * batchUpdate (AddSheet) las que falten. Idempotente: si todas
-     * existen, no hace nada. Esencial al reexportar sobre un sheet
-     * viejo con "Gastos/Ingresos" (de versiones anteriores de la app),
-     * porque [writeRecibidas]/[writeIngresos] harían
-     * 400 "Unable to parse range" si la hoja destino no existe.
-     */
-    private fun ensureSheetsExist(sheets: Sheets, id: String, titles: List<String>) {
-        val meta = sheets.spreadsheets().get(id).setIncludeGridData(false).execute()
-        val existing = meta.sheets.map { it.properties.title as String }.toSet()
-        val missing = titles.filter { it !in existing }
-        if (missing.isEmpty()) return
-        SafeLog.d("SheetsExport", "ensureSheetsExist: creando hojas faltantes=$missing")
-        val addReqs = missing.map { title ->
-            Request().setAddSheet(
-                AddSheetRequest().setProperties(SheetProperties().setTitle(title))
-            )
-        }
-        sheets.spreadsheets().batchUpdate(
-            id,
-            BatchUpdateSpreadsheetRequest().setRequests(addReqs)
-        ).execute()
-    }
-
-    /** Retira pestañas de esquemas anteriores una vez creadas las actuales. */
-    private fun deleteLegacySheets(sheets: Sheets, id: String, titles: List<String>) {
-        val meta = sheets.spreadsheets().get(id).setIncludeGridData(false).execute()
-        val sheetIdByTitle = meta.sheets.associate {
-            (it.properties.title as String) to (it.properties.sheetId as Int)
-        }
-        val requests = titles.mapNotNull { title ->
-            val sheetId = sheetIdByTitle[title] ?: return@mapNotNull null
-            Request().setDeleteSheet(DeleteSheetRequest().setSheetId(sheetId))
-        }
-        if (requests.isNotEmpty()) {
-            sheets.spreadsheets().batchUpdate(
-                id,
-                BatchUpdateSpreadsheetRequest().setRequests(requests)
-            ).execute()
-        }
-    }
-
-    /**
-     * Pone la primera fila (cabecera) de cada hoja en negrita, sin
-     * destruir las celdas existentes.
-     *
-     * Implementación anterior usaba `UpdateCellsRequest` con
-     * `setRows([RowData([CellData])])`, que en la API de Sheets
-     * REEMPLAZA las celdas del rango (no las conserva), por lo que
-     * las cabeceras B-G (Gastos) y B-F (Ingresos) quedaban vacías tras
-     * la exportación. Ahora usamos `RepeatCellRequest` que sólo
-     * modifica el campo indicado en `fields`.
-     */
-    private fun formatHeaders(sheets: Sheets, id: String, sheetTitles: List<String>) {
-        // Obtener los sheetId numéricos para construir los rangos de formato.
-        val meta = sheets.spreadsheets().get(id).setIncludeGridData(false).execute()
-        val sheetIdByTitle = meta.sheets.associate {
-            (it.properties.title as String) to (it.properties.sheetId as Int)
-        }
-
-        val requests = mutableListOf<Request>()
-
-        // 1) Poner la cabecera en negrita (no destructivo, vía repeatCell).
-        sheetTitles.forEach { title ->
-            val sheetId = sheetIdByTitle[title] ?: return@forEach
-            requests.add(
-                Request().setRepeatCell(
-                    RepeatCellRequest()
-                        .setFields("userEnteredFormat.textFormat.bold")
-                        .setRange(
-                            com.google.api.services.sheets.v4.model.GridRange()
-                                .setSheetId(sheetId)
-                                .setStartRowIndex(0)
-                                .setEndRowIndex(1)
-                        )
-                        .setCell(
-                            com.google.api.services.sheets.v4.model.CellData()
-                                .setUserEnteredFormat(
-                                    CellFormat().setTextFormat(
-                                        TextFormat().setBold(true)
-                                    )
-                                )
-                        )
-                )
-            )
-        }
-
-        // 2) Forzar formato numérico en las columnas de cantidades de
-        //    las hojas AEAT para que SUM() las sume siempre (índices
-        //    0-based): Recibidas F(base=5),G(IVA=6),H(cuota=7),I(recargo=8),
-        //    J(IRPF=9),K(total=10),P(total original=15),R(tasa=17) —
-        //    Ingresos C-F (importe/devengado/líquido/IRPF), L-N originales,
-        //    P(tasa) — Productos B,C,D,E,F y J/K/L/N.
-        val numericColumns = mapOf(
-            SheetsSchema.RECIBIDAS to listOf(5..5, 6..6, 7..7, 8..8, 9..9, 10..10, 15..15, 17..17),
-            SheetsSchema.INGRESOS to listOf(2..5, 11..13, 15..15),
-            SheetsSchema.PRODUCTOS to listOf(1..1, 2..2, 3..3, 4..4, 5..5, 9..11, 13..13)
-        )
-        numericColumns.forEach { (title, ranges) ->
-            val sheetId = sheetIdByTitle[title] ?: return@forEach
-            ranges.forEach { colRange ->
-                requests.add(
-                    Request().setRepeatCell(
-                        RepeatCellRequest()
-                            .setFields("userEnteredFormat.numberFormat")
-                            .setRange(
-                                com.google.api.services.sheets.v4.model.GridRange()
-                                    .setSheetId(sheetId)
-                                    .setStartRowIndex(1)
-                                    .setStartColumnIndex(colRange.first)
-                                    .setEndColumnIndex(colRange.last + 1)
-                            )
-                            .setCell(
-                                com.google.api.services.sheets.v4.model.CellData()
-                                    .setUserEnteredFormat(
-                                        CellFormat().setNumberFormat(
-                                            NumberFormat()
-                                                .setType("NUMBER")
-                                                .setPattern("#,##0.00")
-                                        )
-                                    )
-                            )
-                    )
-                )
-            }
-        }
-
-        if (requests.isNotEmpty()) {
-            sheets.spreadsheets().batchUpdate(
-                id,
-                BatchUpdateSpreadsheetRequest().setRequests(requests)
-            ).execute()
-        }
-    }
-
     private fun resolveSchemaLocale(): SheetsSchema.LocaleCode {
         val configuration = context.resources.configuration
         val language = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
@@ -627,14 +314,11 @@ class SheetsExportService @Inject constructor(
     }
 
     private fun resolveSpreadsheetLocale(drive: Drive, sheets: Sheets, spreadsheetId: String): SheetsSchema.LocaleCode? {
-        val file = runCatching { drive.files().get(spreadsheetId).setFields("appProperties").execute() }.getOrNull()
-        val sheetMeta = runCatching { sheets.spreadsheets().get(spreadsheetId).setIncludeGridData(false).execute() }.getOrNull()
-        val titles = sheetMeta?.sheets.orEmpty().mapNotNull { it.properties?.title }
-        val headers = titles.firstOrNull()?.let { title ->
-            runCatching { sheets.spreadsheets().values().get(spreadsheetId, "'$title'!A1:U1").execute().getValues()?.firstOrNull()?.map { it.toString() } }.getOrNull()
-        }
-        return SheetsSchema.detectLocale(file?.appProperties, titles, headers)
+        val file = drive.files().get(spreadsheetId).setFields("appProperties").execute()
+        val metadata = sheets.spreadsheets().get(spreadsheetId).setIncludeGridData(false).execute()
+        return SheetsSchema.detectLocale(file.appProperties, metadata.sheets.map { it.properties.title }, emptyList())
     }
+
 }
 
 internal fun selectNewestSpreadsheetId(files: List<DriveFile>): String? = files

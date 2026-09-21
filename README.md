@@ -9,15 +9,15 @@
 ## ✨ Características principales
 
 - 🤖 **Asistente IA (Gemini)** — chat conversacional con memoria local; streaming solo en Premium e instrucciones personalizables.
-- 📷 **Escaneo de facturas y nóminas** — desde el propio chat (cámara o galería): extrae proveedor, fecha, número de factura, total, base imponible, IVA, IRPF, NIF y líneas de producto, distinguiendo nóminas de facturas.
+- 📷 **Escaneo de facturas y nóminas** — desde el propio chat (cámara o galería): registra directamente el total o líquido leído, conservando proveedor, fecha, número, impuestos y productos disponibles. Los desgloses incompletos o con diferencias no bloquean el registro ni crean una revisión pendiente. Mantiene la detección de duplicados.
 - 🎙️ **Comandos por voz** — registra gastos, ingresos o consulta tu balance hablando (SpeechRecognizer de Android, es-ES).
 - 💬 **Chat con streaming** — el asistente responde en tiempo real, recordando el contexto de la conversación.
 - 🛒 **Consultas inteligentes** — entiende periodos ("esta semana", "en julio"), productos concretos ("agua", "café") y aclara ambigüedades mostrando las coincidencias exactas antes de decidir.
 - 📊 **Dashboard** — resumen de ingresos, gastos, balance, actividad de los últimos 7 días, desglose por categoría y calendario financiero mensual configurable.
 - 🏷️ **Categorías y subcategorías** — gastos e ingresos con etiquetas predeterminadas o personalizadas, propuestas automáticamente por la IA desde texto, voz y OCR. Filtran listas, alimentan el Dashboard y viajan a Sheets.
 - 🧾 **Gestión completa** de facturas/gastos, productos e ingresos (CRUD).
-- ☁️ **Google Sheets: exportación + sincronización multimoneda** — Sheet con Facturas Recibidas, Ingresos unificados, Productos y Resumen, con importes convertidos a tu moneda local.
-- 🔄 **Sincronización bidireccional** — altas, ediciones y borrados en la app se reflejan automáticamente (upsert/delete por ID de registro). “Forzar sincronización” reexporta el Sheet completo.
+- ☁️ **Google Sheets: exportación + sincronización multimoneda** — Libro continuo con Facturas Recibidas, Ingresos, Productos, Impuestos, Resumen y Análisis personal, con filtros por mes/año e importes originales y convertidos.
+- 🔄 **Sincronización FinAI → Sheets** — altas, ediciones y borrados se identifican por UUID y se envían al libro y cuenta concretos. Las columnas y hojas personales se conservan. Los cambios en Sheets no se importan a la app.
 - ☁️ **Google Drive** — subida automática de las imágenes de gastos e ingresos si Premium y Google están conectados, con reintento y limpieza del temporal de cámara.
 - 🗑️ **Fotos remotas** — borrar una factura local no elimina automáticamente su foto de Drive; la copia remota se conserva, salvo que se marque expresamente la opción de borrado del archivo remoto.
 - 💎 **Premium** (pago único vía Google Play Billing, con flag debug independiente) — amplía la memoria del asistente de 3 a 10 turnos y desbloquea Sheets/Drive.
@@ -73,7 +73,7 @@ Arquitectura **modular multi-módulo** en 3 capas (clean-ish), con inyección de
 
 ## 🤖 Inteligencia Artificial (Gemini)
 
-FinAI usa **Gemini** con la clave propia del usuario. La cadena mantiene `gemini-3.6-flash` como principal y `gemini-3.8-flash` como primer respaldo y `gemini-3.5-flash-lite` como último respaldo: como máximo cuatro solicitudes por operación, 90 segundos para chat y 180 para OCR. No cambia de modelo ante credenciales inválidas, bloqueos de seguridad o restricciones globales conocidas. La disponibilidad y las cuotas dependen de Google y del proyecto del usuario; el respaldo no garantiza capacidad gratuita adicional. Tras empezar a mostrar una respuesta, una interrupción conserva el texto y ofrece reintentar su sustitución. El nivel de thinking se mantiene bajo en chat y consultas, y medio en OCR.
+FinAI usa **Gemini** con la clave propia del usuario. La cadena mantiene `gemini-3.6-flash` como principal y `gemini-3.8-flash` como primer respaldo y `gemini-3.5-flash-lite` como último respaldo: como máximo cuatro solicitudes por operación, 90 segundos para chat y 135 para OCR. No cambia de modelo ante credenciales inválidas, bloqueos de seguridad o restricciones globales conocidas. La disponibilidad y las cuotas dependen de Google y del proyecto del usuario; el respaldo no garantiza capacidad gratuita adicional. Tras empezar a mostrar una respuesta, una interrupción conserva el texto y ofrece reintentar su sustitución. El nivel de thinking se mantiene bajo en chat y consultas, y medio en OCR.
 
 ### Configuración
 1. Obtén una API key gratuita en **[Google AI Studio](https://aistudio.google.com/apikey)**.
@@ -96,15 +96,18 @@ FinAI usa **Gemini** con la clave propia del usuario. La cadena mantiene `gemini
 
 Desde **Backup** puedes vincular tu cuenta de Google:
 
-- **Permiso solicitado** — el único scope OAuth de Google solicitado por FinAI es `https://www.googleapis.com/auth/drive.file`, que autoriza a la API de Sheets para crear y mantener exclusivamente el spreadsheet generado por la app. No usamos el scope sensible `spreadsheets`.
-- **Exportar a Sheets** — crea (o reescribe) un spreadsheet con 4 hojas: *Facturas Recibidas*, *Ingresos*, *Productos* y *Resumen*. Nóminas y otros ingresos comparten una hoja con campos salariales opcionales.
-2. **Multimoneda** — cada fila conserva el importe original y su moneda; se añade además el **importe convertido a tu moneda local** usando la tasa vigente. La hoja *Resumen* agrega esos importes convertidos para mostrar el balance real.
-3. **Sincronización en segundo plano** — a partir de ahí, cada alta, **edición o borrado** en la app se refleja en el Sheet:
-   - Cada hoja lleva una columna de **ID** estable (ID del registro / InvoiceID en productos).
-   - Alta/edición → *upsert* por ID (actualiza la fila si existe, la añade si no).
-   - Borrado de gasto → elimina su fila y las de sus productos.
-   - El *Resumen* se refresca tras cada operación.
-4. **Forzar sincronización** — reexporta toda la base de datos al Sheet vinculado (migración automática al esquema v7). Úsalo la primera vez o si el Sheet se creó con una versión antigua de la app.
+- **Permisos** — `drive.file` para el libro y las fotografías que autoriza FinAI; `drive.appdata` para las copias cifradas privadas. No se solicita el scope amplio `spreadsheets`.
+- **Un libro continuo** — seis hojas funcionales: *Facturas Recibidas* (gastos), *Ingresos*, *Productos*, *Impuestos*, *Resumen* y *Análisis personal*. No se crea un archivo por mes. En Resumen, año y mes admiten `0` para todos; las tablas tienen filtros.
+- **Sincronizar cambios** — un toque comprueba y actualiza los datos del libro vinculado, incluidos productos, impuestos y borrados pendientes, en una operación conjunta. El botón espera la confirmación de Google y muestra el resultado real. Cada documento se identifica por UUID y los reintentos no duplican filas. La cola visible pertenece a la cuenta y al libro actuales; la sincronización en segundo plano omite documentos sin cambios ya confirmados.
+- **Impuestos fieles** — se exportan los componentes disponibles y su relación con documento o producto, incluyendo retenciones. Lo desconocido queda vacío. Bruto y neto solo se muestran cuando se conocen.
+- **Resumen remoto** — las fórmulas usan las filas del libro. Los cambios que siguen en el teléfono se muestran como pendientes en la app. Las conversiones ausentes producen totales parciales o no disponibles.
+- **Datos personales del libro** — se actualizan solo columnas gestionadas por FinAI. Borrar un documento vacía sus celdas gestionadas y conserva las columnas personales, sin desplazar filas. El contenido en *Análisis personal* queda a cargo del usuario.
+- **Migración al esquema 9** — mantiene libro y enlace. Antes de reconstruir, verifica una copia de recuperación privada en el teléfono, con hojas, valores, fórmulas y formatos; no crea otro libro en Drive. Una versión desconocida, superior o una identidad antigua ambigua detiene la operación.
+- **Un vínculo duradero** — un libro en la papelera o inaccesible produce un error concreto, sin crear un sustituto. Si se interrumpe la creación inicial, FinAI busca el archivo marcado antes de volver a intentarlo y conserva su enlace antes de escribir datos.
+- **Un teléfono escritor** — el libro guarda el identificador de la instalación encargada de sincronizar. Para cambiarlo, restaura primero los datos en el nuevo teléfono y usa la transferencia explícita en Opciones avanzadas. Detén la sincronización del anterior antes de transferir; no es edición concurrente entre dispositivos.
+- **Abrir en Sheets** — disponible siempre que exista un libro vinculado, incluso sin exportar durante la sesión actual.
+
+La app no importa las ediciones de Sheets. Para mantener los movimientos sincronizados, edítalos en FinAI; utiliza columnas y hojas personales para anotaciones y análisis propios.
 
 ---
 
@@ -113,7 +116,7 @@ Desde **Backup** puedes vincular tu cuenta de Google:
 FinAI usa un formato portable `.finai` para que una copia sobreviva a la desinstalación y pueda recuperarse en otro dispositivo:
 
 1. **Backup manual gratuito** — configura una contraseña de recuperación y exporta el archivo con el selector de Android a Drive, Descargas, USB u otra ubicación elegida por ti.
-2. **Contenido** — conserva facturas, productos, ingresos, categorías fiscales, historial del chat, UUID, referencias a imágenes de Drive y ajustes no sensibles. La exportación manual empieza en **solo datos**; la opción **completa** añade las fotografías locales y descarga las remotas necesarias. Si falta alguna, no se presenta como completa.
+2. **Contenido** — conserva facturas, productos, ingresos, categorías fiscales, historial del chat, UUID, referencias a imágenes de Drive, identidad de operaciones de texto/voz y ajustes no sensibles. La exportación manual empieza en **solo datos**; la opción **completa** añade las fotografías locales y descarga las remotas necesarias. Si falta alguna, no se presenta como completa.
 3. **Datos excluidos** — no copia la API key de Gemini, credenciales OAuth, estado Premium ni caché de tipos de cambio.
 4. **Cifrado** — el contenido se cifra con AES-256-GCM; la clave de datos se protege mediante PBKDF2 y la contraseña elegida por el usuario.
 5. **Restauración** — selecciona el archivo, revisa el resumen y confirma. La operación valida y descifra toda la copia antes de reemplazar los datos actuales en una única transacción de Room.
@@ -214,7 +217,7 @@ La build de desarrollo se ha validado con:
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-La suite instrumentada actual pasa **10/10 tests**. También se ha comprobado en el dispositivo el registro de gastos e ingresos por lenguaje natural, consultas de productos y filtros de categoría/subcategoría, además del OCR de una factura real desde la galería. Room utiliza el esquema v11 (con migraciones desde v9/v10) y el outbox de sincronización remota está en v3.
+Room utiliza el esquema **15** y la cola remota el esquema **5**, con migraciones no destructivas. Las pruebas de esta entrega y sus límites se documentan en `docs/implementation/finai-reliability-progress.md`. Las verificaciones con servicios simulados no equivalen a una prueba contra una cuenta real de Google.
 
 El lint dirigido no presenta incidencias propias en `feature:ai`; `feature:chatbot` y `feature:invoices` solo muestran avisos procedentes de `google-http-client` (`TrustAllX509TrustManager`).
 
@@ -281,7 +284,7 @@ FinAI/
 - Los datos financieros se almacenan **localmente** en tu dispositivo (Room/SQLite).
 - Los **mensajes al asistente** se envían a la API de Gemini para su procesamiento.
 - Las imágenes elegidas para escanear también se envían a Gemini; con Premium y Google conectado, la foto guardada se sube a Drive.
-- La exportación/sincronización con Google Sheets usa el scope limitado `drive.file`: solo puede acceder al spreadsheet creado por FinAI y nunca a otras hojas de tu Drive.
+- La exportación/sincronización con Google Sheets usa el scope limitado `drive.file`: solo permite acceder a archivos creados o expresamente autorizados para FinAI, sin acceso general a todo Drive.
 - Los permisos de Google pueden revocarse en cualquier momento desde [myaccount.google.com/permissions](https://myaccount.google.com/permissions). FinAI sigue funcionando con almacenamiento local.
 - La API key de Gemini se guarda **cifrada** en el dispositivo (EncryptedSharedPreferences) y no se comparte.
 - El backup manual `.finai` está cifrado; Premium puede guardar hasta cinco copias cifradas en el espacio privado de Drive y eliminarlas desde la app.

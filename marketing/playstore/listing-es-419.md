@@ -1,7 +1,6 @@
-# Ficha de Play Store — FinAI (es-419, Latinoamérica)
+# Ficha de Google Play — FinAI (es-419, Latinoamérica)
 
-> Variante adaptada: LATAM busca "ingresos y egresos", "ahorro" y "presupuesto".
-> Sin sesgo fiscal español ("€", "autónomos", NIF) → fiscal neutral.
+> Propuesta ASO revisada el 20/09/2026. Pendiente de publicación.
 
 ## Nombre (24/30)
 
@@ -9,48 +8,59 @@
 FinAI: Control de Gastos
 ```
 
-## Descripción breve (80/80)
+## Descripción breve (74/80)
 
 ```
-Controla tus gastos e ingresos, escanea facturas, lleva tu presupuesto y ahorra con IA.
+Escanea recibos y facturas con IA. Registra gastos e ingresos con detalle.
 ```
 
-## Descripción completa (2.960/4.000)
+## Descripción completa
 
 ```
-FinAI: Control de Gastos — tu gestor de gastos e ingresos con inteligencia artificial. Olvídate de las hojas de cálculo: registra tus gastos diarios, escanea facturas y entiende tus finanzas personales hablando con la app, como con un asesor financiero. Pensada para freelancers y pequeños negocios que necesitan el control de sus gastos e ingresos del día a día y mantener su presupuesto bajo control.
+FinAI convierte fotos y frases en movimientos financieros organizados. Registra gastos e ingresos, escanea recibos, facturas y comprobantes de pago, y consulta tu balance desde una app diseñada para ahorrar pasos sin ocultarte los datos.
 
-📷 ESCANEA FACTURAS CON LA CÁMARA
-Toma una foto de cualquier factura o ticket para escanear sus datos al instante. La IA extrae automáticamente proveedor, fecha, número de factura, total, base imponible, IVA, identificación fiscal y productos con precios. Soporta gastos e ingresos: sueldos, facturas de venta y tickets. Sin escribir ni un solo dato a mano.
+CAPTURA DOCUMENTOS CON IA
+Toma una foto o elige una imagen. FinAI puede extraer comercio o emisor, fecha, número de factura, total, subtotal, identificación fiscal, impuestos y líneas de producto. También reconoce ingresos como comprobantes de sueldo y facturas de venta.
 
-🤖 ASISTENTE DE IA
-Integra Gemini 3.6 Flash para controlar tus gastos de forma natural. Di "gasté 200 pesos en café" o "cobré mi sueldo" y se registra al instante. Pregunta "¿cuánto gasté este mes?", "¿cuál es mi balance?" o "¿cuánto gasté en supermercado?" y obtén la respuesta al momento. La IA recuerda el contexto de la conversación y sugiere categorías y subcategorías automáticamente.
+La lectura se valida antes de afectar tus cuentas. Si los datos son coherentes, el movimiento se guarda automáticamente. Si falta información o los importes no coinciden, la foto queda pendiente para reintentarla sin añadir cifras dudosas al balance.
 
-🎙️ COMANDOS POR VOZ
-Dicta tus transacciones mientras conduces o cocinas: la voz se convierte en texto y la IA la procesa al instante.
+EVITA REGISTROS REPETIDOS
+FinAI comprueba la identidad del documento antes de guardar. Si detecta una factura o un comprobante ya registrado, te avisa y te permite abrir el movimiento existente.
 
-📊 PANEL FINANCIERO
-Balance del mes, ingresos, egresos y actividad semanal de un vistazo. Estadísticas interactivas con porcentajes, calendario financiero mensual y widgets reordenables para ver solo lo que te importa. Entiende en qué gastas, ajusta tu presupuesto… y ahorra más.
+CONSERVA EL DESGLOSE DE IMPUESTOS
+Un documento puede incluir varios impuestos, importes exentos, tasas al 0 % o retenciones. FinAI conserva los componentes impresos en lugar de reducirlos a un único porcentaje. Puedes revisar y editar cada dato cuando lo necesites.
 
-📋 GESTIÓN COMPLETA
-Facturas con proveedor, número de factura, fecha, IVA, identificación fiscal e imagen. Ingresos con concepto, devengado, neto, moneda y fuente. Productos con cantidad, precio unitario y subtotal. Categorías y subcategorías personalizables, con configuración fiscal por país: México, Argentina, Colombia, Chile, Perú, España y más.
+REGISTRA Y PREGUNTA DE FORMA NATURAL
+Escribe o dicta frases como «gasté 200 pesos en transporte» o «recibí mi sueldo». También puedes preguntar cuánto gastaste, qué ingresos recibiste o cuál es tu balance. Los cálculos usan los movimientos guardados y muestran cuándo falta una conversión de moneda.
 
-☁️ EXPORTACIÓN A GOOGLE SHEETS
-Exporta tus datos a un Google Sheet con 4 hojas: Gastos, Ingresos, Productos y Resumen con fórmulas automáticas. Una vez vinculado, cada alta, edición o borrado se sincroniza automáticamente.
+TODO TU CONTROL FINANCIERO EN UN SOLO LUGAR
+• Panel mensual con gastos, ingresos, balance y actividad reciente.
+• Categorías y subcategorías personalizables.
+• Registros editables de gastos, ingresos y productos.
+• Calendario y estadísticas por periodo y categoría.
+• Compatibilidad con varias monedas y formatos numéricos.
+• Exportación a CSV y PDF.
 
-💾 COPIA DE SEGURIDAD EN GOOGLE DRIVE
-Copia de seguridad cifrada (AES-256) de tu base de datos en tu Drive personal, con versiones anteriores y restauración. También exporta a CSV o PDF para compartir por correo o WhatsApp.
+GOOGLE DRIVE Y GOOGLE SHEETS
+Con Premium, sincroniza desde FinAI a un mismo libro de Google Sheets: gastos, ingresos, productos, impuestos y resumen, con filtros por mes y año y espacio para tu análisis. Las hojas y columnas personales se conservan. Guarda automáticamente en Drive las fotos de gastos e ingresos. Las copias cifradas automáticas guardan datos y referencias; las imágenes se sincronizan por separado.
 
-🔒 PRIVACIDAD Y SEGURIDAD
-Tus datos financieros se almacenan exclusivamente en tu dispositivo. Sin publicidad ni rastreadores. Google Sheets y Drive requieren tu autorización OAuth explícita y solo acceden a los archivos que crea la app. Sin registro ni cuenta obligatoria.
+BACKUP CIFRADO Y RECUPERABLE
+Exporta una copia .finai protegida con tu contraseña. Elige solo datos o una copia completa con fotografías. Las copias conservan movimientos, productos, historial, ajustes fiscales e identificadores necesarios para recuperar las imágenes vinculadas.
 
-⭐ PREMIUM — compra única
-• Exportación y sincronización con Google Sheets.
-• Copia de seguridad automática en Google Drive.
-• Chat IA con memoria extendida (10 turnos).
+PRIVACIDAD Y CONTROL
+Los movimientos y el historial se guardan en el dispositivo. Las funciones de IA envían a Gemini el texto, documento y contexto necesario para tu solicitud, mediante la clave API que configuras. Drive y Sheets solo se usan cuando conectas tu cuenta de Google y autorizas esas funciones.
 
 REQUISITOS
-Android 8.0+. Internet necesario para el asistente IA (los mensajes se envían a la API de Gemini). API key gratuita de Gemini configurable en Ajustes. Cámara y micrófono opcionales.
+• Android 8.0 o posterior.
+• Clave propia de la API de Gemini para chat, voz y lectura de documentos.
+• Internet para IA, tipos de cambio y servicios de Google.
+• Algunas funciones de Drive, Sheets y memoria ampliada requieren Premium.
 
-Descarga FinAI gratis y toma el control de tu dinero: registra, escanea facturas y ahorra cada mes.
+FinAI te ayuda a registrar menos a mano y a mantener gastos, ingresos y documentos bajo control.
 ```
+
+## Intención de búsqueda cubierta
+
+- Principal: control de gastos, gastos e ingresos.
+- Diferenciación: escanear recibos, escanear facturas, comprobantes de sueldo.
+- Confianza: detectar duplicados, varios impuestos, backup cifrado.

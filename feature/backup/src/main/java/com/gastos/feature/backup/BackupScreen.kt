@@ -40,6 +40,10 @@ fun BackupScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val locale = LocalLocale.current.platformLocale
+    var showReportDialog by remember { mutableStateOf(false) }
+    var reportFormat by remember { mutableStateOf(ReportFormat.CSV) }
+    var showSheetsAdvanced by remember { mutableStateOf(false) }
+    var confirmSheetsAction by remember { mutableStateOf<String?>(null) }
     var exportMode by remember { mutableStateOf(BackupMode.DATA_ONLY) }
     var showPasswordSetup by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
@@ -82,6 +86,38 @@ fun BackupScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         viewModel.handleSignInResult(result.data)
+    }
+
+    if (showReportDialog) {
+        AlertDialog(onDismissRequest = { showReportDialog = false }, title = { Text(stringResource(R.string.export_report)) },
+            text = {
+                Column {
+                    ReportFormat.entries.forEach { format ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = reportFormat == format, onClick = { reportFormat = format })
+                            Text(format.name)
+                        }
+                    }
+                }
+            }, confirmButton = {
+                TextButton(onClick = {
+                    showReportDialog = false
+                    val name = "finai_report_${System.currentTimeMillis()}.${reportFormat.extension}"
+                    if (reportFormat == ReportFormat.CSV) exportCsvLauncher.launch(name) else exportPdfLauncher.launch(name)
+                }) { Text(stringResource(R.string.save_report)) }
+            }, dismissButton = {
+                TextButton(onClick = { showReportDialog = false; viewModel.shareReport(context, reportFormat) }) { Text(stringResource(R.string.share_report)) }
+            })
+    }
+    confirmSheetsAction?.let { action ->
+        AlertDialog(onDismissRequest = { confirmSheetsAction = null },
+            title = { Text(stringResource(if (action == "rebuild") R.string.sheets_rebuild else R.string.sheets_takeover)) },
+            text = { Text(stringResource(if (action == "rebuild") R.string.sheets_rebuild_explanation else R.string.sheets_takeover_explanation)) },
+            confirmButton = { TextButton(onClick = {
+                confirmSheetsAction = null
+                if (action == "rebuild") viewModel.rebuildSheets() else viewModel.takeOverSheets()
+            }) { Text(stringResource(R.string.confirm_sheet_action)) } },
+            dismissButton = { TextButton(onClick = { confirmSheetsAction = null }) { Text(stringResource(R.string.cancel_report)) } })
     }
 
     Scaffold(
@@ -276,17 +312,9 @@ fun BackupScreen(
                                 ) {
                                     Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text(stringResource(R.string.create_now_action))
+                                    Text(stringResource(R.string.create_backup))
                                 }
-                                OutlinedButton(
-                                    onClick = viewModel::loadCloudBackups,
-                                    modifier = Modifier.weight(1f),
-                                    enabled = !uiState.isCloudLoading
-                                ) {
-                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(stringResource(R.string.update_action))
-                                }
+
                             }
                             uiState.cloudBackupStatus.lastSuccessAt?.let { timestamp ->
                                 Text(
@@ -298,6 +326,11 @@ fun BackupScreen(
                             uiState.cloudBackupStatus.lastError?.let { message ->
                                 Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                             }
+                            TextButton(onClick = viewModel::loadCloudBackups, enabled = !uiState.isCloudLoading) {
+                                Icon(Icons.Default.Refresh, contentDescription = null)
+                                Text(stringResource(R.string.refresh_backup_list))
+                            }
+                            uiState.cloudListError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                             if (uiState.cloudBackups.isNotEmpty()) {
                                 HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
                                 Text(stringResource(R.string.available_backups_section), style = MaterialTheme.typography.titleSmall)
@@ -359,28 +392,24 @@ fun BackupScreen(
                             Text(stringResource(R.string.connect_google_account_action))
                         }
                     } else {
-                        // Si ya hay sheet vinculado: botón sincronizar + re-exportar
                         if (uiState.hasSheetLink) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = { viewModel.exportToSheets() },
-                                    modifier = Modifier.weight(1f),
-                                    enabled = !uiState.isExportingSheets
-                                ) {
-                                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(stringResource(R.string.sync_action))
-                                }
-                                OutlinedButton(
-                                    onClick = { viewModel.syncAllToSheets() },
-                                    modifier = Modifier.weight(1f),
-                                    enabled = !uiState.isExportingSheets
-                                ) {
-                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(stringResource(R.string.force_action))
-                                }
+                            Button(onClick = { viewModel.exportToSheets() }, enabled = !uiState.isExportingSheets,
+                                modifier = Modifier.fillMaxWidth()) {
+                                if (uiState.isExportingSheets) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary)
+                                else Icon(Icons.Default.Sync, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(if (uiState.isExportingSheets) R.string.sheets_syncing_changes else R.string.sync_changes))
                             }
+                            TextButton(onClick = { showSheetsAdvanced = !showSheetsAdvanced }) { Text(stringResource(R.string.sheets_advanced)) }
+                            if (showSheetsAdvanced) {
+                                TextButton(onClick = { confirmSheetsAction = "rebuild" }, enabled = !uiState.isExportingSheets) { Text(stringResource(R.string.sheets_rebuild)) }
+                                TextButton(onClick = { confirmSheetsAction = "takeover" }, enabled = !uiState.isExportingSheets) { Text(stringResource(R.string.sheets_takeover)) }
+                            }
+                            Text(stringResource(R.string.sheets_queue_state, uiState.sheetsPending, uiState.sheetsFailed), style = MaterialTheme.typography.bodySmall)
+                            if (uiState.sheetsSynced && uiState.sheetsPending == 0 && uiState.sheetsFailed == 0)
+                                Text(stringResource(R.string.sheets_all_synced), style = MaterialTheme.typography.bodySmall)
+
                         } else {
                             Button(
                                 onClick = { viewModel.exportToSheets() },
@@ -402,7 +431,8 @@ fun BackupScreen(
                         }
                     }
 
-                    // URL resultante
+                    (uiState.sheetsError ?: uiState.sheetsSyncError)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    // Persistent workbook access is independent of the last sync result.
                     uiState.sheetsUrl?.let { url ->
                         Spacer(modifier = Modifier.height(12.dp))
                         Card(
@@ -411,12 +441,7 @@ fun BackupScreen(
                             )
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text(
-                                    stringResource(R.string.spreadsheet_synced_message),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
+
                                 OutlinedButton(
                                     onClick = {
                                         externalLinkError = openTrustedUrl(
@@ -474,58 +499,14 @@ fun BackupScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", locale).format(Date())
-                                exportCsvLauncher.launch("finai_export_$timestamp.csv")
-                            },
-                            modifier = Modifier.weight(1f),
-                            enabled = !uiState.isExporting
-                        ) {
-                            if (uiState.isExporting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            } else {
-                                Icon(Icons.Default.Description, contentDescription = null)
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.csv))
-                        }
-
-                        Button(
-                            onClick = {
-                                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", locale).format(Date())
-                                exportPdfLauncher.launch("finai_informe_$timestamp.pdf")
-                            },
-                            modifier = Modifier.weight(1f),
-                            enabled = !uiState.isExporting
-                        ) {
-                            if (uiState.isExporting) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.onPrimary
-                                )
-                            } else {
-                                Icon(Icons.Default.PictureAsPdf, contentDescription = null)
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.pdf))
-                        }
-
-                        Button(
-                            onClick = { viewModel.shareBackup(context) },
-                            modifier = Modifier.weight(1f),
-                            enabled = !uiState.isExporting
-                        ) {
-                            Icon(Icons.Default.Share, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.share_action))
-                        }
+                    Button(onClick = { showReportDialog = true }, enabled = !uiState.isExporting, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Description, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.export_report))
+                    }
+                    if (uiState.isExporting) {
+                        LinearProgressIndicator(progress = { uiState.reportProgress }, modifier = Modifier.fillMaxWidth())
+                        TextButton(onClick = viewModel::cancelReport) { Text(stringResource(R.string.cancel_report)) }
                     }
                 }
             }

@@ -1,0 +1,1224 @@
+> Task :core:common:preBuild UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :core:common:preDebugBuild UP-TO-DATE
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:data:preBuild UP-TO-DATE
+> Task :core:data:preDebugBuild UP-TO-DATE
+> Task :core:common:writeDebugAarMetadata UP-TO-DATE
+> Task :core:data:writeDebugAarMetadata UP-TO-DATE
+> Task :core:domain:preBuild UP-TO-DATE
+> Task :feature:ai:preBuild UP-TO-DATE
+> Task :core:domain:preDebugBuild UP-TO-DATE
+> Task :feature:ai:preDebugBuild UP-TO-DATE
+> Task :feature:ai:writeDebugAarMetadata UP-TO-DATE
+> Task :core:domain:writeDebugAarMetadata UP-TO-DATE
+> Task :feature:backup:preBuild UP-TO-DATE
+> Task :feature:backup:preDebugBuild UP-TO-DATE
+> Task :feature:chatbot:preBuild UP-TO-DATE
+> Task :feature:chatbot:preDebugBuild UP-TO-DATE
+> Task :feature:backup:writeDebugAarMetadata UP-TO-DATE
+> Task :feature:dashboard:preBuild UP-TO-DATE
+> Task :feature:dashboard:preDebugBuild UP-TO-DATE
+> Task :feature:chatbot:writeDebugAarMetadata UP-TO-DATE
+> Task :feature:incomes:preBuild UP-TO-DATE
+> Task :feature:incomes:preDebugBuild UP-TO-DATE
+> Task :feature:dashboard:writeDebugAarMetadata UP-TO-DATE
+> Task :feature:invoices:preBuild UP-TO-DATE
+> Task :feature:invoices:preDebugBuild UP-TO-DATE
+> Task :feature:incomes:writeDebugAarMetadata UP-TO-DATE
+> Task :feature:settings:preBuild UP-TO-DATE
+> Task :feature:settings:preDebugBuild UP-TO-DATE
+> Task :feature:invoices:writeDebugAarMetadata UP-TO-DATE
+> Task :feature:settings:writeDebugAarMetadata UP-TO-DATE
+> Task :feature:voice:preBuild UP-TO-DATE
+> Task :feature:voice:preDebugBuild UP-TO-DATE
+> Task :feature:voice:writeDebugAarMetadata UP-TO-DATE
+> Task :app:generateDebugResValues UP-TO-DATE
+> Task :core:common:generateDebugResValues UP-TO-DATE
+> Task :core:common:generateDebugResources UP-TO-DATE
+> Task :core:common:packageDebugResources UP-TO-DATE
+> Task :core:data:generateDebugResValues UP-TO-DATE
+> Task :core:data:generateDebugResources UP-TO-DATE
+> Task :core:data:packageDebugResources UP-TO-DATE
+> Task :core:domain:generateDebugResValues UP-TO-DATE
+> Task :core:domain:generateDebugResources UP-TO-DATE
+> Task :core:domain:packageDebugResources UP-TO-DATE
+> Task :feature:ai:generateDebugResValues UP-TO-DATE
+> Task :feature:ai:generateDebugResources UP-TO-DATE
+> Task :feature:ai:packageDebugResources UP-TO-DATE
+> Task :feature:backup:generateDebugResValues UP-TO-DATE
+> Task :feature:backup:generateDebugResources UP-TO-DATE
+> Task :feature:backup:packageDebugResources UP-TO-DATE
+> Task :feature:chatbot:generateDebugResValues UP-TO-DATE
+> Task :feature:chatbot:generateDebugResources UP-TO-DATE
+> Task :feature:chatbot:packageDebugResources UP-TO-DATE
+> Task :feature:dashboard:generateDebugResValues UP-TO-DATE
+> Task :feature:dashboard:generateDebugResources UP-TO-DATE
+> Task :feature:dashboard:packageDebugResources UP-TO-DATE
+> Task :feature:incomes:generateDebugResValues UP-TO-DATE
+> Task :feature:incomes:generateDebugResources UP-TO-DATE
+> Task :feature:incomes:packageDebugResources UP-TO-DATE
+> Task :feature:invoices:generateDebugResValues UP-TO-DATE
+> Task :feature:invoices:generateDebugResources UP-TO-DATE
+> Task :feature:invoices:packageDebugResources UP-TO-DATE
+> Task :feature:settings:generateDebugResValues UP-TO-DATE
+> Task :feature:settings:generateDebugResources UP-TO-DATE
+> Task :feature:settings:packageDebugResources UP-TO-DATE
+> Task :feature:voice:generateDebugResValues UP-TO-DATE
+> Task :feature:voice:generateDebugResources UP-TO-DATE
+> Task :feature:voice:packageDebugResources UP-TO-DATE
+> Task :core:common:extractDeepLinksDebug UP-TO-DATE
+> Task :core:common:processDebugManifest UP-TO-DATE
+> Task :core:data:extractDeepLinksDebug UP-TO-DATE
+> Task :core:data:processDebugManifest UP-TO-DATE
+> Task :core:domain:extractDeepLinksDebug UP-TO-DATE
+> Task :core:domain:processDebugManifest UP-TO-DATE
+> Task :feature:ai:extractDeepLinksDebug UP-TO-DATE
+> Task :feature:ai:processDebugManifest UP-TO-DATE
+> Task :feature:backup:extractDeepLinksDebug UP-TO-DATE
+> Task :feature:backup:processDebugManifest UP-TO-DATE
+> Task :feature:chatbot:extractDeepLinksDebug UP-TO-DATE
+> Task :feature:chatbot:processDebugManifest UP-TO-DATE
+> Task :feature:dashboard:extractDeepLinksDebug UP-TO-DATE
+> Task :feature:dashboard:processDebugManifest UP-TO-DATE
+> Task :feature:incomes:extractDeepLinksDebug UP-TO-DATE
+> Task :feature:incomes:processDebugManifest UP-TO-DATE
+> Task :feature:invoices:extractDeepLinksDebug UP-TO-DATE
+> Task :feature:invoices:processDebugManifest UP-TO-DATE
+> Task :feature:settings:extractDeepLinksDebug UP-TO-DATE
+> Task :feature:settings:processDebugManifest UP-TO-DATE
+> Task :feature:voice:extractDeepLinksDebug UP-TO-DATE
+> Task :feature:voice:processDebugManifest UP-TO-DATE
+> Task :core:common:compileDebugLibraryResources UP-TO-DATE
+> Task :core:common:parseDebugLocalResources UP-TO-DATE
+> Task :core:common:generateDebugRFile UP-TO-DATE
+> Task :core:data:compileDebugLibraryResources UP-TO-DATE
+> Task :core:data:parseDebugLocalResources UP-TO-DATE
+> Task :core:data:generateDebugRFile UP-TO-DATE
+> Task :core:domain:compileDebugLibraryResources UP-TO-DATE
+> Task :core:domain:parseDebugLocalResources UP-TO-DATE
+> Task :core:domain:generateDebugRFile UP-TO-DATE
+> Task :feature:ai:compileDebugLibraryResources UP-TO-DATE
+> Task :feature:ai:parseDebugLocalResources UP-TO-DATE
+> Task :feature:ai:generateDebugRFile UP-TO-DATE
+> Task :feature:backup:compileDebugLibraryResources UP-TO-DATE
+> Task :feature:backup:parseDebugLocalResources UP-TO-DATE
+> Task :feature:backup:generateDebugRFile UP-TO-DATE
+> Task :feature:chatbot:compileDebugLibraryResources UP-TO-DATE
+> Task :feature:chatbot:parseDebugLocalResources UP-TO-DATE
+> Task :feature:chatbot:generateDebugRFile UP-TO-DATE
+> Task :feature:dashboard:compileDebugLibraryResources UP-TO-DATE
+> Task :feature:dashboard:parseDebugLocalResources UP-TO-DATE
+> Task :feature:dashboard:generateDebugRFile UP-TO-DATE
+> Task :feature:incomes:compileDebugLibraryResources UP-TO-DATE
+> Task :feature:incomes:parseDebugLocalResources UP-TO-DATE
+> Task :feature:incomes:generateDebugRFile UP-TO-DATE
+> Task :feature:invoices:compileDebugLibraryResources UP-TO-DATE
+> Task :feature:invoices:parseDebugLocalResources UP-TO-DATE
+> Task :feature:invoices:generateDebugRFile UP-TO-DATE
+> Task :feature:settings:compileDebugLibraryResources UP-TO-DATE
+> Task :feature:settings:parseDebugLocalResources UP-TO-DATE
+> Task :feature:settings:generateDebugRFile UP-TO-DATE
+> Task :feature:voice:compileDebugLibraryResources UP-TO-DATE
+> Task :feature:voice:parseDebugLocalResources UP-TO-DATE
+> Task :feature:voice:generateDebugRFile UP-TO-DATE
+> Task :core:common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:common:generateDebugBuildConfig UP-TO-DATE
+> Task :core:domain:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :core:domain:kspDebugKotlin UP-TO-DATE
+> Task :core:domain:compileDebugKotlin UP-TO-DATE
+> Task :core:domain:javaPreCompileDebug UP-TO-DATE
+> Task :core:domain:compileDebugJavaWithJavac UP-TO-DATE
+> Task :core:domain:transformDebugClassesWithAsm UP-TO-DATE
+> Task :core:domain:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :core:common:compileDebugKotlin UP-TO-DATE
+> Task :core:common:javaPreCompileDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :core:common:compileDebugJavaWithJavac UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :core:common:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :core:common:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :core:data:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :app:processDebugResources UP-TO-DATE
+> Task :core:domain:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :feature:ai:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :feature:ai:javaPreCompileDebug UP-TO-DATE
+> Task :feature:backup:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :feature:backup:javaPreCompileDebug UP-TO-DATE
+> Task :feature:chatbot:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :feature:chatbot:generateDebugBuildConfig UP-TO-DATE
+> Task :feature:voice:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :feature:voice:javaPreCompileDebug UP-TO-DATE
+> Task :feature:chatbot:javaPreCompileDebug UP-TO-DATE
+> Task :feature:dashboard:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :feature:dashboard:javaPreCompileDebug UP-TO-DATE
+> Task :feature:incomes:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :feature:incomes:javaPreCompileDebug UP-TO-DATE
+> Task :feature:invoices:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :feature:invoices:javaPreCompileDebug UP-TO-DATE
+> Task :feature:settings:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :feature:settings:generateDebugBuildConfig UP-TO-DATE
+> Task :feature:settings:javaPreCompileDebug UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :core:common:processDebugJavaRes UP-TO-DATE
+> Task :core:common:createFullJarDebug UP-TO-DATE
+> Task :core:domain:processDebugJavaRes UP-TO-DATE
+> Task :core:domain:createFullJarDebug UP-TO-DATE
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :core:common:preDebugUnitTestBuild UP-TO-DATE
+> Task :core:common:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :core:data:javaPreCompileDebug UP-TO-DATE
+> Task :core:common:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :core:common:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :core:common:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :core:common:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :core:common:testDebugUnitTest UP-TO-DATE
+> Task :core:data:preDebugUnitTestBuild UP-TO-DATE
+> Task :core:data:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :core:data:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :core:domain:preDebugUnitTestBuild UP-TO-DATE
+> Task :core:domain:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :core:domain:kspDebugUnitTestKotlin SKIPPED
+> Task :core:domain:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :core:domain:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :core:domain:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :core:domain:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :core:domain:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :core:domain:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :core:domain:transformDebugUnitTestClassesWithAsm UP-TO-DATE
+> Task :core:domain:testDebugUnitTest UP-TO-DATE
+> Task :feature:ai:preDebugUnitTestBuild UP-TO-DATE
+> Task :feature:ai:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :feature:ai:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :feature:backup:preDebugUnitTestBuild UP-TO-DATE
+> Task :feature:backup:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :feature:backup:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :feature:chatbot:preDebugUnitTestBuild UP-TO-DATE
+> Task :feature:chatbot:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :feature:chatbot:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :feature:dashboard:preDebugUnitTestBuild UP-TO-DATE
+> Task :feature:dashboard:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :feature:dashboard:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :feature:incomes:preDebugUnitTestBuild UP-TO-DATE
+> Task :feature:incomes:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :feature:incomes:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :feature:invoices:preDebugUnitTestBuild UP-TO-DATE
+> Task :feature:invoices:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :feature:invoices:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :feature:settings:preDebugUnitTestBuild UP-TO-DATE
+> Task :feature:settings:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :feature:settings:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :feature:voice:preDebugUnitTestBuild UP-TO-DATE
+> Task :feature:voice:generateDebugUnitTestStubRFile UP-TO-DATE
+> Task :feature:voice:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:mergeDebugShaders UP-TO-DATE
+> Task :app:compileDebugShaders NO-SOURCE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :core:common:mergeDebugShaders UP-TO-DATE
+> Task :core:common:compileDebugShaders NO-SOURCE
+> Task :core:common:generateDebugAssets UP-TO-DATE
+> Task :core:common:mergeDebugAssets UP-TO-DATE
+> Task :core:data:mergeDebugShaders UP-TO-DATE
+> Task :core:data:compileDebugShaders NO-SOURCE
+> Task :core:data:generateDebugAssets UP-TO-DATE
+> Task :core:data:mergeDebugAssets UP-TO-DATE
+> Task :core:domain:mergeDebugShaders UP-TO-DATE
+> Task :core:domain:compileDebugShaders NO-SOURCE
+> Task :core:domain:generateDebugAssets UP-TO-DATE
+> Task :core:domain:mergeDebugAssets UP-TO-DATE
+> Task :feature:ai:mergeDebugShaders UP-TO-DATE
+> Task :feature:ai:compileDebugShaders NO-SOURCE
+> Task :feature:ai:generateDebugAssets UP-TO-DATE
+> Task :feature:ai:mergeDebugAssets UP-TO-DATE
+> Task :feature:backup:mergeDebugShaders UP-TO-DATE
+> Task :feature:backup:compileDebugShaders NO-SOURCE
+> Task :feature:backup:generateDebugAssets UP-TO-DATE
+> Task :feature:backup:mergeDebugAssets UP-TO-DATE
+> Task :feature:chatbot:mergeDebugShaders UP-TO-DATE
+> Task :feature:chatbot:compileDebugShaders NO-SOURCE
+> Task :feature:chatbot:generateDebugAssets UP-TO-DATE
+> Task :feature:chatbot:mergeDebugAssets UP-TO-DATE
+> Task :feature:dashboard:mergeDebugShaders UP-TO-DATE
+> Task :feature:dashboard:compileDebugShaders NO-SOURCE
+> Task :feature:dashboard:generateDebugAssets UP-TO-DATE
+> Task :feature:dashboard:mergeDebugAssets UP-TO-DATE
+> Task :feature:incomes:mergeDebugShaders UP-TO-DATE
+> Task :feature:incomes:compileDebugShaders NO-SOURCE
+> Task :feature:incomes:generateDebugAssets UP-TO-DATE
+> Task :feature:incomes:mergeDebugAssets UP-TO-DATE
+> Task :feature:invoices:mergeDebugShaders UP-TO-DATE
+> Task :feature:invoices:compileDebugShaders NO-SOURCE
+> Task :feature:invoices:generateDebugAssets UP-TO-DATE
+> Task :feature:invoices:mergeDebugAssets UP-TO-DATE
+> Task :feature:settings:mergeDebugShaders UP-TO-DATE
+> Task :feature:settings:compileDebugShaders NO-SOURCE
+> Task :feature:settings:generateDebugAssets UP-TO-DATE
+> Task :feature:settings:mergeDebugAssets UP-TO-DATE
+> Task :feature:voice:mergeDebugShaders UP-TO-DATE
+> Task :feature:voice:compileDebugShaders NO-SOURCE
+> Task :feature:voice:generateDebugAssets UP-TO-DATE
+> Task :feature:voice:mergeDebugAssets UP-TO-DATE
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :core:common:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :core:domain:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :core:common:mergeDebugJniLibFolders UP-TO-DATE
+> Task :core:common:mergeDebugNativeLibs NO-SOURCE
+> Task :core:common:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :core:data:mergeDebugJniLibFolders UP-TO-DATE
+> Task :core:data:mergeDebugNativeLibs NO-SOURCE
+> Task :core:data:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :core:domain:mergeDebugJniLibFolders UP-TO-DATE
+> Task :core:domain:mergeDebugNativeLibs NO-SOURCE
+> Task :core:data:kspDebugKotlin
+> Task :core:domain:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :feature:ai:mergeDebugJniLibFolders UP-TO-DATE
+> Task :feature:ai:mergeDebugNativeLibs NO-SOURCE
+> Task :feature:ai:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :feature:backup:mergeDebugJniLibFolders UP-TO-DATE
+> Task :feature:backup:mergeDebugNativeLibs NO-SOURCE
+> Task :feature:backup:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :feature:chatbot:mergeDebugJniLibFolders UP-TO-DATE
+> Task :feature:chatbot:mergeDebugNativeLibs NO-SOURCE
+> Task :feature:chatbot:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :feature:dashboard:mergeDebugJniLibFolders UP-TO-DATE
+> Task :feature:dashboard:mergeDebugNativeLibs NO-SOURCE
+> Task :feature:dashboard:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :feature:incomes:mergeDebugJniLibFolders UP-TO-DATE
+> Task :feature:incomes:mergeDebugNativeLibs NO-SOURCE
+> Task :feature:incomes:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :feature:invoices:mergeDebugJniLibFolders UP-TO-DATE
+> Task :feature:invoices:mergeDebugNativeLibs NO-SOURCE
+> Task :feature:invoices:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :feature:settings:mergeDebugJniLibFolders UP-TO-DATE
+> Task :feature:settings:mergeDebugNativeLibs NO-SOURCE
+> Task :feature:settings:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :feature:voice:mergeDebugJniLibFolders UP-TO-DATE
+> Task :feature:voice:mergeDebugNativeLibs NO-SOURCE
+> Task :feature:voice:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :app:mergeDebugNativeLibs UP-TO-DATE
+> Task :app:stripDebugDebugSymbols UP-TO-DATE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :app:preDebugAndroidTestBuild SKIPPED
+> Task :app:checkDebugAndroidTestAarMetadata UP-TO-DATE
+> Task :app:generateDebugAndroidTestResValues UP-TO-DATE
+> Task :app:mapDebugAndroidTestSourceSetPaths UP-TO-DATE
+> Task :app:generateDebugAndroidTestResources UP-TO-DATE
+> Task :app:mergeDebugAndroidTestResources UP-TO-DATE
+> Task :app:processDebugAndroidTestManifest UP-TO-DATE
+> Task :app:processDebugAndroidTestResources UP-TO-DATE
+> Task :app:javaPreCompileDebugAndroidTest UP-TO-DATE
+> Task :app:mergeDebugAndroidTestShaders UP-TO-DATE
+> Task :app:compileDebugAndroidTestShaders NO-SOURCE
+> Task :app:generateDebugAndroidTestAssets UP-TO-DATE
+> Task :app:mergeDebugAndroidTestAssets UP-TO-DATE
+> Task :app:compressDebugAndroidTestAssets UP-TO-DATE
+> Task :app:desugarDebugAndroidTestFileDependencies UP-TO-DATE
+> Task :app:checkDebugAndroidTestDuplicateClasses UP-TO-DATE
+> Task :app:mergeExtDexDebugAndroidTest UP-TO-DATE
+> Task :app:mergeDebugAndroidTestJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugAndroidTestNativeLibs NO-SOURCE
+> Task :app:stripDebugAndroidTestDebugSymbols NO-SOURCE
+> Task :app:validateSigningDebugAndroidTest UP-TO-DATE
+> Task :app:writeDebugAndroidTestSigningConfigVersions UP-TO-DATE
+> Task :app:buildKotlinToolingMetadata UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :core:common:preReleaseBuild UP-TO-DATE
+> Task :core:common:writeReleaseAarMetadata UP-TO-DATE
+> Task :core:data:preReleaseBuild UP-TO-DATE
+> Task :core:data:writeReleaseAarMetadata UP-TO-DATE
+> Task :core:domain:preReleaseBuild UP-TO-DATE
+> Task :core:domain:writeReleaseAarMetadata UP-TO-DATE
+> Task :feature:ai:preReleaseBuild UP-TO-DATE
+> Task :feature:ai:writeReleaseAarMetadata UP-TO-DATE
+> Task :feature:backup:preReleaseBuild UP-TO-DATE
+> Task :feature:backup:writeReleaseAarMetadata UP-TO-DATE
+> Task :feature:chatbot:preReleaseBuild UP-TO-DATE
+> Task :feature:chatbot:writeReleaseAarMetadata UP-TO-DATE
+> Task :feature:dashboard:preReleaseBuild UP-TO-DATE
+> Task :feature:dashboard:writeReleaseAarMetadata UP-TO-DATE
+> Task :feature:incomes:preReleaseBuild UP-TO-DATE
+> Task :feature:incomes:writeReleaseAarMetadata UP-TO-DATE
+> Task :feature:invoices:preReleaseBuild UP-TO-DATE
+> Task :feature:invoices:writeReleaseAarMetadata UP-TO-DATE
+> Task :feature:settings:preReleaseBuild UP-TO-DATE
+> Task :feature:settings:writeReleaseAarMetadata UP-TO-DATE
+> Task :feature:voice:preReleaseBuild UP-TO-DATE
+> Task :feature:voice:writeReleaseAarMetadata UP-TO-DATE
+> Task :app:checkReleaseAarMetadata UP-TO-DATE
+> Task :app:generateReleaseResValues UP-TO-DATE
+> Task :core:common:generateReleaseResValues UP-TO-DATE
+> Task :core:common:generateReleaseResources UP-TO-DATE
+> Task :core:common:packageReleaseResources UP-TO-DATE
+> Task :core:data:generateReleaseResValues UP-TO-DATE
+> Task :core:data:generateReleaseResources UP-TO-DATE
+> Task :core:data:packageReleaseResources UP-TO-DATE
+> Task :core:domain:generateReleaseResValues UP-TO-DATE
+> Task :core:domain:generateReleaseResources UP-TO-DATE
+> Task :core:domain:packageReleaseResources UP-TO-DATE
+> Task :feature:ai:generateReleaseResValues UP-TO-DATE
+> Task :feature:ai:generateReleaseResources UP-TO-DATE
+> Task :feature:ai:packageReleaseResources UP-TO-DATE
+> Task :feature:backup:generateReleaseResValues UP-TO-DATE
+> Task :feature:backup:generateReleaseResources UP-TO-DATE
+> Task :feature:backup:packageReleaseResources UP-TO-DATE
+> Task :feature:chatbot:generateReleaseResValues UP-TO-DATE
+> Task :feature:chatbot:generateReleaseResources UP-TO-DATE
+> Task :feature:chatbot:packageReleaseResources UP-TO-DATE
+> Task :feature:dashboard:generateReleaseResValues UP-TO-DATE
+> Task :feature:dashboard:generateReleaseResources UP-TO-DATE
+> Task :feature:dashboard:packageReleaseResources UP-TO-DATE
+> Task :feature:incomes:generateReleaseResValues UP-TO-DATE
+> Task :feature:incomes:generateReleaseResources UP-TO-DATE
+> Task :feature:incomes:packageReleaseResources UP-TO-DATE
+> Task :feature:invoices:generateReleaseResValues UP-TO-DATE
+> Task :feature:invoices:generateReleaseResources UP-TO-DATE
+> Task :feature:invoices:packageReleaseResources UP-TO-DATE
+> Task :feature:settings:generateReleaseResValues UP-TO-DATE
+> Task :feature:settings:generateReleaseResources UP-TO-DATE
+> Task :feature:settings:packageReleaseResources UP-TO-DATE
+> Task :feature:voice:generateReleaseResValues UP-TO-DATE
+> Task :feature:voice:generateReleaseResources UP-TO-DATE
+> Task :feature:voice:packageReleaseResources UP-TO-DATE
+> Task :app:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :app:generateReleaseResources UP-TO-DATE
+> Task :app:mergeReleaseResources UP-TO-DATE
+> Task :app:packageReleaseResources UP-TO-DATE
+> Task :app:parseReleaseLocalResources UP-TO-DATE
+> Task :app:createReleaseCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksRelease UP-TO-DATE
+> Task :core:common:extractDeepLinksRelease UP-TO-DATE
+> Task :core:common:processReleaseManifest UP-TO-DATE
+> Task :core:data:extractDeepLinksRelease UP-TO-DATE
+> Task :core:data:processReleaseManifest UP-TO-DATE
+> Task :core:domain:extractDeepLinksRelease UP-TO-DATE
+> Task :core:domain:processReleaseManifest UP-TO-DATE
+> Task :feature:ai:extractDeepLinksRelease UP-TO-DATE
+> Task :feature:ai:processReleaseManifest UP-TO-DATE
+> Task :feature:backup:extractDeepLinksRelease UP-TO-DATE
+> Task :feature:backup:processReleaseManifest UP-TO-DATE
+> Task :feature:chatbot:extractDeepLinksRelease UP-TO-DATE
+> Task :feature:chatbot:processReleaseManifest UP-TO-DATE
+> Task :feature:dashboard:extractDeepLinksRelease UP-TO-DATE
+> Task :feature:dashboard:processReleaseManifest UP-TO-DATE
+> Task :feature:incomes:extractDeepLinksRelease UP-TO-DATE
+> Task :feature:incomes:processReleaseManifest UP-TO-DATE
+> Task :feature:invoices:extractDeepLinksRelease UP-TO-DATE
+> Task :feature:invoices:processReleaseManifest UP-TO-DATE
+> Task :feature:settings:extractDeepLinksRelease UP-TO-DATE
+> Task :feature:settings:processReleaseManifest UP-TO-DATE
+> Task :feature:voice:extractDeepLinksRelease UP-TO-DATE
+> Task :feature:voice:processReleaseManifest UP-TO-DATE
+> Task :app:processReleaseMainManifest UP-TO-DATE
+> Task :app:processReleaseManifest UP-TO-DATE
+> Task :app:processReleaseManifestForPackage UP-TO-DATE
+> Task :core:common:parseReleaseLocalResources UP-TO-DATE
+> Task :core:common:generateReleaseRFile UP-TO-DATE
+> Task :core:data:parseReleaseLocalResources UP-TO-DATE
+> Task :core:data:generateReleaseRFile UP-TO-DATE
+> Task :core:domain:parseReleaseLocalResources UP-TO-DATE
+> Task :core:domain:generateReleaseRFile UP-TO-DATE
+> Task :feature:ai:parseReleaseLocalResources UP-TO-DATE
+> Task :feature:ai:generateReleaseRFile UP-TO-DATE
+> Task :feature:backup:parseReleaseLocalResources UP-TO-DATE
+> Task :feature:backup:generateReleaseRFile UP-TO-DATE
+> Task :feature:chatbot:parseReleaseLocalResources UP-TO-DATE
+> Task :feature:chatbot:generateReleaseRFile UP-TO-DATE
+> Task :feature:dashboard:parseReleaseLocalResources UP-TO-DATE
+> Task :feature:dashboard:generateReleaseRFile UP-TO-DATE
+> Task :feature:incomes:parseReleaseLocalResources UP-TO-DATE
+> Task :feature:incomes:generateReleaseRFile UP-TO-DATE
+> Task :feature:invoices:parseReleaseLocalResources UP-TO-DATE
+> Task :feature:invoices:generateReleaseRFile UP-TO-DATE
+> Task :feature:settings:parseReleaseLocalResources UP-TO-DATE
+> Task :feature:settings:generateReleaseRFile UP-TO-DATE
+> Task :feature:voice:parseReleaseLocalResources UP-TO-DATE
+> Task :feature:voice:generateReleaseRFile UP-TO-DATE
+> Task :app:processReleaseResources UP-TO-DATE
+> Task :core:common:generateReleaseBuildConfig UP-TO-DATE
+> Task :core:domain:kspReleaseKotlin UP-TO-DATE
+> Task :core:domain:compileReleaseKotlin UP-TO-DATE
+> Task :core:domain:javaPreCompileRelease UP-TO-DATE
+> Task :core:domain:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :core:domain:transformReleaseClassesWithAsm UP-TO-DATE
+> Task :core:domain:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :core:common:compileReleaseKotlin UP-TO-DATE
+> Task :core:common:javaPreCompileRelease UP-TO-DATE
+> Task :core:common:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :core:common:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :core:common:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :core:data:compileDebugKotlin
+> Task :core:data:compileDebugJavaWithJavac UP-TO-DATE
+> Task :core:data:transformDebugClassesWithAsm
+> Task :core:data:bundleLibCompileToJarDebug
+> Task :core:data:bundleLibRuntimeToJarDebug
+> Task :core:data:kspReleaseKotlin
+> Task :feature:ai:kspDebugKotlin
+> Task :feature:ai:compileDebugKotlin UP-TO-DATE
+> Task :feature:ai:compileDebugJavaWithJavac UP-TO-DATE
+> Task :feature:ai:transformDebugClassesWithAsm
+> Task :feature:ai:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :feature:ai:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :feature:backup:kspDebugKotlin
+> Task :feature:backup:compileDebugKotlin UP-TO-DATE
+> Task :feature:backup:compileDebugJavaWithJavac UP-TO-DATE
+> Task :feature:dashboard:kspDebugKotlin
+> Task :feature:dashboard:compileDebugKotlin UP-TO-DATE
+> Task :feature:dashboard:compileDebugJavaWithJavac UP-TO-DATE
+> Task :feature:backup:transformDebugClassesWithAsm
+> Task :feature:dashboard:transformDebugClassesWithAsm
+> Task :feature:backup:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :feature:backup:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :feature:dashboard:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :feature:voice:kspDebugKotlin
+> Task :feature:voice:compileDebugKotlin UP-TO-DATE
+> Task :feature:voice:compileDebugJavaWithJavac UP-TO-DATE
+> Task :feature:voice:transformDebugClassesWithAsm
+> Task :feature:voice:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :feature:incomes:kspDebugKotlin
+> Task :feature:voice:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :feature:incomes:compileDebugKotlin UP-TO-DATE
+> Task :feature:incomes:compileDebugJavaWithJavac UP-TO-DATE
+> Task :feature:incomes:transformDebugClassesWithAsm
+> Task :feature:incomes:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :feature:chatbot:kspDebugKotlin
+> Task :feature:chatbot:compileDebugKotlin UP-TO-DATE
+> Task :feature:invoices:kspDebugKotlin
+> Task :feature:invoices:compileDebugKotlin UP-TO-DATE
+> Task :feature:chatbot:compileDebugJavaWithJavac UP-TO-DATE
+> Task :feature:invoices:compileDebugJavaWithJavac UP-TO-DATE
+> Task :feature:invoices:transformDebugClassesWithAsm
+> Task :feature:invoices:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :feature:chatbot:transformDebugClassesWithAsm
+> Task :feature:chatbot:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :feature:dashboard:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :feature:dashboard:processDebugJavaRes UP-TO-DATE
+> Task :feature:dashboard:createFullJarDebug UP-TO-DATE
+> Task :feature:invoices:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :feature:invoices:processDebugJavaRes UP-TO-DATE
+> Task :feature:invoices:createFullJarDebug UP-TO-DATE
+> Task :feature:incomes:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :feature:incomes:processDebugJavaRes UP-TO-DATE
+> Task :feature:incomes:createFullJarDebug UP-TO-DATE
+> Task :feature:chatbot:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :feature:chatbot:processDebugJavaRes UP-TO-DATE
+> Task :feature:chatbot:createFullJarDebug UP-TO-DATE
+> Task :feature:voice:processDebugJavaRes UP-TO-DATE
+> Task :feature:voice:createFullJarDebug UP-TO-DATE
+> Task :feature:ai:processDebugJavaRes UP-TO-DATE
+> Task :feature:ai:createFullJarDebug UP-TO-DATE
+> Task :feature:backup:processDebugJavaRes UP-TO-DATE
+> Task :feature:backup:createFullJarDebug UP-TO-DATE
+> Task :core:data:processDebugJavaRes UP-TO-DATE
+> Task :core:data:createFullJarDebug
+> Task :core:data:kspDebugUnitTestKotlin SKIPPED
+> Task :core:data:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :core:data:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :core:data:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :core:data:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :core:data:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :core:data:transformDebugUnitTestClassesWithAsm
+> Task :feature:settings:kspDebugKotlin
+> Task :feature:settings:compileDebugKotlin UP-TO-DATE
+> Task :feature:settings:compileDebugJavaWithJavac UP-TO-DATE
+> Task :feature:settings:transformDebugClassesWithAsm
+> Task :feature:settings:bundleLibCompileToJarDebug UP-TO-DATE
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :app:kspDebugKotlin
+> Task :app:compileDebugKotlin UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac UP-TO-DATE
+> Task :feature:settings:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :feature:settings:processDebugJavaRes UP-TO-DATE
+> Task :feature:settings:createFullJarDebug UP-TO-DATE
+> Task :app:hiltAggregateDepsDebug UP-TO-DATE
+> Task :app:hiltJavaCompileDebug UP-TO-DATE
+> Task :app:transformDebugClassesWithAsm
+> Task :app:bundleDebugClassesToRuntimeJar UP-TO-DATE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:bundleDebugClassesToCompileJar UP-TO-DATE
+> Task :app:kspDebugUnitTestKotlin SKIPPED
+> Task :app:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :app:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :app:transformDebugUnitTestClassesWithAsm
+> Task :app:testDebugUnitTest
+> Task :feature:ai:kspDebugUnitTestKotlin SKIPPED
+> Task :feature:ai:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :feature:ai:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :feature:ai:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :feature:ai:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :feature:ai:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :feature:ai:transformDebugUnitTestClassesWithAsm
+> Task :core:data:testDebugUnitTest
+> Task :feature:backup:kspDebugUnitTestKotlin SKIPPED
+> Task :feature:backup:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :feature:backup:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :feature:backup:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :feature:backup:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :feature:backup:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :feature:backup:transformDebugUnitTestClassesWithAsm
+> Task :feature:ai:testDebugUnitTest
+> Task :feature:chatbot:kspDebugUnitTestKotlin SKIPPED
+> Task :feature:chatbot:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :feature:chatbot:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :feature:chatbot:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :feature:chatbot:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :feature:chatbot:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :feature:chatbot:transformDebugUnitTestClassesWithAsm
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :feature:chatbot:testDebugUnitTest
+> Task :feature:dashboard:kspDebugUnitTestKotlin SKIPPED
+> Task :feature:dashboard:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :feature:dashboard:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :feature:dashboard:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :feature:dashboard:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :feature:dashboard:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :feature:dashboard:transformDebugUnitTestClassesWithAsm
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :feature:dashboard:testDebugUnitTest
+> Task :feature:incomes:kspDebugUnitTestKotlin SKIPPED
+> Task :feature:incomes:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :feature:incomes:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :feature:incomes:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :feature:incomes:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :feature:incomes:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :feature:incomes:transformDebugUnitTestClassesWithAsm
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :feature:incomes:testDebugUnitTest
+> Task :feature:invoices:kspDebugUnitTestKotlin SKIPPED
+> Task :feature:invoices:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :feature:invoices:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :feature:invoices:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :feature:invoices:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :feature:invoices:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :feature:invoices:transformDebugUnitTestClassesWithAsm
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :feature:backup:testDebugUnitTest
+> Task :feature:settings:kspDebugUnitTestKotlin SKIPPED
+> Task :feature:settings:compileDebugUnitTestKotlin UP-TO-DATE
+> Task :feature:settings:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :feature:settings:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :feature:settings:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :feature:settings:processDebugUnitTestJavaRes UP-TO-DATE
+> Task :feature:settings:transformDebugUnitTestClassesWithAsm
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :feature:invoices:testDebugUnitTest
+> Task :feature:voice:kspDebugUnitTestKotlin SKIPPED
+> Task :feature:voice:compileDebugUnitTestKotlin NO-SOURCE
+> Task :feature:voice:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :feature:voice:hiltAggregateDepsDebugUnitTest UP-TO-DATE
+> Task :feature:voice:hiltJavaCompileDebugUnitTest NO-SOURCE
+> Task :feature:voice:processDebugUnitTestJavaRes NO-SOURCE
+> Task :feature:voice:transformDebugUnitTestClassesWithAsm
+> Task :feature:voice:testDebugUnitTest NO-SOURCE
+> Task :app:dexBuilderDebug UP-TO-DATE
+> Task :app:mergeDebugGlobalSynthetics UP-TO-DATE
+> Task :app:mergeDebugJavaResource UP-TO-DATE
+> Task :feature:dashboard:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :feature:invoices:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :feature:incomes:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :feature:chatbot:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :feature:voice:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :feature:ai:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :feature:backup:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :core:data:bundleLibRuntimeToDirDebug
+> Task :app:mergeProjectDexDebug UP-TO-DATE
+> Task :app:kspDebugAndroidTestKotlin SKIPPED
+> Task :feature:settings:testDebugUnitTest
+> Task :feature:settings:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :app:mergeLibDexDebug
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleDebug
+> Task :app:mergeLibDexDebugAndroidTest UP-TO-DATE
+> Task :core:data:compileReleaseKotlin
+> Task :core:data:javaPreCompileRelease UP-TO-DATE
+> Task :core:data:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :core:domain:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :core:data:transformReleaseClassesWithAsm
+> Task :core:data:bundleLibCompileToJarRelease
+> Task :core:data:bundleLibRuntimeToJarRelease
+> Task :feature:ai:kspReleaseKotlin
+> Task :feature:ai:compileReleaseKotlin UP-TO-DATE
+> Task :feature:ai:javaPreCompileRelease UP-TO-DATE
+> Task :app:compileDebugAndroidTestKotlin
+> Task :app:compileDebugAndroidTestJavaWithJavac NO-SOURCE
+> Task :feature:ai:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :app:hiltAggregateDepsDebugAndroidTest UP-TO-DATE
+> Task :app:hiltJavaCompileDebugAndroidTest NO-SOURCE
+> Task :feature:ai:transformReleaseClassesWithAsm
+> Task :app:processDebugAndroidTestJavaRes UP-TO-DATE
+> Task :app:mergeDebugAndroidTestJavaResource UP-TO-DATE
+> Task :feature:ai:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :app:transformDebugAndroidTestClassesWithAsm
+> Task :app:dexBuilderDebugAndroidTest
+> Task :app:mergeDebugAndroidTestGlobalSynthetics UP-TO-DATE
+> Task :app:mergeProjectDexDebugAndroidTest
+> Task :feature:backup:kspReleaseKotlin
+> Task :feature:backup:compileReleaseKotlin UP-TO-DATE
+> Task :feature:backup:javaPreCompileRelease UP-TO-DATE
+> Task :app:packageDebugAndroidTest
+> Task :app:createDebugAndroidTestApkListingFileRedirect UP-TO-DATE
+> Task :app:assembleDebugAndroidTest
+> Task :feature:ai:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :feature:chatbot:generateReleaseBuildConfig UP-TO-DATE
+> Task :feature:voice:javaPreCompileRelease UP-TO-DATE
+> Task :feature:chatbot:javaPreCompileRelease UP-TO-DATE
+> Task :feature:backup:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :feature:backup:transformReleaseClassesWithAsm
+> Task :feature:backup:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :feature:backup:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :feature:dashboard:kspReleaseKotlin
+> Task :feature:dashboard:compileReleaseKotlin UP-TO-DATE
+> Task :feature:dashboard:javaPreCompileRelease UP-TO-DATE
+> Task :feature:dashboard:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :feature:voice:kspReleaseKotlin
+> Task :feature:voice:compileReleaseKotlin UP-TO-DATE
+> Task :feature:voice:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :feature:dashboard:transformReleaseClassesWithAsm
+> Task :feature:dashboard:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :feature:voice:transformReleaseClassesWithAsm
+> Task :feature:voice:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :feature:incomes:kspReleaseKotlin
+> Task :feature:voice:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :feature:incomes:compileReleaseKotlin UP-TO-DATE
+> Task :feature:incomes:javaPreCompileRelease UP-TO-DATE
+> Task :feature:incomes:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :feature:chatbot:kspReleaseKotlin
+> Task :feature:chatbot:compileReleaseKotlin UP-TO-DATE
+> Task :feature:incomes:transformReleaseClassesWithAsm
+> Task :feature:incomes:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :feature:chatbot:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :feature:chatbot:transformReleaseClassesWithAsm
+> Task :feature:chatbot:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :feature:settings:generateReleaseBuildConfig UP-TO-DATE
+> Task :feature:invoices:kspReleaseKotlin
+> Task :feature:invoices:compileReleaseKotlin UP-TO-DATE
+> Task :feature:invoices:javaPreCompileRelease UP-TO-DATE
+> Task :feature:invoices:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :feature:invoices:transformReleaseClassesWithAsm
+> Task :feature:invoices:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :feature:settings:javaPreCompileRelease UP-TO-DATE
+> Task :app:javaPreCompileRelease UP-TO-DATE
+> Task :app:extractProguardFiles UP-TO-DATE
+> Task :feature:dashboard:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :feature:dashboard:processReleaseJavaRes UP-TO-DATE
+> Task :feature:dashboard:createFullJarRelease UP-TO-DATE
+> Task :feature:invoices:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :feature:invoices:processReleaseJavaRes UP-TO-DATE
+> Task :feature:invoices:createFullJarRelease UP-TO-DATE
+> Task :feature:incomes:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :feature:incomes:processReleaseJavaRes UP-TO-DATE
+> Task :feature:incomes:createFullJarRelease UP-TO-DATE
+> Task :feature:chatbot:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :feature:chatbot:processReleaseJavaRes UP-TO-DATE
+> Task :feature:chatbot:createFullJarRelease UP-TO-DATE
+> Task :feature:voice:processReleaseJavaRes UP-TO-DATE
+> Task :feature:voice:createFullJarRelease UP-TO-DATE
+> Task :feature:ai:processReleaseJavaRes UP-TO-DATE
+> Task :feature:ai:createFullJarRelease UP-TO-DATE
+> Task :feature:backup:processReleaseJavaRes UP-TO-DATE
+> Task :feature:backup:createFullJarRelease UP-TO-DATE
+> Task :core:data:processReleaseJavaRes UP-TO-DATE
+> Task :core:data:createFullJarRelease
+> Task :core:common:processReleaseJavaRes UP-TO-DATE
+> Task :core:common:createFullJarRelease UP-TO-DATE
+> Task :core:domain:processReleaseJavaRes UP-TO-DATE
+> Task :core:domain:createFullJarRelease UP-TO-DATE
+> Task :core:common:extractProguardFiles UP-TO-DATE
+> Task :core:domain:extractProguardFiles UP-TO-DATE
+> Task :feature:settings:kspReleaseKotlin
+> Task :core:domain:generateReleaseLintModel UP-TO-DATE
+> Task :core:domain:prepareLintJarForPublish UP-TO-DATE
+> Task :feature:settings:compileReleaseKotlin UP-TO-DATE
+> Task :core:common:generateReleaseLintModel UP-TO-DATE
+> Task :core:common:prepareLintJarForPublish UP-TO-DATE
+> Task :core:data:extractProguardFiles UP-TO-DATE
+> Task :feature:settings:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :core:data:generateReleaseLintModel
+> Task :feature:settings:processReleaseJavaRes UP-TO-DATE
+> Task :core:data:prepareLintJarForPublish UP-TO-DATE
+> Task :feature:ai:extractProguardFiles UP-TO-DATE
+> Task :feature:settings:transformReleaseClassesWithAsm
+> Task :feature:settings:bundleLibCompileToJarRelease UP-TO-DATE
+> Task :feature:ai:generateReleaseLintModel
+> Task :feature:settings:bundleLibRuntimeToJarRelease UP-TO-DATE
+> Task :feature:settings:createFullJarRelease UP-TO-DATE
+> Task :feature:ai:prepareLintJarForPublish UP-TO-DATE
+> Task :feature:backup:extractProguardFiles UP-TO-DATE
+> Task :feature:backup:generateReleaseLintModel
+> Task :feature:backup:prepareLintJarForPublish UP-TO-DATE
+> Task :feature:chatbot:extractProguardFiles UP-TO-DATE
+> Task :feature:voice:extractProguardFiles UP-TO-DATE
+> Task :feature:voice:generateReleaseLintModel
+> Task :feature:voice:prepareLintJarForPublish UP-TO-DATE
+> Task :feature:chatbot:generateReleaseLintModel
+> Task :feature:chatbot:prepareLintJarForPublish UP-TO-DATE
+> Task :feature:dashboard:extractProguardFiles UP-TO-DATE
+> Task :feature:dashboard:generateReleaseLintModel
+> Task :feature:dashboard:prepareLintJarForPublish UP-TO-DATE
+> Task :feature:incomes:extractProguardFiles UP-TO-DATE
+> Task :feature:incomes:generateReleaseLintModel
+> Task :feature:incomes:prepareLintJarForPublish UP-TO-DATE
+> Task :feature:invoices:extractProguardFiles UP-TO-DATE
+> Task :feature:invoices:generateReleaseLintModel
+> Task :feature:invoices:prepareLintJarForPublish UP-TO-DATE
+> Task :feature:settings:extractProguardFiles UP-TO-DATE
+> Task :feature:settings:generateReleaseLintModel
+> Task :feature:settings:prepareLintJarForPublish UP-TO-DATE
+> Task :feature:dashboard:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :feature:dashboard:mergeReleaseNativeLibs NO-SOURCE
+> Task :feature:dashboard:stripReleaseDebugSymbols NO-SOURCE
+> Task :feature:dashboard:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :feature:dashboard:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :feature:dashboard:extractReleaseAnnotations
+> Task :feature:dashboard:mergeReleaseShaders UP-TO-DATE
+> Task :feature:dashboard:compileReleaseShaders NO-SOURCE
+> Task :feature:dashboard:generateReleaseAssets UP-TO-DATE
+> Task :feature:dashboard:mergeReleaseAssets UP-TO-DATE
+> Task :feature:dashboard:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :feature:dashboard:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:dashboard:prepareReleaseArtProfile UP-TO-DATE
+> Task :feature:dashboard:mergeReleaseJavaResource UP-TO-DATE
+> Task :feature:dashboard:syncReleaseLibJars UP-TO-DATE
+> Task :feature:dashboard:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :feature:invoices:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :feature:invoices:mergeReleaseNativeLibs NO-SOURCE
+> Task :feature:invoices:stripReleaseDebugSymbols NO-SOURCE
+> Task :feature:invoices:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :feature:invoices:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :feature:invoices:extractReleaseAnnotations
+> Task :feature:invoices:mergeReleaseShaders UP-TO-DATE
+> Task :feature:invoices:compileReleaseShaders NO-SOURCE
+> Task :feature:invoices:generateReleaseAssets UP-TO-DATE
+> Task :feature:invoices:mergeReleaseAssets UP-TO-DATE
+> Task :feature:invoices:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :feature:invoices:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:invoices:prepareReleaseArtProfile UP-TO-DATE
+> Task :feature:invoices:mergeReleaseJavaResource UP-TO-DATE
+> Task :feature:invoices:syncReleaseLibJars UP-TO-DATE
+> Task :feature:invoices:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :feature:incomes:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :feature:incomes:mergeReleaseNativeLibs NO-SOURCE
+> Task :feature:incomes:stripReleaseDebugSymbols NO-SOURCE
+> Task :feature:incomes:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :feature:incomes:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :feature:incomes:extractReleaseAnnotations
+> Task :feature:incomes:mergeReleaseShaders UP-TO-DATE
+> Task :feature:incomes:compileReleaseShaders NO-SOURCE
+> Task :feature:incomes:generateReleaseAssets UP-TO-DATE
+> Task :feature:incomes:mergeReleaseAssets UP-TO-DATE
+> Task :feature:incomes:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :feature:incomes:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:incomes:prepareReleaseArtProfile UP-TO-DATE
+> Task :feature:incomes:mergeReleaseJavaResource UP-TO-DATE
+> Task :feature:incomes:syncReleaseLibJars UP-TO-DATE
+> Task :feature:incomes:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :feature:chatbot:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :feature:chatbot:mergeReleaseNativeLibs NO-SOURCE
+> Task :feature:chatbot:stripReleaseDebugSymbols NO-SOURCE
+> Task :feature:chatbot:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :feature:chatbot:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :feature:chatbot:extractReleaseAnnotations
+> Task :feature:chatbot:mergeReleaseShaders UP-TO-DATE
+> Task :feature:chatbot:compileReleaseShaders NO-SOURCE
+> Task :feature:chatbot:generateReleaseAssets UP-TO-DATE
+> Task :feature:chatbot:mergeReleaseAssets UP-TO-DATE
+> Task :feature:chatbot:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :feature:chatbot:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:chatbot:prepareReleaseArtProfile UP-TO-DATE
+> Task :feature:chatbot:mergeReleaseJavaResource UP-TO-DATE
+> Task :feature:chatbot:syncReleaseLibJars UP-TO-DATE
+> Task :feature:chatbot:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :feature:voice:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :feature:voice:mergeReleaseNativeLibs NO-SOURCE
+> Task :feature:voice:stripReleaseDebugSymbols NO-SOURCE
+> Task :feature:voice:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :feature:voice:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :feature:voice:extractReleaseAnnotations
+> Task :feature:voice:mergeReleaseShaders UP-TO-DATE
+> Task :feature:voice:compileReleaseShaders NO-SOURCE
+> Task :feature:voice:generateReleaseAssets UP-TO-DATE
+> Task :feature:voice:mergeReleaseAssets UP-TO-DATE
+> Task :feature:voice:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :feature:voice:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:voice:prepareReleaseArtProfile UP-TO-DATE
+> Task :feature:voice:mergeReleaseJavaResource UP-TO-DATE
+> Task :feature:voice:syncReleaseLibJars UP-TO-DATE
+> Task :feature:voice:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :feature:settings:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :feature:settings:mergeReleaseNativeLibs NO-SOURCE
+> Task :feature:settings:stripReleaseDebugSymbols NO-SOURCE
+> Task :feature:settings:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :feature:settings:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :feature:settings:extractReleaseAnnotations
+> Task :feature:settings:mergeReleaseShaders UP-TO-DATE
+> Task :feature:settings:compileReleaseShaders NO-SOURCE
+> Task :feature:settings:generateReleaseAssets UP-TO-DATE
+> Task :feature:settings:mergeReleaseAssets UP-TO-DATE
+> Task :feature:settings:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :feature:settings:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:settings:prepareReleaseArtProfile UP-TO-DATE
+> Task :feature:settings:mergeReleaseJavaResource UP-TO-DATE
+> Task :feature:settings:syncReleaseLibJars UP-TO-DATE
+> Task :feature:settings:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :feature:ai:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :feature:ai:mergeReleaseNativeLibs NO-SOURCE
+> Task :feature:ai:stripReleaseDebugSymbols NO-SOURCE
+> Task :feature:ai:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :feature:ai:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :feature:ai:extractReleaseAnnotations
+> Task :feature:ai:mergeReleaseShaders UP-TO-DATE
+> Task :feature:ai:compileReleaseShaders NO-SOURCE
+> Task :feature:ai:generateReleaseAssets UP-TO-DATE
+> Task :feature:ai:mergeReleaseAssets UP-TO-DATE
+> Task :feature:ai:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :feature:ai:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:ai:prepareReleaseArtProfile UP-TO-DATE
+> Task :feature:ai:mergeReleaseJavaResource UP-TO-DATE
+> Task :feature:ai:syncReleaseLibJars UP-TO-DATE
+> Task :feature:ai:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :feature:backup:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :feature:backup:mergeReleaseNativeLibs NO-SOURCE
+> Task :feature:backup:stripReleaseDebugSymbols NO-SOURCE
+> Task :feature:backup:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :feature:backup:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :feature:backup:extractReleaseAnnotations
+> Task :feature:backup:mergeReleaseShaders UP-TO-DATE
+> Task :feature:backup:compileReleaseShaders NO-SOURCE
+> Task :feature:backup:generateReleaseAssets UP-TO-DATE
+> Task :feature:backup:mergeReleaseAssets UP-TO-DATE
+> Task :feature:backup:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :feature:backup:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:backup:prepareReleaseArtProfile UP-TO-DATE
+> Task :feature:backup:mergeReleaseJavaResource UP-TO-DATE
+> Task :feature:backup:syncReleaseLibJars UP-TO-DATE
+> Task :feature:backup:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :core:data:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :core:data:mergeReleaseNativeLibs NO-SOURCE
+> Task :core:data:stripReleaseDebugSymbols NO-SOURCE
+> Task :core:data:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :core:data:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :core:data:extractReleaseAnnotations
+> Task :core:data:mergeReleaseShaders UP-TO-DATE
+> Task :core:data:compileReleaseShaders NO-SOURCE
+> Task :core:data:generateReleaseAssets UP-TO-DATE
+> Task :core:data:mergeReleaseAssets UP-TO-DATE
+> Task :core:data:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :core:data:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :core:data:prepareReleaseArtProfile UP-TO-DATE
+> Task :core:data:mergeReleaseJavaResource UP-TO-DATE
+> Task :core:data:syncReleaseLibJars
+> Task :core:data:bundleReleaseLocalLintAar
+> Task :core:common:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :core:common:mergeReleaseNativeLibs NO-SOURCE
+> Task :core:common:stripReleaseDebugSymbols NO-SOURCE
+> Task :core:common:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :core:common:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :core:common:extractReleaseAnnotations UP-TO-DATE
+> Task :core:common:mergeReleaseShaders UP-TO-DATE
+> Task :core:common:compileReleaseShaders NO-SOURCE
+> Task :core:common:generateReleaseAssets UP-TO-DATE
+> Task :core:common:mergeReleaseAssets UP-TO-DATE
+> Task :core:common:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :core:common:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :core:common:prepareReleaseArtProfile UP-TO-DATE
+> Task :core:common:mergeReleaseJavaResource UP-TO-DATE
+> Task :core:common:syncReleaseLibJars UP-TO-DATE
+> Task :core:common:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :core:domain:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :core:domain:mergeReleaseNativeLibs NO-SOURCE
+> Task :core:domain:stripReleaseDebugSymbols NO-SOURCE
+> Task :core:domain:copyReleaseJniLibsProjectAndLocalJars UP-TO-DATE
+> Task :core:domain:extractDeepLinksForAarRelease UP-TO-DATE
+> Task :core:domain:extractReleaseAnnotations UP-TO-DATE
+> Task :core:domain:mergeReleaseShaders UP-TO-DATE
+> Task :core:domain:compileReleaseShaders NO-SOURCE
+> Task :core:domain:generateReleaseAssets UP-TO-DATE
+> Task :core:domain:mergeReleaseAssets UP-TO-DATE
+> Task :core:domain:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :core:domain:mergeReleaseConsumerProguardFiles UP-TO-DATE
+> Task :core:domain:prepareReleaseArtProfile UP-TO-DATE
+> Task :core:domain:mergeReleaseJavaResource UP-TO-DATE
+> Task :core:domain:syncReleaseLibJars UP-TO-DATE
+> Task :core:domain:bundleReleaseLocalLintAar UP-TO-DATE
+> Task :app:preReleaseUnitTestBuild UP-TO-DATE
+> Task :core:common:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :core:data:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :core:domain:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :feature:ai:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :feature:backup:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :feature:chatbot:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :feature:dashboard:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :feature:incomes:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :feature:invoices:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :feature:settings:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :feature:voice:writeReleaseLintModelMetadata UP-TO-DATE
+> Task :core:domain:lintAnalyzeRelease UP-TO-DATE
+> Task :core:common:lintAnalyzeRelease UP-TO-DATE
+> Task :app:kspReleaseKotlin
+> Task :app:compileReleaseKotlin UP-TO-DATE
+> Task :app:compileReleaseJavaWithJavac UP-TO-DATE
+> Task :app:hiltAggregateDepsRelease UP-TO-DATE
+> Task :app:hiltJavaCompileRelease UP-TO-DATE
+> Task :app:generateReleaseLintReportModel
+> Task :app:bundleReleaseClassesToCompileJar UP-TO-DATE
+> Task :app:generateReleaseUnitTestLintModel
+> Task :app:lintAnalyzeReleaseUnitTest
+> Task :core:common:preReleaseUnitTestBuild UP-TO-DATE
+> Task :core:common:generateReleaseUnitTestLintModel UP-TO-DATE
+> Task :core:common:lintAnalyzeReleaseUnitTest UP-TO-DATE
+> Task :core:data:preReleaseUnitTestBuild UP-TO-DATE
+> Task :core:data:generateReleaseUnitTestLintModel
+> Task :core:data:lintAnalyzeRelease
+> Task :core:data:lintAnalyzeReleaseUnitTest
+> Task :feature:ai:lintAnalyzeRelease
+> Task :feature:dashboard:lintAnalyzeRelease
+> Task :feature:backup:lintAnalyzeRelease
+> Task :feature:settings:lintAnalyzeRelease
+> Task :feature:voice:lintAnalyzeRelease
+> Task :feature:chatbot:lintAnalyzeRelease
+> Task :feature:incomes:lintAnalyzeRelease
+> Task :core:domain:preReleaseUnitTestBuild UP-TO-DATE
+> Task :core:domain:generateReleaseUnitTestLintModel UP-TO-DATE
+> Task :core:domain:lintAnalyzeReleaseUnitTest UP-TO-DATE
+> Task :feature:ai:preReleaseUnitTestBuild UP-TO-DATE
+> Task :feature:ai:generateReleaseUnitTestLintModel
+> Task :feature:ai:lintAnalyzeReleaseUnitTest
+> Task :feature:backup:preReleaseUnitTestBuild UP-TO-DATE
+> Task :feature:backup:generateReleaseUnitTestLintModel
+> Task :feature:invoices:lintAnalyzeRelease
+> Task :app:lintAnalyzeRelease
+> Task :feature:chatbot:preReleaseUnitTestBuild UP-TO-DATE
+> Task :feature:chatbot:generateReleaseUnitTestLintModel
+> Task :feature:backup:lintAnalyzeReleaseUnitTest
+> Task :feature:dashboard:preReleaseUnitTestBuild UP-TO-DATE
+> Task :feature:dashboard:generateReleaseUnitTestLintModel
+> Task :feature:dashboard:lintAnalyzeReleaseUnitTest
+> Task :feature:incomes:preReleaseUnitTestBuild UP-TO-DATE
+> Task :feature:incomes:generateReleaseUnitTestLintModel
+> Task :feature:incomes:lintAnalyzeReleaseUnitTest
+> Task :feature:invoices:preReleaseUnitTestBuild UP-TO-DATE
+> Task :feature:invoices:generateReleaseUnitTestLintModel
+> Task :feature:chatbot:lintAnalyzeReleaseUnitTest
+> Task :feature:settings:preReleaseUnitTestBuild UP-TO-DATE
+> Task :feature:settings:generateReleaseUnitTestLintModel
+> Task :feature:settings:lintAnalyzeReleaseUnitTest
+> Task :feature:voice:preReleaseUnitTestBuild UP-TO-DATE
+> Task :feature:voice:generateReleaseUnitTestLintModel
+> Task :feature:invoices:lintAnalyzeReleaseUnitTest
+> Task :app:extractReleaseVersionControlInfo UP-TO-DATE
+> Task :app:mergeReleaseShaders UP-TO-DATE
+> Task :app:compileReleaseShaders NO-SOURCE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets UP-TO-DATE
+> Task :feature:dashboard:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:invoices:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:incomes:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:chatbot:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:voice:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:settings:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:ai:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :feature:backup:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :core:data:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :core:common:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :core:domain:exportReleaseConsumerProguardFiles UP-TO-DATE
+> Task :app:checkReleaseDuplicateClasses UP-TO-DATE
+> Task :app:mergeReleaseArtProfile UP-TO-DATE
+> Task :app:transformReleaseClassesWithAsm
+> Task :feature:voice:lintAnalyzeReleaseUnitTest
+
+> Task :app:lintReportRelease
+Wrote HTML report to file:///media/yhas/_dde_data/home/yhas/Opencode/FinAI/app/build/reports/lint-results-release.html
+
+> Task :app:lintRelease
+> Task :app:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :app:processReleaseJavaRes UP-TO-DATE
+> Task :app:mergeReleaseJavaResource UP-TO-DATE
+> Task :app:mergeReleaseStartupProfile UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :core:common:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :core:data:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :core:domain:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :feature:ai:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :feature:backup:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :feature:chatbot:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :feature:dashboard:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :feature:incomes:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :feature:invoices:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :feature:settings:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :feature:voice:copyReleaseJniLibsProjectOnly UP-TO-DATE
+> Task :app:mergeReleaseNativeLibs UP-TO-DATE
+> Task :app:stripReleaseDebugSymbols UP-TO-DATE
+> Task :app:writeReleaseAppMetadata UP-TO-DATE
+> Task :app:expandReleaseArtProfileWildcards
+> Task :app:produceReleaseComposeMapping
+> Task :app:minifyReleaseWithR8
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+WARNING: R8: An error occurred when parsing kotlin metadata. This normally happens when using a newer version of kotlin than the kotlin version released when this version of R8 was created. To find compatible kotlin versions, please see: https://developer.android.com/studio/build/kotlin-d8-r8-versions
+
+> Task :app:reportReleaseComposeMappingErrors
+> Task :app:collectReleaseDependencies UP-TO-DATE
+> Task :app:configureReleaseDependencies UP-TO-DATE
+> Task :app:extractReleaseNativeSymbolTables UP-TO-DATE
+> Task :app:generateReleaseLintVitalReportModel
+> Task :core:common:lintVitalAnalyzeRelease UP-TO-DATE
+> Task :core:data:lintVitalAnalyzeRelease
+> Task :core:domain:lintVitalAnalyzeRelease UP-TO-DATE
+> Task :feature:ai:lintVitalAnalyzeRelease
+> Task :feature:backup:lintVitalAnalyzeRelease
+> Task :feature:chatbot:lintVitalAnalyzeRelease
+> Task :feature:dashboard:lintVitalAnalyzeRelease
+> Task :feature:incomes:lintVitalAnalyzeRelease
+> Task :feature:invoices:lintVitalAnalyzeRelease
+> Task :feature:settings:lintVitalAnalyzeRelease
+> Task :feature:voice:lintVitalAnalyzeRelease
+> Task :app:lintVitalAnalyzeRelease
+> Task :core:common:generateReleaseLintVitalModel UP-TO-DATE
+> Task :core:data:generateReleaseLintVitalModel
+> Task :core:domain:generateReleaseLintVitalModel UP-TO-DATE
+> Task :feature:ai:generateReleaseLintVitalModel
+> Task :feature:backup:generateReleaseLintVitalModel
+> Task :feature:chatbot:generateReleaseLintVitalModel
+> Task :feature:dashboard:generateReleaseLintVitalModel
+> Task :feature:incomes:generateReleaseLintVitalModel
+> Task :feature:invoices:generateReleaseLintVitalModel
+> Task :feature:settings:generateReleaseLintVitalModel
+> Task :feature:voice:generateReleaseLintVitalModel
+> Task :app:lintVitalReportRelease SKIPPED
+> Task :app:lintVitalRelease SKIPPED
+> Task :app:parseReleaseIntegrityConfig UP-TO-DATE
+> Task :app:validateSigningRelease UP-TO-DATE
+> Task :app:buildReleasePreBundle
+> Task :app:mergeReleaseComposeMapping
+> Task :app:compileReleaseArtProfile
+> Task :app:packageReleaseBundle
+> Task :app:signReleaseBundle
+> Task :app:produceReleaseBundleIdeListingFile
+> Task :app:createReleaseBundleListingFileRedirect UP-TO-DATE
+> Task :app:bundleRelease
+
+[Incubating] Problems report is available at: file:///media/yhas/_dde_data/home/yhas/Opencode/FinAI/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.14.4/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 7m 19s
+903 actionable tasks: 158 executed, 745 up-to-date

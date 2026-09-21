@@ -13,14 +13,18 @@ import javax.inject.Singleton
 class BackupDataRepositoryImpl @Inject constructor(
     private val dao: BackupDao
 ) : BackupDataRepository {
-    override suspend fun snapshot(): BackupDataset {
-        val snapshot = dao.snapshot()
+    override suspend fun snapshot(): BackupDataset = map(dao.snapshot())
+    override suspend fun financialSnapshot(): BackupDataset = map(dao.financialSnapshot())
+    override suspend fun documentSnapshot(income: Boolean, id: Long): BackupDataset = map(dao.documentSnapshot(income, id))
+
+    private fun map(snapshot: BackupEntitySnapshot): BackupDataset {
         return BackupDataset(
             invoices = snapshot.invoices.map { it.toDomain() },
             products = snapshot.products.map { it.toDomain() },
             incomes = snapshot.incomes.map { it.toDomain() },
             fiscalConfigs = snapshot.fiscalConfigs.map { it.toDomain() },
-            chatMessages = snapshot.chatMessages.map { it.toDomain() }
+            chatMessages = snapshot.chatMessages.map { it.toDomain() },
+            commandOperations = snapshot.commandOperations.map { it.toDomain() }
         )
     }
 
@@ -45,7 +49,8 @@ class BackupDataRepositoryImpl @Inject constructor(
                 products = dataset.products.map { it.toEntity() },
                 incomes = dataset.incomes.map { it.toEntity() },
                 fiscalConfigs = dataset.fiscalConfigs.map { it.toEntity() },
-                chatMessages = dataset.chatMessages.map { it.toEntity() }
+                chatMessages = dataset.chatMessages.map { it.toEntity() },
+                commandOperations = dataset.commandOperations.map { it.toEntity() }
             ),
             restoreId
         )

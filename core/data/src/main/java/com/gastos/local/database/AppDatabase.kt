@@ -14,13 +14,16 @@ import com.gastos.local.dao.*
         CountryFiscalConfigEntity::class,
         ChatMessageEntity::class,
         RestoreMarkerEntity::class,
-        DocumentDraftEntity::class
+        DocumentDraftEntity::class,
+        CommandOperationEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
+
+    abstract fun commandOperationDao(): CommandOperationDao
 
     abstract fun documentDraftDao(): DocumentDraftDao
 
@@ -33,6 +36,6 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "gastos_ingresos_db"
-        const val DATABASE_VERSION = 14
+        const val DATABASE_VERSION = 15
     }
 }

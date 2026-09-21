@@ -1,73 +1,65 @@
-# ASO Checklist — FinAI (Google Play)
+# Checklist ASO — FinAI 1.8.5
 
-Estado de la ficha a 2026-08-16. Marca cada item al completarlo.
+Estado a 20/09/2026. Los archivos locales están preparados; los cambios públicos siguen pendientes de confirmación.
 
-## 1. Textos es-ES (ficha principal)
+## 1. Metadatos
 
-- [ ] **Nombre** → `FinAI: Control de Gastos` (23/30)
-- [ ] **Descripción breve** → `Controla gastos e ingresos, escanea facturas y sincroniza con Sheets.` (70/80)
-- [ ] **Descripción completa** → ✅ pegada en Play Console (2.846/4.000)
-- [ ] Guardar y enviar para revisión (los metadatos no requieren nueva versión de app)
+- [x] Mantener `FinAI: Control de Gastos` para es-ES y es-419.
+- [x] Mantener `FinAI: Expense Tracker` para en-US.
+- [x] Reescribir las descripciones breves dentro del límite de 80 caracteres.
+- [x] Eliminar presupuestos, asesor financiero, garantías de velocidad y modelos concretos.
+- [x] Añadir captura de documentos, duplicados, varios impuestos, Google Sheets y Google Drive.
+- [x] Generar `translations.csv` desde los textos revisados.
+- [ ] Publicar los tres idiomas en Play Console.
 
-## 2. Locales (traducciones)
+## 2. Recursos gráficos
 
-- [ ] en-US → ✅ importado vía `marketing/playstore/translations.csv`
-- [ ] es-419 → ✅ importado vía `marketing/playstore/translations.csv`
-- [ ] Revisar en Play Console que ambos locales muestren los textos correctos (Store presence → Main store listing → selector de idioma)
+- [x] Definir una secuencia de 8 mensajes localizada.
+- [x] Preparar un editor reproducible en `marketing/playstore-screenshot-editor/`.
+- [ ] Sustituir cualquier dato personal por ejemplos sintéticos.
+- [ ] Revisar cada captura a tamaño pequeño y en un teléfono real.
+- [ ] Exportar 1080 × 1920 para es-ES, es-419 y en-US.
+- [ ] Exportar el gráfico destacado de 1024 × 500.
+- [ ] Subir recursos en el mismo orden en los tres idiomas.
 
-## 3. Capturas — orden de subida (conversión, no cronológico)
+Orden de capturas:
 
-En Play Console cada locale permite hasta 8 capturas; subir el mismo orden en los 3 locales.
+1. Una foto. Gasto registrado.
+2. Tickets, facturas y nóminas.
+3. Aviso de duplicados.
+4. Varios tipos de IVA o impuestos.
+5. Balance mensual.
+6. Consultas sobre movimientos.
+7. Datos en Google Sheets y fotos en Google Drive.
+8. Backup cifrado y recuperable.
 
-| Pos | Archivo | Mensaje / overlay sugerido |
-|-----|---------|---------------------------|
-| 1 | `03-balance-dashboard.png` | "Tus gastos e ingresos, claros" |
-| 2 | `02-escaneo-inteligente.png` | "Escanea facturas en segundos" |
-| 3 | `01-conversacion-ia.png` | "Pregunta a tu asistente con IA" |
-| 4 | `04-registro-detallado.png` | "Registro en lenguaje natural" |
-| 5 | `05-asistente-personal.png` | "IA, voz y chat en español" (si duplica a 3, sustituir por 06) |
-| 6 | `06-drive-sheets.png` | "Sincronizado con Google Sheets" |
+## 3. Confianza y políticas
 
-- [ ] Revisión visual humana: legibilidad a tamaño reducido, sin recortes, overlay bien posicionado
-- [ ] Opcional: añadir 2 capturas más hasta 8 (p. ej. categorías/subcategorías y backup cifrado)
-- [ ] Las capturas de la ficha van en **los 3 locales** (en-US puede usar las mismas)
+- [x] Confirmar en el repositorio que no hay SDK de anuncios, `AD_ID` ni interfaz publicitaria.
+- [ ] Cambiar la declaración `Contiene anuncios` a `No` en Play Console.
+- [ ] Revisar el formulario completo de seguridad de datos; incluir el procesamiento de Gemini y los flujos voluntarios de Drive/Sheets según corresponda.
+- [ ] Verificar la URL pública de la política de privacidad y que describa IA, Drive, Sheets, fotos y copias.
+- [ ] Confirmar categoría Finanzas, correo de soporte, audiencia y clasificación.
 
-## 4. Video preview (opcional, recomendado — factor de conversión alto)
+## 4. Conversión y medición
 
-- [ ] Storyboard listo: `marketing/playstore/video-preview.md` (0-5s escaneo · 5-15s chat IA · 15-25s dashboard · 25-30s logo + CTA)
-- [ ] Grabar con `adb screenrecord` 1080×1920 y editar ≤ 30 s con subtítulos quemados
-- [ ] Subir en Store presence → Main store listing → Video (se reutiliza en todos los locales)
+- [x] Guardar la línea base de los últimos 28 días en `ASO-AUDIT-2026-09-20.md`.
+- [ ] Registrar cada lunes impresiones, visitas, adquisiciones, fuente, país y conversión.
+- [ ] No mezclar cambios de textos y gráficos en el primer experimento.
+- [ ] Probar primero la captura principal cuando haya tráfico suficiente.
+- [ ] Crear una ficha personalizada para intención `escanear facturas/recibos` cuando Play Console muestre una palabra elegible.
 
-## 5. Ficha técnica (Play Console → Policy / App content)
+## 5. Producto que influye en ASO
 
-- [ ] **Data safety form**: datos financieros en local, sin compartir; declarar envío de mensajes a la API de Gemini (procesamiento remoto)
-- [ ] **Clasificación de contenido (IARC)** completada
-- [ ] **Categoría**: Finanzas
-- [ ] **URL de política de privacidad** publicada y enlazada
-- [ ] Contacto (email) de desarrollador correcto
+- [ ] Añadir Google Play In-App Review después de varias acciones satisfactorias, con límites de frecuencia.
+- [ ] Revisar bloqueos, ANR, tiempo de inicio y fallos de captura antes de cada lanzamiento.
+- [ ] Responder todas las reseñas y convertir patrones repetidos en tareas de producto.
+- [ ] No pedir una reseña tras un error, un documento pendiente o el primer inicio.
 
-## 6. Release
+## 6. Publicación
 
-- [ ] Subir `app/build/outputs/bundle/release/app-release.aab` (1.6.0, build 14) a Internal Testing → producción
-- [ ] Release notes v1.6.0: usar `marketing/playstore-screenshots/release-notes-v1.6.0.txt`
-
-## 7. Experimentos (tras publicación, con tráfico real)
-
-- [ ] Grow → Store experiments → A/B test:
-  - Título: `FinAI: Control de Gastos` vs `FinAI: Gastos e Ingresos`
-  - Descripción breve: 2 variantes
-  - Icono y primera captura
-- [ ] Medir durante 2-4 semanas; aplicar la variante ganadora
-
-## 8. Reseñas (a medio plazo, tarea de código)
-
-- [ ] Implementar in-app review prompt (junto a notificaciones, próxima release)
-- [ ] Pedir reseña tras uso positivo (no al abrir por primera vez)
-
-## Assets locales (para regenerar capturas si se necesitan)
-
-- Capturas: `marketing/playstore-screenshots/android/1080x1920/`
-- Icono: `play_assets/play_store_icon.png` (512×512 ✅)
-- Feature graphic conforme: `play_assets/feature_graphic_1024x500.png` (1024×500 ✅)
-  - ⚠️ El original `play_assets/feature_graphic.png` es 1376×768, NO válido; subir la versión conforme
-- OAuth: `play_assets/oauth/finai_oauth_1200.png`
+- [ ] Revisar la vista previa de los tres idiomas.
+- [ ] Guardar los cambios de ficha y la declaración de anuncios.
+- [ ] Revisar el resumen de publicación.
+- [ ] Enviar a revisión.
+- [ ] Anotar fecha y métricas de inicio para comparar 7, 14, 28 y 60 días.

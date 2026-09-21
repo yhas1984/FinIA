@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="document_chat_expense">Gasto registrado</string>
+    <string name="document_chat_income">Ingreso registrado</string>
+    <string name="document_chat_reference">Referencia: %1$s</string>
+    <string name="document_chat_period_date">Fecha contable: fin del periodo. Fecha de cobro no indicada.</string>
+</resources>

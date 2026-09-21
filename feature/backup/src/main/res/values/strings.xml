@@ -77,7 +77,7 @@
     <string name="available_backups_section">Copias disponibles</string>
     <string name="delete_drive_backups_action">Eliminar copias de Drive</string>
     <string name="google_sheets_section">Google Sheets</string>
-    <string name="google_sheets_description_localized">Exporta y sincroniza tus datos a un Google Sheet organizado por hojas: Gastos, Ingresos, Productos y Resumen. Función Premium.</string>
+    <string name="google_sheets_description_localized">Un libro con gastos, ingresos, productos, impuestos, resumen y análisis personal. Filtra por mes o año. FinAI actualiza sus datos y conserva tus hojas personales. Función Premium.</string>
     <string name="unlock_premium_for_sheets_action">Desbloquear Premium para usar Sheets</string>
     <string name="connect_google_account_action">Conectar cuenta Google</string>
     <string name="sync_action">Sincronizar</string>

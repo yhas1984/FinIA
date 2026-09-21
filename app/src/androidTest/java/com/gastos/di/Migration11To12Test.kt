@@ -35,7 +35,7 @@ class Migration11To12Test {
             db.execSQL("INSERT INTO incomes (id,fecha,concepto,monto,totalDevengado,totalNeto,moneda,ivaPercent,irpfPercent,imagenUri,createdAt,updatedAt) VALUES (7,1,'Synthetic income',104,104,104,'EUR',4,0,'content://synthetic/income',1,2)")
             db.version = 11
         }
-        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14).build()
+        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15).build()
         try {
             val invoice = database.invoiceDao().getInvoiceById(7)!!
             val income = database.incomeDao().getIncomeById(7)!!

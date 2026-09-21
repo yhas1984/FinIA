@@ -56,11 +56,10 @@ class DocumentReaderAndroidTest {
         assertEquals(171.0, result.evidence.document.total!!, 0.0)
     }
 
-    @Test fun missingDateStaysMissingAndRequiresReview() {
+    @Test fun missingDateStaysMissingInEvidenceWithoutBlockingCapture() {
         val source: JSONObject = JSONObject(invoice).put("fecha", JSONObject.NULL)
-        val result: DocumentReadResult.NeedsReview = DocumentReader.parse(source.toString()) as DocumentReadResult.NeedsReview
+        val result: DocumentReadResult.Ready = DocumentReader.parse(source.toString()) as DocumentReadResult.Ready
         assertNull(result.evidence.document.date)
-        assertTrue(result.issues.any { it.field == "date" })
         assertEquals(121.0, result.evidence.document.total!!, 0.0)
     }
 

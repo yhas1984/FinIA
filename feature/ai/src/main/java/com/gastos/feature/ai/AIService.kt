@@ -264,8 +264,10 @@ class AIService @Inject constructor(
                 )
             ) { response ->
                 try {
-                    DocumentReader.parse(response)
+                    DocumentReader.parse(response, defaultCurrency)
                     true
+                } catch (_: com.gastos.domain.model.UnreadableDocumentAmountException) {
+                    false
                 } catch (error: org.json.JSONException) {
                     val location: StackTraceElement? = error.stackTrace.firstOrNull { it.className.startsWith("com.gastos.") }
                     SafeLog.d(TAG, "Document parser failed: type=${error.javaClass.simpleName} location=${location?.className}.${location?.methodName}:${location?.lineNumber}")
@@ -274,7 +276,7 @@ class AIService @Inject constructor(
             }
             val networkTimeMs = SystemClock.elapsedRealtime() - networkStartedAt
             val parsingStartedAt = SystemClock.elapsedRealtime()
-            val result = DocumentReader.parse(raw)
+            val result = DocumentReader.parse(raw, defaultCurrency)
             val parsingTimeMs = SystemClock.elapsedRealtime() - parsingStartedAt
             SafeLog.d(
                 TAG,
@@ -424,7 +426,7 @@ class AIService @Inject constructor(
                - Si pregunta por un producto concreto, NO uses query_type="balance".
 
             2. REGISTRAR GASTO: si dice que gastó, compró o pagó algo:
-                {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0.0,"total":0.0,"moneda":"$defaultCurrency","fecha":"$today","categoria":"texto","subcategoria":"texto"}
+                {"action":"add_expense","descripcion":"texto","total":0.0,"tipo_iva":null,"productos":[],"moneda":"$defaultCurrency","fecha":"$today","categoria":"texto","subcategoria":"texto"}
                 - Si el usuario no menciona otra moneda, usa $defaultCurrency.
                 - Usa una categoría predeterminada de gasto si encaja claramente.
                 - Si el usuario menciona una categoría personalizada explícita, consérvala.
@@ -433,7 +435,8 @@ class AIService @Inject constructor(
                   Si no estás seguro, omítela.
 
             3. REGISTRAR INGRESO: si menciona nómina, salario, cobro o ingreso recibido:
-                {"action":"add_income","concepto":"texto","total_devengado":0.0,"total_neto":0.0,"monto":0.0,"moneda":"$defaultCurrency","fecha":"$today","fuente":"texto","categoria":"texto","subcategoria":"texto"}
+                Missing taxes, gross/net and product details must be null or omitted; never invent them. Keep explicit dates unchanged even if invalid.
+                {"action":"add_income","concepto":"texto","total_devengado":null,"total_neto":null,"monto":0.0,"moneda":"$defaultCurrency","fecha":"$today","fuente":"texto","categoria":"texto","subcategoria":"texto"}
                 - Si el usuario no menciona otra moneda, usa $defaultCurrency.
                 - Usa una categoría predeterminada de ingreso si encaja claramente.
                 - Si es una nómina, la categoría por defecto es "Nómina".
@@ -476,9 +479,10 @@ class AIService @Inject constructor(
                 Product rules: generic names use match_mode="group"; exact line descriptions use match_mode="exact".
                 Do not use balance for product questions.
             2. ADD EXPENSE: if the user says they spent, bought or paid for something:
-                {"action":"add_expense","descripcion":"texto","cantidad":1,"precio_unitario":0.0,"total":0.0,"moneda":"$defaultCurrency","fecha":"$today","categoria":"texto","subcategoria":"texto"}
+                {"action":"add_expense","descripcion":"texto","total":0.0,"tipo_iva":null,"productos":[],"moneda":"$defaultCurrency","fecha":"$today","categoria":"texto","subcategoria":"texto"}
             3. ADD INCOME: if the user mentions salary, payment or received income:
-                {"action":"add_income","concepto":"texto","total_devengado":0.0,"total_neto":0.0,"monto":0.0,"moneda":"$defaultCurrency","fecha":"$today","fuente":"texto","categoria":"texto","subcategoria":"texto"}
+                Missing taxes, gross/net and product details must be null or omitted; never invent them. Keep explicit dates unchanged even if invalid.
+                {"action":"add_income","concepto":"texto","total_devengado":null,"total_neto":null,"monto":0.0,"moneda":"$defaultCurrency","fecha":"$today","fuente":"texto","categoria":"texto","subcategoria":"texto"}
             4. GENERAL CONVERSATION: reply naturally, no JSON.
             $extraBlock
         """.trimIndent()
@@ -554,6 +558,7 @@ class AIService @Inject constructor(
             put("impuestos", buildTaxSchema())
             put("impuestos_completos", JSONObject().put("type", "BOOLEAN"))
             put("productos_completos", JSONObject().put("type", "BOOLEAN"))
+            put("detalle_nomina", PayrollReader.schema())
             put("productos", JSONObject().apply {
                 put("type", "ARRAY")
                 put("items", JSONObject().apply {
@@ -578,7 +583,7 @@ class AIService @Inject constructor(
                 "tipo_documento", "pais", "moneda", "fecha", "numero_factura", "empresa", "proveedor",
                 "categoria", "subcategoria", "nif_emisor", "nif_receptor", "base_imponible", "tipo_iva",
                 "cuota_iva", "retencion_irpf", "total", "devengado", "liquido", "base_cotizacion",
-                "seguridad_social", "productos", "referencia_nomina", "identificador_trabajador", "periodo_liquidacion", "tipo_pago", "precios_impuestos", "importe_retencion", "descuento", "productos_completos", "impuestos", "impuestos_completos"
+                "seguridad_social", "productos", "referencia_nomina", "identificador_trabajador", "periodo_liquidacion", "tipo_pago", "precios_impuestos", "importe_retencion", "descuento", "productos_completos", "impuestos", "impuestos_completos", "detalle_nomina"
             ).forEach(::put)
         })
     }
@@ -690,88 +695,34 @@ class AIService @Inject constructor(
         if (trimmed.isBlank()) {
             return AIResult(success = false, message = context.getString(R.string.ai_friendly_api_generic))
         }
-        if (!trimmed.startsWith("{")) return AIResult(success = true, message = trimmed)
         return try {
-            val json = extractJsonFromResponse(responseText)
+            val json = CommandResponseEnvelope.parse(responseText) ?: return AIResult(success = true, message = trimmed)
+            if (json.optString("action") in setOf("add_expense", "add_income")) {
+                CommandDocumentParser.preserveExplicitDate(json, originalCommand, context.resources.configuration.locales[0])
+            }
             when (json.optString("action", "chat")) {
                 "add_expense" -> {
-                    val descripcion = json.optString("descripcion", json.optString("concepto", ""))
-                    val cantidad = json.optDouble("cantidad", 1.0)
-                    val precioUnitario = json.optDouble("precio_unitario", 0.0)
-                    val total = json.optDouble("total", json.optDouble("monto", cantidad * precioUnitario))
-                    val moneda = resolveCommandCurrency(
-                        rawCurrency = json.optString("moneda"),
-                        defaultCurrency = getDefaultCurrency(),
-                        originalCommand = originalCommand
-                    )
-                    val subcategoria = TransactionCategories.normalizeCategory(json.optString("subcategoria"))
-                    val invoice = Invoice(
-                        fecha = parseDate(json.optString("fecha", "")),
-                        proveedor = descripcion,
-                        tipo = InvoiceType.GASTO,
-                        categoria = TransactionCategories.canonicalExpenseCategory(json.optString("categoria")),
-                        subcategoria = subcategoria,
-                        moneda = moneda,
-                        total = total
-                    )
-                    val product = Product(invoiceId = 0, descripcion = descripcion, cantidad = cantidad, precioUnitario = precioUnitario, subtotal = total)
-                    AIResult(
-                        success = true,
-                        message = context.getString(R.string.ai_expense_added, descripcion, total.toString(), moneda),
-                        invoice = invoice,
-                        products = listOf(product)
-                    )
+                    val currency = resolveCommandCurrency(json.optString("moneda"), getDefaultCurrency(), originalCommand)
+                    val (invoice, products) = CommandDocumentParser.expense(json, currency)
+                    AIResult(success = true, message = "", invoice = invoice, products = products)
                 }
                 "add_income" -> {
-                    val concepto = json.optString("concepto", json.optString("descripcion", ""))
-                    val totalDevengado = json.optDouble("total_devengado", 0.0)
-                    val totalNeto = json.optDouble("total_neto", 0.0)
-                    val monto = json.optDouble("monto", if (totalNeto > 0) totalNeto else totalDevengado)
-                    val moneda = resolveCommandCurrency(
-                        rawCurrency = json.optString("moneda"),
-                        defaultCurrency = getDefaultCurrency(),
-                        originalCommand = originalCommand
-                    )
-                    val subcategoria = TransactionCategories.normalizeCategory(json.optString("subcategoria"))
-                    val income = Income(
-                        fecha = parseDate(json.optString("fecha", "")),
-                        concepto = concepto,
-                        monto = monto,
-                        totalDevengado = if (totalDevengado > 0) totalDevengado else monto,
-                        totalNeto = if (totalNeto > 0) totalNeto else monto,
-                        moneda = moneda,
-                        fuente = json.optString("fuente"),
-                        categoria = TransactionCategories.canonicalIncomeCategory(json.optString("categoria")),
-                        subcategoria = subcategoria
-                    )
-                    val displayMonto = if (totalDevengado > 0 && totalNeto > 0) {
-                        context.getString(
-                            R.string.ai_income_amounts_format,
-                            totalDevengado.toString(),
-                            moneda,
-                            totalNeto.toString(),
-                            moneda
-                        )
-                    } else {
-                        context.getString(R.string.ai_income_amount_format, monto.toString(), moneda)
-                    }
-                    AIResult(success = true, message = context.getString(R.string.ai_income_added, concepto, displayMonto), income = income)
+                    val currency = resolveCommandCurrency(json.optString("moneda"), getDefaultCurrency(), originalCommand)
+                    AIResult(success = true, message = "", income = CommandDocumentParser.income(json, currency))
                 }
                 "query" -> AIResult(success = true, message = context.getString(R.string.ai_query_processed), queryResult = json.toString())
-                "chat" -> AIResult(success = true, message = json.optString("response", ""))
-                else -> AIResult(success = true, message = trimmed)
+                "chat" -> json.optString("response", "").takeIf { it.isNotBlank() }?.let {
+                    AIResult(success = true, message = it)
+                } ?: AIResult(success = false, message = context.getString(R.string.ai_invalid_response))
+                else -> AIResult(success = false, message = context.getString(R.string.ai_invalid_response))
             }
         } catch (error: Exception) {
-            AIResult(success = false, message = context.getString(R.string.ai_parse_response_error, error.message.orEmpty()))
-        }
-    }
-
-    private fun parseDate(dateStr: String): Long {
-        if (dateStr.isBlank()) return System.currentTimeMillis()
-        return try {
-            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).parse(dateStr)?.time ?: System.currentTimeMillis()
-        } catch (_: Exception) {
-            System.currentTimeMillis()
+            val message: String = when {
+                error is org.json.JSONException -> context.getString(R.string.ai_invalid_response)
+                error.message == "Invalid date: yyyy-MM-dd required" -> context.getString(R.string.ai_invalid_date)
+                else -> context.getString(R.string.ai_parse_response_error, error.message.orEmpty())
+            }
+            AIResult(success = false, message = message)
         }
     }
 
@@ -853,7 +804,9 @@ class AIService @Inject constructor(
             precios_impuestos is tax_included or tax_excluded only if the printed document establishes it, otherwise null.
             base_imponible at document level is the printed overall net subtotal after discounts, including exempt/outside-scope items.
             Do not use a single tax group base as that overall subtotal. If the overall subtotal is not printed, leave it null.
-            descuento is the printed aggregate line discount.
+            descuento is the positive magnitude of an explicitly printed aggregate discount, in the same tax basis as product prices.
+            A separate negative row labelled total discount is that aggregate discount, not a purchased product: put it in descuento once.
+            Never subtract the same discount twice or change printed product prices. Preserve unidentified negative rows as printed.
             total is the final payable amount. importe_retencion is a monetary withholding, retencion_irpf a percentage.
             Do not alter amounts to make them balance. Keep different line tax rates.
             Support taxes from any country: impuestos lists every printed tax-summary component, preserving its name,
@@ -869,6 +822,29 @@ class AIService @Inject constructor(
             Amounts/rates/bases not printed stay null. Do not count the same tax in both a summary total and its components.
             For payslips preserve employer, worker ID, printed reference, liquidation period, printed payment kind
             (ordinary, extra, arrears, settlement), gross, net, contribution base and social security. Never infer a period.
+            PAYSLIPS ARE NOT SALES INVOICES. For nomina set productos=[] and put ALL payroll earnings/deduction rows in detalle_nomina.conceptos.
+            For each payroll row copy its printed description, units, base rate and signed amount without changing its sign.
+            tipo=EARNING means the earnings/devengado column; tipo=DEDUCTION means the deductions/a deducir column; use UNKNOWN if unreadable.
+            A negative earning is a valid salary adjustment. A deduction printed positive remains positive; do not negate it.
+            Missing units or base rate stay null. Payroll rows do not have product VAT, sales discounts or precios_impuestos.
+            For payslips impuestos=[], and tipo_iva/cuota_iva/base_imponible/descuento/precios_impuestos=null; payroll deductions belong only in conceptos.
+            retencion_irpf is a printed income-tax percentage, importe_retencion its printed amount; absent income tax stays null, not zero.
+            For deduction rows, tipo_deduccion is SOCIAL_SECURITY only for employee social security deducted from THIS payment,
+            INCOME_TAX for income-tax withholding, OTHER for advances/cash offsets/other deductions, UNKNOWN if unreadable.
+            total_deducciones is the printed total deducted from gross to reach net. Do not classify all deductions as income tax.
+            For payslips the legacy scalar seguridad_social MUST be null: FinAI computes it locally from the typed SOCIAL_SECURITY payment deductions.
+            Do not duplicate a payment deduction in another aggregate field or copy arrears into seguridad_social.
+            The separate informational worker/employer contribution table and arrears remain in the original photo; they are NOT pay calculation rows.
+            Never add that informational table again to the payment deductions or change printed amounts to balance.
+            conceptos_completos=true only when every pay calculation row, including negative adjustments, was read.
+            Payroll fecha is ONLY an explicitly labelled issue/payment date, otherwise empty. Never extract dates from a worker code,
+            payroll reference, tax ID, seniority/start-of-employment date, filename, or today's date.
+            In detalle_nomina, fecha_pago/fecha_emision are ISO dates ONLY when printed as such; texto_fecha_pago/texto_fecha_emision
+            quote the complete corresponding printed date field including its label. If absent, BOTH date and quote are null.
+            periodo_inicio/periodo_fin are the ISO endpoints explicitly printed in periodo_liquidacion; preserve that entire period text.
+            A year printed with a thousands dot such as 2.026 means 2026. Do not invent missing endpoints or a payment date from the period.
+            tipo_pago is the kind of payroll (ordinary/extra/arrears/settlement), not a bank transfer/cash payment method; null if unknown.
+            For documents other than payslips, detalle_nomina=null.
             Category/subcategory are suggestions, not extracted fiscal facts.
         """.trimIndent()
         private val OCR_SYSTEM_PROMPT_EN = OCR_SYSTEM_PROMPT_ES

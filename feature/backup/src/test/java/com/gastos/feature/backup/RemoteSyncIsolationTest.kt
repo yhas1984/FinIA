@@ -9,23 +9,39 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RemoteSyncIsolationTest {
+    @Test fun `manual retry is scoped and snapshot enqueue includes historical incomes`() = runTest {
+        val dao = mockk<RemoteSyncOutboxDao>(relaxed=true)
+        val scheduler = mockk<RemoteSyncScheduler>(relaxed=true)
+        val current = RemoteSyncOutboxEntity("current",RemoteSyncTarget.INCOME_SHEETS,-2,RemoteSyncAction.UPSERT,
+            documentUuid="legacy",accountId="account",spreadsheetId="book")
+        val old = current.copy(targetKey="old",spreadsheetId="old-book",status=RemoteSyncStatus.WAITING_AUTH)
+        coEvery { dao.pending() } returns listOf(current,old)
+        val repository = RemoteSyncOutboxRepository(dao,scheduler)
+        val legacy = Invoice(id=2,documentUuid="legacy",fecha=1,proveedor="Test",tipo=InvoiceType.INGRESO,total=1.0)
+        repository.enqueueSheetsSnapshot(BackupDataset(listOf(legacy),emptyList(),emptyList(),emptyList(),emptyList()),"account","book")
+        coVerify { dao.upsertAll(listOf(current)) }
+        repository.retrySheets("account","book")
+        coVerify { dao.updateFailure(current.targetKey,current.operationId,0,0,RemoteSyncStatus.PENDING,null) }
+        coVerify(exactly=0) { dao.updateFailure(old.targetKey,any(),any(),any(),any(),any()) }
+    }
     @Test fun `one failed photograph does not stop an independent Sheets operation`() = runTest {
         val invoice = Invoice(id = 1, fecha = 1, proveedor = "Synthetic", tipo = InvoiceType.GASTO, total = 1.0)
         val image = RemoteSyncOutboxEntity("image", RemoteSyncTarget.INVOICE_DRIVE, 1, RemoteSyncAction.UPSERT, documentUuid = invoice.documentUuid)
         val sheet = RemoteSyncOutboxEntity("sheet", RemoteSyncTarget.EXPENSE_SHEETS, 2, RemoteSyncAction.UPSERT)
         val outbox = mockk<RemoteSyncOutboxRepository>(relaxed = true)
+        coEvery { outbox.isCurrent(any()) } returns true
         coEvery { outbox.pending() } returns listOf(image, sheet)
         coEvery { outbox.withCurrent<Boolean>(any(), any()) } coAnswers { secondArg<suspend () -> Boolean>().invoke() }
         val invoices = mockk<InvoiceRepository> { coEvery { getInvoiceById(1) } returns invoice }
         val drive = mockk<InvoiceDriveService> {
             coEvery { upload(any<Invoice>(), any()) } returns InvoiceDriveUploadResult(invoice, false, "SERVER_UNAVAILABLE")
         }
-        val sheets = mockk<SheetsSyncManager> { coEvery { performExpenseSync(2) } returns true }
+        val sheets = mockk<SheetsSyncManager> { coEvery { process(any()) } returns true }
         val worker = RemoteSyncWorker(mockk(relaxed = true), mockk(relaxed = true), outbox, invoices,
             mockk(relaxed = true), drive, sheets, mockk { every { shouldDefer() } returns false })
         worker.doWork()
         coVerify { outbox.failed(image, "SERVER_UNAVAILABLE", true, false, any()) }
-        coVerify { sheets.performExpenseSync(2) }
+        coVerify { sheets.process(any()) }
         coVerify { outbox.delete(sheet) }
         coVerify(exactly = 0) { outbox.delete(image) }
     }

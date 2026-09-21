@@ -110,6 +110,7 @@ class SheetsLinkingTest {
             editor
         }
         every { editor.apply() } returns Unit
+        every { editor.commit() } returns true
         return SheetsLinkStore(context)
     }
 }

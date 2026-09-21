@@ -58,7 +58,7 @@ class DocumentCaptureViewModel @Inject constructor(
                     images.deleteTemporaryCameraCopy(uri)
                     select(start.value)
                     if (!start.resumed || start.value.evidenceJson == null) read(start.value)
-                    else saveIfValid(start.value)
+                    else saveExtracted(start.value)
                 }
             }
         }
@@ -69,13 +69,16 @@ class DocumentCaptureViewModel @Inject constructor(
         launchOperation {
             val current: DocumentDraftEntity = store.get(draft.uuid) ?: run { clearSelection(); return@launchOperation }
             select(current)
-            saveIfValid(current)
+            saveExtracted(current)
         }
     }
 
-    private suspend fun saveIfValid(draft: DocumentDraftEntity) {
-        val evidence: DocumentEvidence = state.value.evidence ?: return
-        if (DocumentValidator.validate(evidence).issues.isEmpty()) save(draft.uuid, evidence)
+    private suspend fun saveExtracted(draft: DocumentDraftEntity) {
+        val evidence: DocumentEvidence = state.value.evidence ?: run {
+            mutableState.update { it.copy(message = it.message ?: context.getString(R.string.capture_read_failed)) }
+            return
+        }
+        save(draft.uuid, evidence)
     }
 
     private fun launchOperation(block: suspend () -> Unit) {
@@ -97,7 +100,7 @@ class DocumentCaptureViewModel @Inject constructor(
     private fun select(draft: DocumentDraftEntity) {
         val evidence: DocumentEvidence? = DocumentEvidenceCodec.decode(draft.evidenceJson)
         mutableState.update { it.copy(selected = draft, evidence = evidence,
-            issues = evidence?.let { value -> DocumentValidator.validate(value).issues }.orEmpty(),
+            issues = emptyList(),
             duplicates = emptyList(), message = draft.error, saved = null) }
     }
 
@@ -112,7 +115,8 @@ class DocumentCaptureViewModel @Inject constructor(
             is DocumentReadResult.NeedsReview -> {
                 val evidence: DocumentEvidence = result.evidence.copy(sourceSha256 = draft.sourceSha256)
                 store.update(draft.uuid, evidence)
-                mutableState.update { it.copy(evidence = evidence, issues = result.issues, message = null) }
+                mutableState.update { it.copy(evidence = evidence, issues = emptyList(), message = null) }
+                save(draft.uuid, evidence)
             }
             is DocumentReadResult.Duplicate -> mutableState.update { it.copy(duplicates = result.matches) }
             is DocumentReadResult.Failure -> {
@@ -125,8 +129,13 @@ class DocumentCaptureViewModel @Inject constructor(
     fun reread() {
         val draft: DocumentDraftEntity = state.value.selected ?: return
         if (state.value.busy) return
+        val rereadDuplicate: Boolean = state.value.duplicates.isNotEmpty()
         mutableState.update { it.copy(busy = true, duplicates = emptyList(), message = null) }
-        launchOperation { read(draft, if (state.value.evidence == null) OcrProfile.FAST else OcrProfile.THOROUGH) }
+        launchOperation {
+            val evidence: DocumentEvidence? = state.value.evidence
+            if (!rereadDuplicate && evidence != null && DocumentExtraction.amount(evidence.document) != null) save(draft.uuid, evidence)
+            else read(draft)
+        }
     }
 
     fun confirmDistinct() {
@@ -134,7 +143,6 @@ class DocumentCaptureViewModel @Inject constructor(
         val current: DocumentEvidence = state.value.evidence ?: return
         val matches: List<DuplicateMatch> = state.value.duplicates
         if (state.value.busy || matches.isEmpty() || matches.any { it.strength == DuplicateStrength.STRONG }) return
-        if (DocumentValidator.validate(current).issues.isNotEmpty()) return
         val evidence: DocumentEvidence = current.copy(distinctFrom = current.distinctFrom + matches.map { it.existing.version })
         launchOperation { store.update(draft.uuid, evidence); save(draft.uuid, evidence) }
     }
@@ -142,7 +150,7 @@ class DocumentCaptureViewModel @Inject constructor(
     private suspend fun save(uuid: String, evidence: DocumentEvidence) {
         when (val result: CaptureSave = store.save(uuid, evidence)) {
             is CaptureSave.Duplicate -> mutableState.update { it.copy(duplicates = result.matches) }
-            is CaptureSave.Review -> mutableState.update { it.copy(issues = result.issues) }
+            CaptureSave.UnreadableAmount -> mutableState.update { it.copy(message = context.getString(R.string.capture_amount_unreadable)) }
             CaptureSave.MissingDraft -> mutableState.update { it.copy(selected = null, evidence = null) }
             is CaptureSave.Saved -> {
                 val identity: DocumentIdentity? = result.invoice?.documentIdentity() ?: result.income?.documentIdentity()
@@ -174,7 +182,8 @@ class DocumentCaptureViewModel @Inject constructor(
 
 internal object DocumentEditor {
     private val numeric: Set<String> = setOf("total", "taxBase", "vatAmount", "vatPercent", "withholdingPercent", "withholdingAmount", "discount",
-        "gross", "net", "contributionBase", "socialSecurity", "quantity", "unitPrice", "subtotal", "rate", "base", "amount")
+        "gross", "net", "contributionBase", "socialSecurity", "quantity", "unitPrice", "subtotal", "rate", "base", "amount",
+        "totalDeductions", "unitRate")
 
     fun removeLine(evidence: DocumentEvidence, removed: Int): DocumentEvidence {
         fun shift(field: String): String? {
@@ -224,7 +233,8 @@ internal object DocumentEditor {
             }
         }
         val document: ScannedDocument = DocumentEvidenceCodec.json.decodeFromJsonElement(replaceAt(JsonObject(root), field.split('.')))
-        return evidence.copy(document = document, fieldEdits = evidence.fieldEdits + (field to value),
+        val edited: ScannedDocument = if (field == "date") document.copy(payroll = document.payroll?.copy(dateBasis = PayrollDateBasis.MANUAL)) else document
+        return evidence.copy(document = edited, fieldEdits = evidence.fieldEdits + (field to value),
             correctedFields = evidence.correctedFields + field, derivedFields = evidence.derivedFields - field,
             invalidFields = if (value.isNotBlank() && changed is JsonNull) evidence.invalidFields + field else evidence.invalidFields - field,
             distinctFrom = emptySet())

@@ -1,18 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="capture_processing">Leyendo y comprobando…</string>
+    <string name="capture_processing">Leyendo documento…</string>
+    <string name="capture_amount_unreadable">No se ha podido leer el importe. Vuelve a intentar la lectura con una foto más clara.</string>
     <string name="capture_read_failed">No se pudo leer el documento</string>
     <string name="capture_retry_explanation">La fotografía está guardada. Puedes reintentar ahora o volver más tarde.</string>
     <string name="capture_retry">Reintentar lectura</string>
     <string name="capture_show_all">Ver todos los datos</string>
     <string name="capture_show_issues">Mostrar solo lo que necesita revisión</string>
     <string name="capture_cancel_read">Cancelar lectura</string>
-    <string name="capture_storage_error">No se pudo guardar. El borrador se conserva; vuelve a intentarlo.</string>
+    <string name="capture_storage_error">No se pudo guardar. La foto se conserva; vuelve a intentarlo.</string>
     <string name="capture_saved">Documento guardado. La sincronización continúa en segundo plano.</string>
-    <string name="capture_pending">Pendientes (%1$d)</string>
     <string name="capture_open">Ver registro</string>
-    <string name="capture_drafts">Documentos pendientes</string>
-    <string name="capture_unread">Documento pendiente de lectura</string>
     <string name="capture_close">Cerrar</string>
     <string name="capture_duplicate">Este documento puede estar ya registrado</string>
     <string name="capture_discard">Descartar este envío</string>
@@ -28,7 +26,7 @@
     <string name="capture_add_line">Añadir línea de producto</string>
     <string name="capture_check_fields">Hay datos ausentes, inválidos o que no cuadran. Corrígelos antes de guardar.</string>
     <string name="capture_reread_explanation">Esta acción envía de nuevo la foto a Gemini y consume cuota de tu clave. Reemplazará la lectura y las correcciones de este borrador.</string>
-    <string name="capture_discard_explanation">Se eliminarán este borrador y su foto local. Los registros ya guardados no se modificarán.</string>
+    <string name="capture_discard_explanation">Se eliminarán este envío y su foto local. Los registros ya guardados no se modificarán.</string>
     <string name="capture_photo">Foto original. Pulsa para abrir.</string>
     <string name="capture_match_file">Coincide exactamente el archivo enviado.</string>
     <string name="capture_match_invoice">Coinciden el emisor y el número de factura.</string>
@@ -66,11 +64,15 @@
     <string name="capture_field_withholdingPercent">Retención (%)</string>
     <string name="capture_field_withholdingAmount">Importe de retención</string>
     <string name="capture_field_discount">Descuento total de las líneas</string>
+    <string name="capture_field_taxes">Desglose de impuestos</string>
     <string name="capture_field_priceBasis">Impuestos en los precios de productos</string>
     <string name="capture_field_gross">Total devengado</string>
     <string name="capture_field_net">Líquido a percibir</string>
     <string name="capture_field_contributionBase">Base de cotización</string>
     <string name="capture_field_socialSecurity">Seguridad social</string>
+    <string name="capture_payroll_details">Conceptos salariales y deducciones</string>
+    <string name="capture_payroll_dates">Fecha o periodo impreso de la nómina</string>
+    <string name="capture_payroll_deductions">Total de deducciones</string>
     <string name="capture_field_payrollReference">Referencia de nómina</string>
     <string name="capture_field_workerId">Identificador del trabajador</string>
     <string name="capture_field_payPeriod">Periodo de liquidación impreso</string>
@@ -83,14 +85,10 @@
     <string name="capture_field_lines">Líneas de productos</string>
     <string name="capture_remove_line">Eliminar línea de producto</string>
     <string name="capture_remove_line_explanation">Elimina esta línea solo si no corresponde al documento. Los totales se volverán a comprobar.</string>
-    <string name="capture_pending_attention">Documento pendiente</string>
-    <string name="capture_pending_explanation">Hay datos incompletos o que no cuadran. La foto está guardada; no se ha registrado ningún movimiento.</string>
     <string name="capture_duplicate_retained">No se ha añadido otro movimiento. Puedes abrir el registro existente.</string>
     <string name="capture_view_matches">Ver coincidencias</string>
     <string name="capture_view_photo">Ver fotografía</string>
     <string name="capture_options">Opciones del documento</string>
     <string name="capture_hide_notice">Ocultar aviso</string>
-    <string name="capture_cancelled">Lectura cancelada. La foto queda pendiente para reintentarlo.</string>
-    <string name="capture_tax_mismatch">Hay importes fiscales que no coinciden entre sí. El documento sigue pendiente y su fotografía se conserva.</string>
-    <string name="capture_tax_unreadable">No se ha podido leer todo el desglose de impuestos. El documento sigue pendiente y su fotografía se conserva.</string>
+    <string name="capture_cancelled">Lectura cancelada. Puedes volver a intentarlo.</string>
 </resources>

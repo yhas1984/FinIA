@@ -34,25 +34,21 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
 
-private fun StringBuilder.appendCsvRow(vararg values: Any?) {
-    append(values.joinToString(",") { value ->
-        val raw = value?.toString().orEmpty()
-        val safe = if (value is String && raw.firstOrNull() in setOf('=', '+', '-', '@')) {
-            "'$raw"
-        } else {
-            raw
-        }
-        "\"${safe.replace("\"", "\"\"")}\""
-    })
-    append('\n')
-}
 
 data class BackupUiState(
+    val reportProgress: Float = 0f,
+    val cloudListError: String? = null,
+    val sheetsError: String? = null,
+    val sheetsSyncError: String? = null,
+    val sheetsPending: Int = 0,
+    val sheetsFailed: Int = 0,
+    val sheetsSynced: Boolean = false,
     val isSignedIn: Boolean = false,
     val email: String? = null,
     val hasSheetLink: Boolean = false,
@@ -107,25 +103,24 @@ class BackupViewModel @Inject constructor(
     private val productRepository: ProductRepository,
     private val premiumStatus: PremiumStatusProvider,
     private val exchangeRateProvider: ExchangeRateProvider,
-    private val currencyPreference: CurrencyPreference
+    private val currencyPreference: CurrencyPreference,
+    private val reportWriter: FinancialReportWriter,
+    private val snapshots: com.gastos.repository.BackupDataRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BackupUiState())
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
     private var observedCloudSuccessAt: Long? = cloudBackupPreferences.status().lastSuccessAt
 
-    private fun conversionReports(invoices: List<Invoice>, incomes: List<Income>): Pair<ConversionSummary, ConversionSummary> {
-        val target = currencyPreference.defaultCurrency.value
-        return exchangeRateProvider.summarize(invoices.filter { it.tipo == InvoiceType.GASTO }.map { it.moneyRecord() }, target) to
-            exchangeRateProvider.summarize(invoices.filter { it.tipo == InvoiceType.INGRESO }.map { it.moneyRecord() } + incomes.map { it.moneyRecord() }, target)
-    }
-
-    private fun convertedText(summary: ConversionSummary, currency: String): String =
-        summary.amount?.let { com.gastos.domain.model.formatMoney(it, currency) +
-            if (summary.isPartial) " · " + context.getString(R.string.total_partial) else "" }
-            ?: context.getString(R.string.total_unavailable)
-
     init {
+        viewModelScope.launch {
+            sheetsSyncManager.operations.collect { operations ->
+                val sheets = sheetsSyncManager.currentOperations(operations)
+                _uiState.update { it.copy(sheetsPending = sheets.count { row -> row.status != RemoteSyncStatus.FAILED },
+                    sheetsFailed = sheets.count { row -> row.status == RemoteSyncStatus.FAILED },
+                    sheetsSyncError = sheetsErrorMessage(context, sheets.firstNotNullOfOrNull { row -> row.lastError })) }
+            }
+        }
         checkSignInStatus()
         refreshBackupState()
         // Observa el estado Premium para habilitar/ocultar la sección Sheets.
@@ -164,7 +159,8 @@ class BackupViewModel @Inject constructor(
             it.copy(
                 isSignedIn = sheetsExportService.isSignedIn(),
                 email = account?.email,
-                hasSheetLink = account?.let(sheetsSyncManager::isEnabled) == true
+                hasSheetLink = account?.let(sheetsSyncManager::isEnabled) == true,
+                sheetsUrl = account?.let(sheetsSyncManager::getStoredId)?.takeIf(String::isNotBlank)?.let { id -> "https://docs.google.com/spreadsheets/d/$id/edit" }
             )
         }
     }
@@ -195,6 +191,7 @@ class BackupViewModel @Inject constructor(
                     isSignedIn = true,
                     email = account.email,
                     hasSheetLink = sheetsSyncManager.isEnabled(account),
+                    sheetsUrl = sheetsSyncManager.getStoredId(account).takeIf(String::isNotBlank)?.let { "https://docs.google.com/spreadsheets/d/$it/edit" },
                     error = null
                 )
             }
@@ -210,11 +207,10 @@ class BackupViewModel @Inject constructor(
      * Exporta los datos al Google Sheet vinculado o crea uno si no existe.
      * El resultado (URL del sheet) se expone en [BackupUiState.sheetsUrl].
      */
-    fun exportToSheets() {
+    fun exportToSheets(rebuild: Boolean = false) {
+        if (_uiState.value.isExportingSheets) return
+        _uiState.update { it.copy(isExportingSheets = true, sheetsError = null, sheetsSynced = false) }
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(isExportingSheets = true, sheetsUrl = null, error = null)
-            }
             try {
                 val account = sheetsExportService.getLastSignedInAccount()
                 if (account == null || !sheetsExportService.isSignedIn()) {
@@ -226,64 +222,52 @@ class BackupViewModel @Inject constructor(
                     }
                     return@launch
                 }
-                val (invoices, incomes, products) = loadData()
                 // Reutiliza el sheet existente si ya había uno vinculado.
                 val existingId = sheetsSyncManager.getStoredId(account)
+                if (existingId.isNotBlank() && !rebuild) {
+                    val remaining = sheetsSyncManager.syncChanges()
+                    _uiState.update { it.copy(isExportingSheets = false, hasSheetLink = true,
+                        sheetsSynced = remaining == 0,
+                        sheetsUrl = "https://docs.google.com/spreadsheets/d/$existingId/edit") }
+                    return@launch
+                }
+                val (invoices, incomes, products) = loadData()
                 val (url, spreadsheetId) = sheetsExportService.exportToSheets(
                     account, invoices, incomes, products, existingId
                 )
                 sheetsSyncManager.setSpreadsheetId(account, spreadsheetId)
+                val remaining = sheetsSyncManager.syncChanges()
                 _uiState.update {
-                    it.copy(isExportingSheets = false, sheetsUrl = url, hasSheetLink = true)
+                    it.copy(isExportingSheets = false, sheetsUrl = url, hasSheetLink = true, sheetsSynced = remaining == 0)
                 }
+            } catch (cancelled: CancellationException) {
+                _uiState.update { it.copy(isExportingSheets = false) }
+                throw cancelled
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
                         isExportingSheets = false,
-                        error = context.getString(R.string.sheets_export_error, e.message.orEmpty())
+                        sheetsError = sheetsErrorMessage(context, sheetsFailureCode(e))
                     )
                 }
             }
         }
     }
 
-    fun clearSheetsResult() {
-        _uiState.update { it.copy(sheetsUrl = null, error = null) }
-    }
-
-    /** Fuerza la sincronización de todos los datos existentes al sheet vinculado. */
-    fun syncAllToSheets() {
+    fun clearSheetsResult() { _uiState.update { it.copy(sheetsError = null) } }
+    fun rebuildSheets() = exportToSheets(rebuild = true)
+    fun takeOverSheets() {
+        if (_uiState.value.isExportingSheets) return
+        _uiState.update { it.copy(isExportingSheets = true, sheetsError = null, sheetsSynced = false) }
         viewModelScope.launch {
-            _uiState.update { it.copy(isExportingSheets = true, sheetsUrl = null, error = null) }
             try {
-                val account = sheetsExportService.getLastSignedInAccount()
-                if (account == null) {
-                    _uiState.update {
-                        it.copy(isExportingSheets = false, error = context.getString(R.string.no_sheet_linked_export_first))
-                    }
-                    return@launch
-                }
-                val existingId = sheetsSyncManager.getStoredId(account)
-                if (existingId.isBlank()) {
-                    _uiState.update {
-                        it.copy(isExportingSheets = false, error = context.getString(R.string.no_sheet_linked_export_first))
-                    }
-                    return@launch
-                }
-                val (invoices, incomes, products) = loadData()
-                val (url, spreadsheetId) = sheetsExportService.exportToSheets(
-                    account, invoices, incomes, products, existingId
-                )
-                sheetsSyncManager.setSpreadsheetId(account, spreadsheetId)
-                _uiState.update { it.copy(isExportingSheets = false, sheetsUrl = url) }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isExportingSheets = false,
-                        error = context.getString(R.string.sheets_sync_error, e.message.orEmpty())
-                    )
-                }
-            }
+                val account = requireNotNull(sheetsExportService.getLastSignedInAccount())
+                sheetsExportService.takeOverWriter(account, sheetsSyncManager.getStoredId(account))
+                val remaining = sheetsSyncManager.syncChanges()
+                _uiState.update { it.copy(sheetsSynced = remaining == 0) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { _uiState.update { it.copy(sheetsError = sheetsErrorMessage(context, sheetsFailureCode(error))) } }
+            finally { _uiState.update { it.copy(isExportingSheets = false) } }
         }
     }
 
@@ -458,47 +442,40 @@ class BackupViewModel @Inject constructor(
     }
 
     fun createCloudBackupNow() {
+        if (_uiState.value.isCloudLoading) return
         viewModelScope.launch {
-            _uiState.update { it.copy(isCloudLoading = true, error = null) }
+            _uiState.update { it.copy(isCloudLoading = true, error = null, cloudListError = null) }
             try {
                 val backup = cloudBackupService.createBackup()
                 cloudBackupPreferences.recordSuccess()
-                val backups = cloudBackupService.listBackups()
-                _uiState.update {
-                    it.copy(
-                        isCloudLoading = false,
-                        cloudBackups = backups,
-                        cloudBackupStatus = cloudBackupPreferences.status(),
-                        backupResult = BackupResult(true, context.getString(R.string.drive_backup_saved, backup.name))
-                    )
-                }
+                _uiState.update { it.copy(cloudBackupStatus = cloudBackupPreferences.status(),
+                    backupResult = BackupResult(true, context.getString(R.string.drive_backup_saved, backup.name))) }
+            } catch (cancelled: CancellationException) {
+                _uiState.update { it.copy(isCloudLoading = false) }
+                throw cancelled
             } catch (error: Exception) {
                 cloudBackupPreferences.recordError(error.message ?: context.getString(R.string.drive_backup_create_failed))
-                _uiState.update {
-                    it.copy(isCloudLoading = false, cloudBackupStatus = cloudBackupPreferences.status(), error = error.message ?: context.getString(R.string.drive_backup_create_failed))
-                }
+                _uiState.update { it.copy(isCloudLoading = false, cloudBackupStatus = cloudBackupPreferences.status(), error = error.message) }
+                return@launch
             }
+            refreshCloudList()
         }
     }
 
+    private suspend fun refreshCloudList() {
+        try {
+            val backups = cloudBackupService.listBackups()
+            _uiState.update { it.copy(cloudBackups = backups, cloudListError = null) }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { _uiState.update { it.copy(cloudListError = context.getString(R.string.cloud_list_error)) } }
+        finally { _uiState.update { it.copy(isCloudLoading = false) } }
+    }
+
     fun loadCloudBackups() {
-        if (!premiumStatus.isPremium.value || !sheetsExportService.isSignedIn()) return
+        if (!premiumStatus.isPremium.value || !sheetsExportService.isSignedIn() || _uiState.value.isCloudLoading) return
         viewModelScope.launch {
-            _uiState.update { it.copy(isCloudLoading = true) }
-            try {
-                val backups = cloudBackupService.listBackups()
-                _uiState.update {
-                    it.copy(
-                        isCloudLoading = false,
-                        cloudBackups = backups,
-                        cloudBackupStatus = cloudBackupPreferences.status()
-                    )
-                }
-            } catch (error: Exception) {
-                _uiState.update {
-                    it.copy(isCloudLoading = false, error = error.message ?: context.getString(R.string.drive_backup_load_failed))
-                }
-            }
+            _uiState.update { it.copy(isCloudLoading = true, cloudListError = null) }
+            refreshCloudList()
         }
     }
 
@@ -523,392 +500,53 @@ class BackupViewModel @Inject constructor(
     }
 
     private suspend fun loadData(): Triple<List<Invoice>, List<Income>, List<Product>> {
-        val invoices = invoiceRepository.getAllInvoices().first()
-        val incomes = incomeRepository.getAllIncomes().first()
-        val products = productRepository.getAllProducts().first()
-        return Triple(invoices, incomes, products)
+        val data = snapshots.financialSnapshot()
+        return Triple(data.invoices, data.incomes, data.products)
     }
 
-    private fun buildCsvContent(
-        invoices: List<Invoice>,
-        incomes: List<Income>,
-        products: List<Product>
-    ): String = buildString {
-        append('\uFEFF')
-        appendCsvRow(
-            context.getString(R.string.csv_header_type),
-            context.getString(R.string.csv_header_id),
-            context.getString(R.string.csv_header_date),
-            context.getString(R.string.csv_header_invoice_number),
-            context.getString(R.string.csv_header_concept),
-            context.getString(R.string.csv_header_amount),
-            context.getString(R.string.csv_header_currency),
-            context.getString(R.string.csv_header_tax_base),
-            context.getString(R.string.csv_header_vat_percent),
-            context.getString(R.string.csv_header_vat_amount),
-            context.getString(R.string.csv_header_irpf_percent),
-            context.getString(R.string.csv_header_gross),
-            context.getString(R.string.csv_header_net),
-            context.getString(R.string.csv_header_category),
-            context.getString(R.string.csv_header_subcategory),
-            context.getString(R.string.csv_header_notes),
-            "taxes_json_original_currency"
-        )
-        val invoiceById = invoices.associateBy { it.id }
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+    private var reportJob: kotlinx.coroutines.Job? = null
 
-        invoices.forEach { invoice ->
-            appendCsvRow(
-                 if (invoice.tipo == InvoiceType.GASTO) context.getString(R.string.csv_type_expense) else context.getString(R.string.csv_type_income),
-                invoice.id,
-                dateFormat.format(Date(invoice.fecha)),
-                invoice.numeroFactura.orEmpty(),
-                invoice.proveedor,
-                invoice.total,
-                invoice.moneda,
-                invoice.baseImponible ?: "",
-                invoice.ivaPercent ?: "",
-                invoice.cuotaIva ?: "",
-                invoice.irpfPercent,
-                "",
-                "",
-                invoice.categoria.orEmpty(),
-                invoice.subcategoria.orEmpty(),
-                invoice.notas.orEmpty(),
-                com.gastos.domain.model.DocumentTaxCodec.encode(invoice.taxes)
-            )
-        }
-        products.forEach { product ->
-            appendCsvRow(
-                 context.getString(R.string.csv_type_product),
-                product.id,
-                dateFormat.format(Date(product.createdAt)),
-                "",
-                product.descripcion,
-                product.totalIncludingTax ?: "",
-                invoiceById[product.invoiceId]?.moneda.orEmpty(),
-                "",
-                product.ivaPercent ?: "",
-                "",
-                0,
-                "",
-                "",
-                "",
-                "",
-                "",
-                com.gastos.domain.model.DocumentTaxCodec.encode(product.taxes)
-            )
-        }
-        incomes.forEach { income ->
-            appendCsvRow(
-                 context.getString(R.string.csv_type_income),
-                income.id,
-                dateFormat.format(Date(income.fecha)),
-                income.evidence?.document?.number.orEmpty(),
-                income.concepto,
-                income.monto,
-                income.moneda,
-                income.evidence?.document?.taxBase ?: "",
-                income.ivaPercent ?: "",
-                income.evidence?.document?.vatAmount ?: "",
-                income.irpfPercent,
-                income.totalDevengado,
-                income.totalNeto,
-                income.categoria.orEmpty(),
-                income.subcategoria.orEmpty(),
-                income.notas.orEmpty(),
-                com.gastos.domain.model.DocumentTaxCodec.encode(income.taxes)
-            )
-        }
+    fun exportToCsv(context: Context, uri: Uri) = exportReport(context, uri, ReportFormat.CSV)
+    fun exportToPdf(context: Context, uri: Uri) = exportReport(context, uri, ReportFormat.PDF)
+    fun shareReport(context: Context, format: ReportFormat) = exportReport(context, null, format)
+    fun cancelReport() { reportJob?.cancel() }
 
-        val target = currencyPreference.defaultCurrency.value
-        val (expenses, revenue) = conversionReports(invoices, incomes)
-        val balance = com.gastos.domain.model.partialBalance(expenses, revenue)
-        append('\n')
-        appendCsvRow(context.getString(R.string.csv_summary), context.getString(R.string.csv_summary_currency), target)
-        appendCsvRow(context.getString(R.string.csv_summary_expenses), convertedText(expenses, target))
-        appendCsvRow(context.getString(R.string.csv_summary_income), convertedText(revenue, target))
-        appendCsvRow(context.getString(R.string.csv_summary_balance), balance?.let { com.gastos.domain.model.formatMoney(it, target) } ?: context.getString(R.string.total_unavailable),
-            if (expenses.isPartial || revenue.isPartial) context.getString(R.string.total_partial) else "")
-        (expenses.excluded + revenue.excluded).forEach {
-            appendCsvRow(context.getString(R.string.total_partial), it.id, it.description, it.amount, it.currency)
-        }
-        appendCsvRow(context.getString(R.string.csv_summary_exported_at), SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.ROOT).format(Date()))
-    }
-
-    fun exportToCsv(context: Context, uri: Uri) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isExporting = true, exportResult = null) }
-
+    private fun exportReport(context: Context, destination: Uri?, format: ReportFormat) {
+        if (_uiState.value.isExporting) return
+        _uiState.update { it.copy(isExporting = true, exportResult = null, reportProgress = 0f) }
+        reportJob = viewModelScope.launch {
+            var temporary: File? = null
             try {
-                val (invoices, incomes, products) = loadData()
-
-                val outputStream = context.contentResolver.openOutputStream(uri)
-                    ?: error(context.getString(R.string.destination_open_error))
-                outputStream.use {
-                    it.write(buildCsvContent(invoices, incomes, products).toByteArray(Charsets.UTF_8))
-                }
-
-                _uiState.update {
-                    it.copy(
-                        isExporting = false,
-                        exportResult = BackupResult(
-                            success = true,
-                            message = context.getString(
-                                R.string.csv_exported,
-                                invoices.size,
-                                products.size,
-                                incomes.size
-                            )
-                        )
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isExporting = false,
-                        exportResult = BackupResult(
-                            success = false,
-                            message = context.getString(R.string.csv_export_error, e.message.orEmpty())
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    fun exportToPdf(context: Context, uri: Uri) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isExporting = true, exportResult = null) }
-
-            try {
-                val (invoices, incomes, products) = loadData()
-                val df = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
-                val targetCurrency = currencyPreference.defaultCurrency.value
-
-                val pdfDocument = PdfDocument()
-                try {
-                val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
-                var page = pdfDocument.startPage(pageInfo)
-                var canvas = page.canvas
-                var y = 50f
-                val paint = android.graphics.Paint()
-                val titlePaint = android.graphics.Paint().apply {
-                    textSize = 18f
-                    isFakeBoldText = true
-                    color = android.graphics.Color.parseColor("#6750A4")
-                }
-                val headerPaint = android.graphics.Paint().apply {
-                    textSize = 12f
-                    isFakeBoldText = true
-                    color = android.graphics.Color.BLACK
-                }
-                val bodyPaint = android.graphics.Paint().apply {
-                    textSize = 10f
-                    color = android.graphics.Color.DKGRAY
-                }
-
-                fun drawTaxLines(taxes: List<com.gastos.domain.model.DocumentTax>, currency: String) {
-                    taxes.forEach { tax ->
-                        var remaining = com.gastos.common.describeTax(context, tax, currency)
-                        while (remaining.isNotEmpty()) {
-                            if (y > 780f) {
-                                pdfDocument.finishPage(page)
-                                page = pdfDocument.startPage(PdfDocument.PageInfo.Builder(595, 842, page.info.pageNumber + 1).create())
-                                canvas = page.canvas
-                                y = 50f
-                            }
-                            val length = bodyPaint.breakText(remaining, true, 475f, null).coerceAtLeast(1)
-                            canvas.drawText(remaining.take(length), 70f, y, bodyPaint)
-                            remaining = remaining.drop(length)
-                            y += 14f
+                val file = reportWriter.generate(format) { progress -> _uiState.update { it.copy(reportProgress = progress) } }
+                temporary = file
+                if (destination != null) kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    // Finish the final copy once it starts; cancellation only discards generated temporary data.
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                        context.contentResolver.openOutputStream(destination, "wt").use { output ->
+                            requireNotNull(output) { context.getString(R.string.destination_open_error) }
+                            file.inputStream().use { it.copyTo(output) }
                         }
                     }
-                }
-
-                // Title
-                canvas.drawText(context.getString(R.string.pdf_title), 40f, y, titlePaint)
-                y += 30f
-                canvas.drawText(
-                    context.getString(
-                        R.string.pdf_generated,
-                         SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.ROOT).format(Date())
-                    ),
-                    40f,
-                    y,
-                    bodyPaint
-                )
-                y += 30f
-
-                // Summary (convertido a la moneda por defecto del usuario)
-                val (expenses, revenue) = conversionReports(invoices, incomes)
-                val balance = com.gastos.domain.model.partialBalance(expenses, revenue)
-
-                canvas.drawText(context.getString(R.string.pdf_summary), 40f, y, headerPaint)
-                y += 20f
-                canvas.drawText(
-                    context.getString(
-                        R.string.pdf_total_expenses,
-                        convertedText(expenses, targetCurrency)
-                    ),
-                    60f,
-                    y,
-                    bodyPaint
-                )
-                y += 18f
-                canvas.drawText(
-                    context.getString(
-                        R.string.pdf_total_income,
-                        convertedText(revenue, targetCurrency)
-                    ),
-                    60f,
-                    y,
-                    bodyPaint
-                )
-                y += 18f
-                canvas.drawText(
-                    context.getString(
-                        R.string.pdf_balance,
-                        (balance?.let { com.gastos.domain.model.formatMoney(it, targetCurrency) } ?: context.getString(R.string.total_unavailable)) + if (expenses.isPartial || revenue.isPartial) " · " + context.getString(R.string.total_partial) else ""
-                    ),
-                    60f,
-                    y,
-                    bodyPaint
-                )
-                y += 30f
-
-                (expenses.excluded + revenue.excluded).forEach { excluded ->
-                    if (y > 780f) {
-                        pdfDocument.finishPage(page)
-                        page = pdfDocument.startPage(pageInfo)
-                        canvas = page.canvas
-                        y = 50f
+                } else {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = format.mime
+                        putExtra(Intent.EXTRA_STREAM, uri)
+                        clipData = android.content.ClipData.newRawUri("FinAI report", uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
-                    canvas.drawText("${context.getString(R.string.total_partial)}: ${excluded.description.take(45)} · ${excluded.amount} ${excluded.currency}", 40f, y, bodyPaint)
-                    y += 18f
+                    context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_chooser)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
-
-                // Gastos
-                canvas.drawText(context.getString(R.string.pdf_expenses), 40f, y, headerPaint)
-                y += 20f
-                invoices.filter { it.tipo == InvoiceType.GASTO }.forEach { inv ->
-                    if (y > 780f) {
-                        pdfDocument.finishPage(page)
-                        page = pdfDocument.startPage(pageInfo)
-                        canvas = page.canvas
-                        y = 50f
-                    }
-                    canvas.drawText("${df.format(Date(inv.fecha))} - ${inv.proveedor}: ${com.gastos.domain.model.formatMoney(inv.total, inv.moneda)}", 60f, y, bodyPaint)
-                    y += 16f
-                    drawTaxLines(inv.taxes, inv.moneda)
-                }
-                y += 15f
-
-                // Ingresos
-                canvas.drawText(context.getString(R.string.pdf_income), 40f, y, headerPaint)
-                y += 20f
-                incomes.forEach { inc ->
-                    if (y > 780f) {
-                        pdfDocument.finishPage(page)
-                        page = pdfDocument.startPage(pageInfo)
-                        canvas = page.canvas
-                        y = 50f
-                    }
-                    canvas.drawText("${df.format(Date(inc.fecha))} - ${inc.concepto}: ${com.gastos.domain.model.formatMoney(inc.monto, inc.moneda)}", 60f, y, bodyPaint)
-                    y += 16f
-                    drawTaxLines(inc.taxes, inc.moneda)
-                }
-
-                pdfDocument.finishPage(page)
-
-                val outputStream = context.contentResolver.openOutputStream(uri)
-                    ?: error(context.getString(R.string.destination_open_error))
-                outputStream.use { pdfDocument.writeTo(it) }
-                } finally {
-                    pdfDocument.close()
-                }
-
-                _uiState.update {
-                    it.copy(
-                        isExporting = false,
-                        exportResult = BackupResult(
-                            success = true,
-                            message = context.getString(R.string.pdf_exported)
-                        )
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isExporting = false,
-                        exportResult = BackupResult(
-                            success = false,
-                            message = context.getString(R.string.pdf_export_error, e.message.orEmpty())
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    fun shareBackup(context: Context) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isExporting = true, exportResult = null) }
-
-            try {
-                val (invoices, incomes, products) = loadData()
-                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                val exportDir = File(context.filesDir, "exports")
-                if (!exportDir.exists()) exportDir.mkdirs()
-                val csvFile = File(exportDir, "finai_backup_$timestamp.csv")
-
-                csvFile.writeText(buildCsvContent(invoices, incomes, products), Charsets.UTF_8)
-
-                val fileUri = androidx.core.content.FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    csvFile
-                )
-
-                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                    type = "text/csv"
-                    putExtra(android.content.Intent.EXTRA_STREAM, fileUri)
-                     putExtra(android.content.Intent.EXTRA_SUBJECT, context.getString(R.string.share_subject, timestamp))
-                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-
-                 val chooser = android.content.Intent.createChooser(
-                     shareIntent,
-                     context.getString(R.string.share_chooser)
-                 )
-                chooser.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(chooser)
-
-                _uiState.update {
-                    it.copy(
-                        isExporting = false,
-                        exportResult = BackupResult(
-                            success = true,
-                            message = context.getString(
-                                R.string.share_ready,
-                                invoices.size,
-                                products.size,
-                                incomes.size
-                            ),
-                            sharedFile = csvFile
-                        )
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isExporting = false,
-                        exportResult = BackupResult(
-                            success = false,
-                            message = context.getString(R.string.share_error, e.message.orEmpty())
-                        )
-                    )
-                }
+                _uiState.update { it.copy(exportResult = BackupResult(true, context.getString(R.string.report_ready))) }
+            } catch (cancelled: CancellationException) {
+                _uiState.update { it.copy(exportResult = null) }
+                throw cancelled
+            } catch (error: Exception) {
+                _uiState.update { it.copy(exportResult = BackupResult(false, context.getString(R.string.share_error, error.message.orEmpty()))) }
+            } finally {
+                if (destination != null || !(_uiState.value.exportResult?.success ?: false)) temporary?.delete()
+                _uiState.update { it.copy(isExporting = false) }
             }
         }
     }

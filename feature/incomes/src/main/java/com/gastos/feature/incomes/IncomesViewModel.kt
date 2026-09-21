@@ -180,11 +180,13 @@ class IncomesViewModel @Inject constructor(
     fun deleteIncome(income: Income, deleteRemoteImage: Boolean = false) {
         viewModelScope.launch {
             try {
-                incomeRepository.deleteIncome(income)
-                invoiceImageStorage.delete(income.imagenUri)
-                if (deleteRemoteImage) invoiceDriveService.enqueueDelete(income, consent = true)
+                sheetsSyncManager.deleteLocal(income) {
+                    if (deleteRemoteImage) invoiceDriveService.enqueueDelete(income, consent = true, prepared = true)
+                }
+                runCatching { invoiceImageStorage.delete(income.imagenUri) }
                 // Propaga el borrado a la hoja unificada "Ingresos".
-                sheetsSyncManager.deleteIncome(income.id)
+
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled
             } catch (e: Exception) {
                 _uiState.update {
                         it.copy(error = e.message ?: context.getString(R.string.delete_income_error))
