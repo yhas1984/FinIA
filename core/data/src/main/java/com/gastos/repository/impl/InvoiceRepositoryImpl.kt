@@ -24,16 +24,16 @@ class InvoiceRepositoryImpl @Inject constructor(
 ) : InvoiceRepository {
 
     override fun getAllInvoices(): Flow<List<Invoice>> =
-        invoiceDao.getAllInvoices().map { list -> list.map { it.toDomain() } }
+        invoiceDao.getInvoicesByType(InvoiceType.GASTO).map { list -> list.map { it.toDomain() } }
 
     override fun getInvoicesByType(type: InvoiceType): Flow<List<Invoice>> =
         invoiceDao.getInvoicesByType(type).map { list -> list.map { it.toDomain() } }
 
     override fun getInvoicesByDateRange(startDate: Long, endDate: Long): Flow<List<Invoice>> =
-        invoiceDao.getInvoicesByDateRange(startDate, endDate).map { list -> list.map { it.toDomain() } }
+        invoiceDao.getInvoicesByDateRange(startDate, endDate).map { list -> list.filter { it.tipo == InvoiceType.GASTO }.map { it.toDomain() } }
 
     override fun getInvoicesByProveedor(proveedor: String): Flow<List<Invoice>> =
-        invoiceDao.getInvoicesByProveedor(proveedor).map { list -> list.map { it.toDomain() } }
+        invoiceDao.getInvoicesByProveedor(proveedor).map { list -> list.filter { it.tipo == InvoiceType.GASTO }.map { it.toDomain() } }
 
     override suspend fun getInvoiceById(id: Long): Invoice? =
         invoiceDao.getInvoiceById(id)?.toDomain()

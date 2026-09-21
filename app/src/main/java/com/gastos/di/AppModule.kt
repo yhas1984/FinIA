@@ -294,6 +294,13 @@ val MIGRATION_REMOTE_SYNC_OUTBOX_2_3 = object : Migration(2, 3) {
     }
 }
 
+val MIGRATION_REMOTE_SYNC_OUTBOX_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN spreadsheetId TEXT")
+        db.execSQL("DELETE FROM remote_sync_outbox WHERE action = 'DELETE' AND target IN ('EXPENSE_SHEETS', 'INCOME_SHEETS')")
+    }
+}
+
 val MIGRATION_REMOTE_SYNC_OUTBOX_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE remote_sync_outbox ADD COLUMN documentUuid TEXT NOT NULL DEFAULT ''")
@@ -342,7 +349,8 @@ object AppModule {
                 MIGRATION_10_11,
                 MIGRATION_11_12,
                 MIGRATION_12_13,
-                MIGRATION_13_14
+                MIGRATION_13_14,
+                MIGRATION_14_15
             )
             .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
             .build()
@@ -378,7 +386,7 @@ object AppModule {
     @Singleton
     fun provideRemoteSyncOutboxDatabase(@ApplicationContext context: Context): RemoteSyncOutboxDatabase =
         Room.databaseBuilder(context, RemoteSyncOutboxDatabase::class.java, "finai_remote_sync.db")
-            .addMigrations(MIGRATION_REMOTE_SYNC_OUTBOX_1_2, MIGRATION_REMOTE_SYNC_OUTBOX_2_3, MIGRATION_REMOTE_SYNC_OUTBOX_3_4)
+            .addMigrations(MIGRATION_REMOTE_SYNC_OUTBOX_1_2, MIGRATION_REMOTE_SYNC_OUTBOX_2_3, MIGRATION_REMOTE_SYNC_OUTBOX_3_4, MIGRATION_REMOTE_SYNC_OUTBOX_4_5)
             .build()
 
     @Provides

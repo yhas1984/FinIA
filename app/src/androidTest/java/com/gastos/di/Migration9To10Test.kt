@@ -92,7 +92,7 @@ class Migration9To10Test {
         }
 
         val db = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+            .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
             .build()
         db.openHelper.writableDatabase.use { sqlite ->
             sqlite.query("PRAGMA table_info(invoices)").use { c ->

@@ -319,6 +319,10 @@ private fun IncomeCard(
             }
 
             com.gastos.common.TaxBreakdownSummary(income.taxes, income.moneda)
+            if (income.evidence?.document?.payroll?.dateBasis == com.gastos.domain.model.PayrollDateBasis.PERIOD_END) {
+                Text(stringResource(com.gastos.data.R.string.document_chat_period_date),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
 
             com.gastos.feature.backup.DocumentImageButton(
                 localUri = income.imagenUri, fileId = income.driveFileId,

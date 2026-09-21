@@ -6,6 +6,17 @@ import com.gastos.domain.model.TaxEffect
 import com.gastos.domain.model.TaxTreatment
 import java.util.Locale
 
+/** Keep the printed label; append the stored rate only when it adds information. */
+fun formatTaxName(name: String?, rate: Double?, unknownName: String, locale: Locale): String {
+    val label: String = name?.trim()?.takeIf(String::isNotEmpty) ?: unknownName
+    if (rate == null) return label
+    val percentages: List<MatchResult> = Regex("(?<![\\d.,+-])([0-9]+(?:[.,][0-9]+)?)[\\s\\u00A0\\u202F]*[%٪]")
+        .findAll(label).toList()
+    val printedRate: Double? = percentages.singleOrNull()?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
+    if (printedRate == rate) return label
+    return "$label ${LocalizedNumbers.format(rate, locale)} %"
+}
+
 fun describeTax(context: Context, tax: DocumentTax, currency: String): String {
     val locale: Locale = context.resources.configuration.locales[0]
     val treatment: Int = when (tax.treatment) {
@@ -16,10 +27,9 @@ fun describeTax(context: Context, tax: DocumentTax, currency: String): String {
         TaxTreatment.UNKNOWN -> R.string.taxes_unknown
     }
     val effect: Int = if (tax.effect == TaxEffect.CHARGE) R.string.taxes_charge else R.string.taxes_withholding
-    val name: String = tax.name ?: context.getString(R.string.taxes_unknown)
-    val rate: String = tax.rate?.let { LocalizedNumbers.format(it, locale) + " %" }.orEmpty()
+    val name: String = formatTaxName(tax.name, tax.rate, context.getString(R.string.taxes_unknown), locale)
     val base: String = tax.base?.let { LocalizedNumbers.format(it, locale) }.orEmpty().ifBlank { "—" }
     val amount: String = tax.amount?.let { LocalizedNumbers.format(it, locale) }.orEmpty().ifBlank { "—" }
-    return "$name $rate · ${context.getString(treatment)} · ${context.getString(effect)} · " +
+    return "$name · ${context.getString(treatment)} · ${context.getString(effect)} · " +
         "${context.getString(R.string.taxes_base)}: $base $currency · $amount $currency"
 }

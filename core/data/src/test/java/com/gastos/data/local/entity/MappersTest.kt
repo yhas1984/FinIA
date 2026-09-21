@@ -18,6 +18,20 @@ import org.junit.Test
  * (String "21,10,4" — o el legado "[21,10,4]" — ↔ List<Double>).
  */
 class MappersTest {
+    @Test
+    fun `legacy null category placeholders disappear without altering financial or image identity`() {
+        val expense: InvoiceEntity = InvoiceEntity(id = 7, fecha = 1L, proveedor = "Example", tipo = InvoiceType.GASTO,
+            total = 121.0, ivaPercent = 21.0, categoria = "null", subcategoria = " NULL ", driveFileId = "photo-7")
+        val income: IncomeEntity = IncomeEntity(id = 8, fecha = 1L, concepto = "Example", monto = 100.0,
+            totalDevengado = 120.0, totalNeto = 100.0, categoria = "Ventas", subcategoria = "null", driveFileId = "photo-8")
+        assertNull(expense.toDomain().categoria)
+        assertNull(expense.toDomain().subcategoria)
+        assertEquals(expense.copy(categoria = null, subcategoria = null), expense.toDomain().toEntity())
+        assertNull(income.toDomain().subcategoria)
+        assertEquals(income.copy(subcategoria = null), income.toDomain().toEntity())
+        assertEquals("null", expense.categoria)
+        assertEquals("Null Services", TransactionCategories.normalizeCategory("Null Services"))
+    }
 
     @Test
     fun `product prices include VAT and expose only the contained tax`() {
@@ -39,7 +53,7 @@ class MappersTest {
     }
 
     @Test
-    fun `income invoice conversion preserves its category and fiscal amounts`() {
+    fun `income invoice conversion preserves its total without inventing payroll amounts`() {
         val income = Invoice(
             fecha = 1L,
             proveedor = "Cliente",
@@ -50,8 +64,10 @@ class MappersTest {
         ).toIncome()
 
         assertEquals("Ventas", income.categoria)
-        assertEquals(121.0, income.totalDevengado, 0.001)
-        assertEquals(121.0, income.totalNeto, 0.001)
+        assertEquals(121.0, income.monto, 0.001)
+        assertEquals(21.0, income.ivaPercent!!, 0.001)
+        assertEquals(0.0, income.totalDevengado, 0.001)
+        assertEquals(0.0, income.totalNeto, 0.001)
     }
 
     @Test

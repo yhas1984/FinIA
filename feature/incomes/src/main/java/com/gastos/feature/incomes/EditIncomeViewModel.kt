@@ -296,6 +296,9 @@ class EditIncomeViewModel @Inject constructor(
                             payPeriod = form.payPeriod.takeIf(String::isNotBlank),
                             paymentKind = form.paymentKind.takeIf(String::isNotBlank),
                             payrollReference = form.payrollReference.takeIf(String::isNotBlank),
+                            payroll = original?.evidence?.document?.payroll?.let { details ->
+                                if (form.fecha != original.fecha) details.copy(dateBasis = com.gastos.domain.model.PayrollDateBasis.MANUAL) else details
+                            },
                             currency = currency, total = monto, gross = devengado, net = neto,
                             taxes = parsedTaxes, taxesComplete = if (parsedTaxes.isNotEmpty()) true else null,
                             taxBase = taxTotals?.base ?: original?.evidence?.document?.taxBase,

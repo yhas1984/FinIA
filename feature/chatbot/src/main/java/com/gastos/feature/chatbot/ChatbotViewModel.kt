@@ -38,6 +38,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -404,7 +407,8 @@ class ChatbotViewModel @Inject constructor(
     private val saveInvoiceUseCase: SaveInvoiceUseCase,
     private val saveIncomeUseCase: SaveIncomeUseCase,
     private val exchangeRateProvider: ExchangeRateProvider,
-    private val currencyPreference: CurrencyPreference
+    private val currencyPreference: CurrencyPreference,
+    private val commandOperations: com.gastos.storage.CommandOperationStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatbotUiState(isProcessing = true))
@@ -413,9 +417,12 @@ class ChatbotViewModel @Inject constructor(
     private var hasRestoredMessages = false
     private var incompletePrompt: String? = null
     private var replacingIncomplete = false
+    private var activeOperationUuid: String? = null
+    private var retryOperationUuid: String? = null
     private var lastFinancialQuery: (suspend () -> ExecutedFinancialQuery)? = null
 
     init {
+        observeCapturedDocuments()
         viewModelScope.launch {
             premiumStatusProvider.isPremium.collectLatest { premium ->
                 try {
@@ -431,24 +438,54 @@ class ChatbotViewModel @Inject constructor(
         }
     }
 
+    private fun observeCapturedDocuments() {
+        viewModelScope.launch {
+            combine(chatMessageRepository.observeDocumentMessages(),
+                uiState.map { it.isProcessing }.distinctUntilChanged()) { messages, processing ->
+                messages.takeUnless { processing }
+            }.collect { messages ->
+                if (messages == null) return@collect
+                val documents: List<ChatMessage> = messages.toUiMessages()
+                _uiState.update { state ->
+                    // Keep the streaming placeholder untouched until the response is finished.
+                    if (state.isProcessing) state else state.copy(messages =
+                        (state.messages.filterNot { it is ChatMessage.Document } + documents)
+                            .sortedBy { it.timestamp }.takeLast(200))
+                }
+            }
+        }
+    }
+
     private suspend fun restoreChat() {
         val messages = chatMessageRepository.getMessages()
         if (!hasRestoredMessages) {
-            incompletePrompt = messages.lastOrNull()?.takeIf { it.role == "model_incomplete" }?.contextText
+            incompletePrompt = messages.lastOrNull { it.role != "document" }?.takeIf { it.role == "model_incomplete" }?.contextText
             _uiState.update {
                 it.copy(messages = messages.toUiMessages().takeLast(200), isProcessing = false, canRetryIncomplete = incompletePrompt != null)
             }
+            commandOperations.latestPending()?.let { pending ->
+                retryOperationUuid = pending.uuid
+                incompletePrompt = pending.text
+                _uiState.update { it.copy(canRetryIncomplete = true) }
+            }
             hasRestoredMessages = true
         }
-        aiService.replaceChatHistory(messages)
+        aiService.replaceChatHistory(messages.filterNot {
+            it.role in setOf("model", "model_incomplete") && ChatResponsePresentation.isStructured(it.visibleText)
+        })
     }
 
     private fun List<com.gastos.domain.model.ChatMessageRecord>.toUiMessages(): List<ChatMessage> = mapNotNull { it.toUiMessage() }
     private fun com.gastos.domain.model.ChatMessageRecord.toUiMessage(): ChatMessage? = when (role) {
         "user" -> ChatMessage.User(visibleText, createdAt)
-        "model", "model_incomplete" -> ChatMessage.AI(visibleText, createdAt)
+        "model", "model_incomplete" -> ChatMessage.AI(visibleModelText(visibleText), createdAt)
+        "document" -> ChatMessage.Document(id, visibleText, createdAt)
         else -> ChatMessage.System(visibleText, createdAt)
     }
+
+    private fun visibleModelText(text: String): String = if (ChatResponsePresentation.isStructured(text)) {
+        context.getString(R.string.chatbot_response_unavailable)
+    } else text
 
     private suspend fun persistMessage(
         role: String,
@@ -457,11 +494,12 @@ class ChatbotViewModel @Inject constructor(
         includeInContext: Boolean = true
     ) {
         if (visibleText.isBlank()) return
+        val safeText: String = if (role in setOf("model", "model_incomplete")) visibleModelText(visibleText) else visibleText
         val message = com.gastos.domain.model.ChatMessageRecord(
             role = role,
-            visibleText = visibleText,
-            contextText = contextText,
-            includeInContext = includeInContext
+            visibleText = safeText,
+            contextText = if (safeText == visibleText || role == "model_incomplete") contextText else null,
+            includeInContext = includeInContext && safeText == visibleText
         )
         if (replacingIncomplete && role in setOf("model", "model_incomplete")) {
             chatMessageRepository.replaceLastIncomplete(message)
@@ -490,9 +528,15 @@ class ChatbotViewModel @Inject constructor(
             pendingProductClarification = null
         }
 
+        activeOperationUuid = if (replaceIncomplete) retryOperationUuid ?: java.util.UUID.randomUUID().toString()
+            else java.util.UUID.randomUUID().toString()
+        retryOperationUuid = activeOperationUuid
         replacingIncomplete = replaceIncomplete
         incompletePrompt = null
-        _uiState.update { it.copy(messages = if (replaceIncomplete) it.messages.dropLast(1) else it.messages + ChatMessage.User(text),
+        _uiState.update { it.copy(messages = if (replaceIncomplete) it.messages.toMutableList().apply {
+            val responseIndex: Int = indexOfLast { message -> message is ChatMessage.AI }
+            if (responseIndex >= 0) removeAt(responseIndex)
+        } else it.messages + ChatMessage.User(text),
             isProcessing = true, canRetryIncomplete = false) }
 
         // Sin API key: mensaje guía en lugar de llamar al servicio.
@@ -510,7 +554,12 @@ class ChatbotViewModel @Inject constructor(
             var responseMode = ChatResponseMode.FREE_COMPLETE
             val collected = StringBuilder()
             try {
-                if (!replaceIncomplete) persistMessage("user", text)
+                val operation = commandOperations.begin(requireNotNull(activeOperationUuid), text)
+                if (operation.status == "SAVED") {
+                    val saved = commandOperations.commit(operation.uuid, null, null, emptyList())
+                    displayCommandReceipt(saved.receipt, streaming = false)
+                    return@launch
+                }
                 responseMode = chatResponseMode(premiumStatusProvider.isPremium.value)
                 if (responseMode == ChatResponseMode.PREMIUM_STREAM) {
                     appendPlaceholder()
@@ -522,15 +571,20 @@ class ChatbotViewModel @Inject constructor(
                     if (raw.isNotBlank()) {
                         handleFinalResult(raw, text, streaming = true)
                     } else {
-                        replacePlaceholder(context.getString(R.string.chatbot_no_response_retry))
+                        throw IllegalStateException(context.getString(R.string.chatbot_no_response_retry))
                     }
                 } else {
                     val result = aiService.processCommand(text)
+                    check(result.success) { result.message }
                     handleAIResult(result, text)
                 }
+                commandOperations.finish(requireNotNull(activeOperationUuid))
+                retryOperationUuid = null
             } catch (cancelled: CancellationException) {
                 if (collected.isNotEmpty()) {
-                    val partial = collected.toString() + "\n\n" + context.getString(R.string.chatbot_response_incomplete)
+                    val partial = ChatResponsePresentation.visiblePartial(collected.toString())
+                        ?.let { it + "\n\n" + context.getString(R.string.chatbot_response_incomplete) }
+                        ?: context.getString(R.string.chatbot_response_incomplete)
                     replacePlaceholder(partial)
                     kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
                         persistMessage("model_incomplete", partial, text, includeInContext = false)
@@ -541,19 +595,32 @@ class ChatbotViewModel @Inject constructor(
                 SafeLog.w(TAG, "Message processing interrupted")
                 val message = context.getString(R.string.chatbot_processing_error, e.message ?: "")
                 if (responseMode == ChatResponseMode.PREMIUM_STREAM) {
-                    val partial = collected.toString().takeIf { it.isNotBlank() }
+                    val partial = ChatResponsePresentation.visiblePartial(collected.toString())
                     val visible = partial?.let { it + "\n\n" + context.getString(R.string.chatbot_response_incomplete) } ?: message
                     replacePlaceholder(visible)
                     incompletePrompt = text
                     _uiState.update { it.copy(canRetryIncomplete = true) }
                     persistMessage("model_incomplete", visible, text, includeInContext = false)
                 } else {
+                    incompletePrompt = text
                     _uiState.update {
-                        it.copy(messages = it.messages + ChatMessage.AI(message), isProcessing = false)
+                        it.copy(messages = it.messages + ChatMessage.AI(visibleModelText(message)), isProcessing = false, canRetryIncomplete = true)
                     }
                 }
             }
         }
+    }
+
+    private fun displayCommandReceipt(receipt: com.gastos.domain.model.ChatMessageRecord, streaming: Boolean) {
+        _uiState.update { state ->
+            val messages = state.messages.toMutableList()
+            if (streaming && messages.lastOrNull() is ChatMessage.AI) messages.removeAt(messages.lastIndex)
+            if (messages.none { it is ChatMessage.Document && it.id == receipt.id }) {
+                receipt.toUiMessage()?.let(messages::add)
+            }
+            state.copy(messages = messages, isProcessing = false, canRetryIncomplete = false)
+        }
+        replacingIncomplete = false
     }
 
     private fun executeProductClarification(
@@ -591,6 +658,7 @@ class ChatbotViewModel @Inject constructor(
      */
     private suspend fun handleFinalResult(raw: String, originalQuestion: String, streaming: Boolean = false) {
         val result = aiService.parseStreamingResult(raw, originalQuestion)
+        check(result.success) { result.message }
         handleAIResult(result, originalQuestion, streaming)
     }
 
@@ -616,7 +684,7 @@ class ChatbotViewModel @Inject constructor(
                 replacePlaceholder(text)
             } else {
                 _uiState.update {
-                    it.copy(messages = it.messages + ChatMessage.AI(text), isProcessing = false)
+                    it.copy(messages = it.messages + ChatMessage.AI(visibleModelText(text)), isProcessing = false)
                 }
             }
             if (shouldPersist) {
@@ -631,6 +699,18 @@ class ChatbotViewModel @Inject constructor(
 
         validateAction(result)?.let { message ->
             showResult(context.getString(R.string.chatbot_validation_error_prefix, message), shouldPersist = false)
+            return
+        }
+
+        val operationUuid: String? = activeOperationUuid
+        if (operationUuid != null && (result.invoice != null || result.income != null)) {
+            val expense: Invoice? = result.invoice?.takeIf { it.tipo == InvoiceType.GASTO }
+            val income: Income? = result.income ?: result.invoice?.takeIf { it.tipo == InvoiceType.INGRESO }?.toIncome()
+            val saved = commandOperations.commit(operationUuid, expense, income, result.products)
+            onLocalSaved()
+            displayCommandReceipt(saved.receipt, streaming)
+            saved.invoice?.let(::syncInvoiceInBackground)
+            saved.income?.let(::syncIncomeInBackground)
             return
         }
 
@@ -728,10 +808,9 @@ class ChatbotViewModel @Inject constructor(
 
     private fun syncInvoiceInBackground(invoice: Invoice) {
         viewModelScope.launch {
-            if (invoice.driveUploadPending) {
-                remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.INVOICE_DRIVE, invoice.id, RemoteSyncAction.UPSERT)
-            }
-            remoteSyncOutboxRepository.enqueue(RemoteSyncTarget.EXPENSE_SHEETS, invoice.id, RemoteSyncAction.UPSERT)
+            try { sheetsSyncManager.upsertExpense(invoice) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { SafeLog.w(TAG, "Expense sync pending reconciliation") }
         }
     }
 
@@ -748,6 +827,8 @@ class ChatbotViewModel @Inject constructor(
     }
 
     private fun updateStreamingPlaceholder(text: String) {
+        // Commands are rendered as their persisted receipt, never as raw JSON.
+        if (ChatResponsePresentation.isStructured(text)) return
         _uiState.update { state ->
             val lastIndex = state.messages.lastIndex
             if (lastIndex >= 0 && state.messages[lastIndex] is ChatMessage.AI) {
@@ -757,11 +838,12 @@ class ChatbotViewModel @Inject constructor(
     }
 
     private fun replacePlaceholder(text: String) {
+        val visibleText: String = visibleModelText(text)
         _uiState.update { state ->
             val lastIndex = state.messages.lastIndex
             if (lastIndex >= 0 && state.messages[lastIndex] is ChatMessage.AI) {
-                state.copy(messages = state.messages.toMutableList().apply { this[lastIndex] = ChatMessage.AI(text) }, isProcessing = false)
-            } else state.copy(messages = state.messages + ChatMessage.AI(text), isProcessing = false)
+                state.copy(messages = state.messages.toMutableList().apply { this[lastIndex] = ChatMessage.AI(visibleText) }, isProcessing = false)
+            } else state.copy(messages = state.messages + ChatMessage.AI(visibleText), isProcessing = false)
         }
     }
 
@@ -770,7 +852,7 @@ class ChatbotViewModel @Inject constructor(
             if (!invoice.total.isFinite() || invoice.total <= 0.0) {
                 return context.getString(R.string.chatbot_invalid_amount)
             }
-            if ((invoice.ivaPercent?.let { rate -> !rate.isFinite() || rate < 0.0 } == true) ||
+            if ((invoice.ivaPercent?.let { rate -> !rate.isFinite() || rate !in 0.0..100.0 } == true) ||
                 !invoice.irpfPercent.isFinite() || invoice.irpfPercent !in 0.0..100.0
             ) return context.getString(R.string.chatbot_invalid_tax_percentages)
             if (invoice.proveedor.isBlank()) return context.getString(R.string.chatbot_invalid_provider)
@@ -782,7 +864,7 @@ class ChatbotViewModel @Inject constructor(
             if (!income.monto.isFinite() || income.monto <= 0.0) {
                 return context.getString(R.string.chatbot_invalid_amount)
             }
-            if ((income.ivaPercent?.let { rate -> !rate.isFinite() || rate < 0.0 } == true) ||
+            if ((income.ivaPercent?.let { rate -> !rate.isFinite() || rate !in 0.0..100.0 } == true) ||
                 !income.irpfPercent.isFinite() || income.irpfPercent !in 0.0..100.0 ||
                 (income.totalDevengado != 0.0 && (!income.totalDevengado.isFinite() || income.totalDevengado <= 0.0)) ||
                 (income.totalNeto != 0.0 && (!income.totalNeto.isFinite() || income.totalNeto <= 0.0))
@@ -797,7 +879,7 @@ class ChatbotViewModel @Inject constructor(
                     !it.cantidad.isFinite() || it.cantidad <= 0.0 ||
                     !it.precioUnitario.isFinite() || it.precioUnitario < 0.0 ||
                     !it.subtotal.isFinite() || it.subtotal < 0.0 ||
-                    (it.ivaPercent?.let { rate -> !rate.isFinite() || rate < 0.0 } == true)
+                    (it.ivaPercent?.let { rate -> !rate.isFinite() || rate !in 0.0..100.0 } == true)
             }
         ) {
             return context.getString(R.string.chatbot_invalid_product_lines)

@@ -51,8 +51,8 @@ data class Invoice(
         fecha = fecha,
         concepto = proveedor,
         monto = total,
-        totalDevengado = total,
-        totalNeto = total,
+        totalDevengado = 0.0,
+        totalNeto = 0.0,
         moneda = moneda,
         fuente = proveedor,
         categoria = categoria,
@@ -60,7 +60,9 @@ data class Invoice(
         ivaPercent = ivaPercent,
         irpfPercent = irpfPercent,
         imagenUri = imagenUri,
-        notas = notas
+        notas = notas,
+        createdAt = createdAt,
+        updatedAt = updatedAt
     )
 }
 

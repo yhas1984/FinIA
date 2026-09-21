@@ -6,13 +6,14 @@ import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,68 +22,61 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gastos.domain.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Validation stays in the capture pipeline. Only user actions open dialogs. */
+/** Direct capture stays in the conversation; only read failures and duplicates need actions. */
 @Composable
 internal fun DocumentCapturePanel(state: CaptureUiState, model: DocumentCaptureViewModel, onOpen: (DocumentIdentity) -> Unit) {
-    var showDrafts: Boolean by remember { mutableStateOf(false) }
     if (state.busy) {
-        LinearProgressIndicator(Modifier.fillMaxWidth())
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.capture_processing), Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = model::cancelReading) { Text(stringResource(R.string.capture_cancel_read)) }
+        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large,
+            modifier = Modifier.testTag("capture_processing_inline")) {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text(stringResource(R.string.capture_processing), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                IconButton(onClick = model::cancelReading) {
+                    Icon(Icons.Default.Close, stringResource(R.string.capture_cancel_read))
+                }
+            }
         }
     } else if (state.selected != null || state.duplicates.isNotEmpty()) {
-        PendingDocumentNotice(state, model, onOpen)
-    } else state.message?.let { message ->
+        CaptureResultNotice(state, model, onOpen)
+    } else if (state.saved == null) state.message?.let { message ->
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(message, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
             IconButton(onClick = model::dismissNotice) { Icon(Icons.Default.Close, stringResource(R.string.capture_hide_notice)) }
         }
     }
-    Row {
-        if (state.drafts.isNotEmpty()) TextButton(onClick = { showDrafts = true }, enabled = !state.busy) {
-            Text(stringResource(R.string.capture_pending, state.drafts.size))
-        }
-        state.saved?.let { record -> TextButton(onClick = { onOpen(record) }) { Text(stringResource(R.string.capture_open)) } }
-    }
-    if (showDrafts) AlertDialog(onDismissRequest = { showDrafts = false }, title = { Text(stringResource(R.string.capture_drafts)) },
-        text = { LazyColumn { items(state.drafts, key = { it.uuid }) { draft ->
-            TextButton(onClick = { model.open(draft); showDrafts = false }) {
-                val evidence: DocumentEvidence? = DocumentEvidenceCodec.decode(draft.evidenceJson)
-                Text(evidence?.document?.issuer ?: stringResource(R.string.capture_unread))
-            }
-        } } }, confirmButton = { TextButton(onClick = { showDrafts = false }) { Text(stringResource(R.string.capture_close)) } })
+    state.saved?.let { record -> TextButton(onClick = { onOpen(record) }) { Text(stringResource(R.string.capture_open)) } }
 }
 
 @Composable
-private fun PendingDocumentNotice(state: CaptureUiState, model: DocumentCaptureViewModel, onOpen: (DocumentIdentity) -> Unit) {
+private fun CaptureResultNotice(state: CaptureUiState, model: DocumentCaptureViewModel, onOpen: (DocumentIdentity) -> Unit) {
     val context = LocalContext.current
     var showOptions: Boolean by remember(state.selected?.uuid) { mutableStateOf(false) }
     var showMatches: Boolean by remember(state.selected?.uuid) { mutableStateOf(false) }
     var confirmDiscard: Boolean by remember(state.selected?.uuid) { mutableStateOf(false) }
     val hasMatches: Boolean = state.duplicates.isNotEmpty()
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium,
-        modifier = Modifier.fillMaxWidth().testTag("capture_status")) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(if (hasMatches) R.string.capture_duplicate else R.string.capture_pending_attention), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+    val noticeRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(state.selected?.uuid, state.message, state.issues, state.duplicates) {
+        withFrameNanos { }
+        noticeRequester.bringIntoView()
+    }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth().bringIntoViewRequester(noticeRequester).testTag("capture_status")) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.Description, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                Text(stringResource(if (hasMatches) R.string.capture_duplicate else R.string.capture_read_failed), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
                 IconButton(onClick = model::dismissNotice) { Icon(Icons.Default.Close, stringResource(R.string.capture_hide_notice)) }
             }
-            val taxIssues = state.issues.filter { it.field.startsWith("taxes") || it.field.endsWith("vatAmount") || it.field.contains(".taxes") }
-            val explanation = when {
-                hasMatches -> R.string.capture_duplicate_retained
-                taxIssues.any { it.reason == ReviewReason.INCONSISTENT || it.reason == ReviewReason.INVALID } -> R.string.capture_tax_mismatch
-                taxIssues.isNotEmpty() -> R.string.capture_tax_unreadable
-                else -> R.string.capture_pending_explanation
-            }
+            val explanation = if (hasMatches) R.string.capture_duplicate_retained else R.string.capture_retry_explanation
             Text(state.message ?: stringResource(explanation),
-                style = MaterialTheme.typography.bodySmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            state.evidence?.document?.issuer?.let { Text(it, style = MaterialTheme.typography.labelLarge) }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (hasMatches) TextButton(onClick = { showMatches = true }) { Text(stringResource(R.string.capture_view_matches)) }
                 else TextButton(onClick = model::reread) { Text(stringResource(R.string.capture_retry)) }
@@ -115,7 +109,7 @@ private fun PendingDocumentNotice(state: CaptureUiState, model: DocumentCaptureV
 
 @Composable
 private fun DuplicateDialog(state: CaptureUiState, onOpen: (DocumentIdentity) -> Unit, onDismiss: () -> Unit, onDistinct: () -> Unit) {
-    val canConfirm: Boolean = state.selected != null && state.evidence != null && state.issues.isEmpty() &&
+    val canConfirm: Boolean = state.selected != null && state.evidence != null &&
         state.duplicates.isNotEmpty() && state.duplicates.none { it.strength == DuplicateStrength.STRONG }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(stringResource(R.string.capture_duplicate)) },
         text = { Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
@@ -186,6 +180,15 @@ internal fun captureOptionLabel(option: String): String = stringResource(when (o
 
 @Composable
 internal fun captureFieldLabel(field: String): String {
+    if (field.startsWith("payroll")) {
+        val label: String = stringResource(when (field.substringAfterLast('.')) {
+            "paymentDate", "issueDate", "periodStart", "periodEnd" -> R.string.capture_payroll_dates
+            "totalDeductions" -> R.string.capture_payroll_deductions
+            else -> R.string.capture_payroll_details
+        })
+        val row: Int? = field.removePrefix("payroll.lines.").substringBefore('.').toIntOrNull()
+        return if (row != null) "${row + 1}. $label" else label
+    }
     val label = stringResource(when (field.substringAfterLast('.')) {
         "kind" -> R.string.capture_field_kind
         "country" -> R.string.capture_field_country
@@ -204,6 +207,7 @@ internal fun captureFieldLabel(field: String): String {
         "withholdingPercent" -> R.string.capture_field_withholdingPercent
         "withholdingAmount" -> R.string.capture_field_withholdingAmount
         "discount" -> R.string.capture_field_discount
+        "taxes", "amount", "rate", "base", "treatment", "effect" -> R.string.capture_field_taxes
         "priceBasis" -> R.string.capture_field_priceBasis
         "gross" -> R.string.capture_field_gross
         "net" -> R.string.capture_field_net

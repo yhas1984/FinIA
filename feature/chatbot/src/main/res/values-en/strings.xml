@@ -96,6 +96,7 @@
     <string name="partial_charts_notice">Balances, charts and comparisons only include transactions with available exchange rates. Excluded:</string>
     <string name="refresh_exchange_rates">Refresh exchange rates</string>
     <string name="chatbot_response_incomplete">Incomplete response. Retry to replace it.</string>
+    <string name="chatbot_response_unavailable">This response could not be displayed. Check your recorded transactions before sending it again.</string>
     <string name="chatbot_retry_incomplete">Retry response</string>
     <string name="exchange_refresh_failed">Exchange rates could not be refreshed. Please try again.</string>
 </resources>

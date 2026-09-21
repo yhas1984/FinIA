@@ -1,18 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="capture_processing">Reading and checking…</string>
+    <string name="capture_processing">Reading document…</string>
+    <string name="capture_amount_unreadable">The amount could not be read. Try again with a clearer photo.</string>
     <string name="capture_read_failed">Could not read the document</string>
     <string name="capture_retry_explanation">The photo is saved. Retry now or come back later.</string>
     <string name="capture_retry">Retry reading</string>
     <string name="capture_show_all">View all details</string>
     <string name="capture_show_issues">Show only fields needing review</string>
     <string name="capture_cancel_read">Cancel reading</string>
-    <string name="capture_storage_error">Could not save. Your draft is retained; try again.</string>
+    <string name="capture_storage_error">Could not save. Your photo is retained; try again.</string>
     <string name="capture_saved">Document saved. Synchronization continues in the background.</string>
-    <string name="capture_pending">Pending (%1$d)</string>
     <string name="capture_open">View record</string>
-    <string name="capture_drafts">Pending documents</string>
-    <string name="capture_unread">Document awaiting reading</string>
     <string name="capture_close">Close</string>
     <string name="capture_duplicate">This document may already be registered</string>
     <string name="capture_discard">Discard this submission</string>
@@ -66,11 +64,15 @@
     <string name="capture_field_withholdingPercent">Withholding (%)</string>
     <string name="capture_field_withholdingAmount">Withholding amount</string>
     <string name="capture_field_discount">Total line discount</string>
+    <string name="capture_field_taxes">Tax breakdown</string>
     <string name="capture_field_priceBasis">Tax in product prices</string>
     <string name="capture_field_gross">Gross pay</string>
     <string name="capture_field_net">Net pay</string>
     <string name="capture_field_contributionBase">Contribution base</string>
     <string name="capture_field_socialSecurity">Social security</string>
+    <string name="capture_payroll_details">Payroll earnings and deductions</string>
+    <string name="capture_payroll_dates">Printed payroll date or period</string>
+    <string name="capture_payroll_deductions">Total deductions</string>
     <string name="capture_field_payrollReference">Payslip reference</string>
     <string name="capture_field_workerId">Worker identifier</string>
     <string name="capture_field_payPeriod">Printed pay period</string>
@@ -83,14 +85,10 @@
     <string name="capture_field_lines">Product lines</string>
     <string name="capture_remove_line">Remove product line</string>
     <string name="capture_remove_line_explanation">Remove this line only if it is not part of the document. Totals will be checked again.</string>
-    <string name="capture_pending_attention">Document pending</string>
-    <string name="capture_pending_explanation">Some data is missing or inconsistent. The photo is kept; no transaction has been recorded.</string>
     <string name="capture_duplicate_retained">No extra transaction was added. You can open the existing record.</string>
     <string name="capture_view_matches">View matches</string>
     <string name="capture_view_photo">View photo</string>
     <string name="capture_options">Document options</string>
     <string name="capture_hide_notice">Dismiss notice</string>
     <string name="capture_cancelled">Reading cancelled. The photo is kept for a retry.</string>
-    <string name="capture_tax_mismatch">Some tax amounts do not reconcile. The document remains pending and its photograph is retained.</string>
-    <string name="capture_tax_unreadable">The complete tax breakdown could not be read. The document remains pending and its photograph is retained.</string>
 </resources>

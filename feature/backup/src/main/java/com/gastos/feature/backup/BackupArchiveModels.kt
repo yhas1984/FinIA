@@ -68,7 +68,8 @@ internal data class BackupPayloadDto(
     val incomes: List<IncomeDto>,
     val fiscalConfigs: List<FiscalConfigDto>,
     val chatMessages: List<ChatMessageDto>,
-    val settings: RestorableSettingsDto
+    val settings: RestorableSettingsDto,
+    val commandOperations: List<com.gastos.domain.model.CommandOperation> = emptyList()
 ) {
     val imageFileNames: Set<String>
         get() = (invoices.mapNotNull { it.imageFileName } +
@@ -79,7 +80,8 @@ internal data class BackupPayloadDto(
         products = products.map(ProductDto::toDomain),
         incomes = incomes.map { it.toDomain(restoredImages) },
         fiscalConfigs = fiscalConfigs.map(FiscalConfigDto::toDomain),
-        chatMessages = chatMessages.map(ChatMessageDto::toDomain)
+        chatMessages = chatMessages.map(ChatMessageDto::toDomain),
+        commandOperations = commandOperations
     )
 }
 
@@ -264,10 +266,16 @@ internal data class ChatMessageDto(
     val visibleText: String,
     val contextText: String?,
     val includeInContext: Boolean,
-    val createdAt: Long
+    val createdAt: Long,
+    val operationUuid: String? = null,
+    val documentUuid: String? = null,
+    val documentKind: String? = null
 ) {
     fun toDomain(): ChatMessageRecord = ChatMessageRecord(
         id = id,
+        operationUuid = operationUuid,
+        documentUuid = documentUuid,
+        documentKind = documentKind,
         role = role,
         visibleText = visibleText,
         contextText = contextText,
@@ -417,6 +425,9 @@ internal fun BackupDataset.toDto(
     chatMessages = chatMessages.map { message ->
         ChatMessageDto(
             id = message.id,
+            operationUuid = message.operationUuid,
+            documentUuid = message.documentUuid,
+            documentKind = message.documentKind,
             role = message.role,
             visibleText = message.visibleText,
             contextText = message.contextText,
@@ -424,6 +435,7 @@ internal fun BackupDataset.toDto(
             createdAt = message.createdAt
         )
     },
+    commandOperations = commandOperations,
     settings = RestorableSettingsDto(
         systemInstructions = settings.systemInstructions,
         defaultCurrency = settings.defaultCurrency,

@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -36,9 +37,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 
 sealed class ChatMessage {
-    data class User(val text: String, val timestamp: Long = java.lang.System.currentTimeMillis()) : ChatMessage()
-    data class AI(val text: String, val timestamp: Long = java.lang.System.currentTimeMillis()) : ChatMessage()
-    data class System(val text: String, val timestamp: Long = java.lang.System.currentTimeMillis()) : ChatMessage()
+    abstract val timestamp: Long
+    data class User(val text: String, override val timestamp: Long = java.lang.System.currentTimeMillis()) : ChatMessage()
+    data class AI(val text: String, override val timestamp: Long = java.lang.System.currentTimeMillis()) : ChatMessage()
+    data class System(val text: String, override val timestamp: Long = java.lang.System.currentTimeMillis()) : ChatMessage()
+    data class Document(val id: Long, val text: String, override val timestamp: Long) : ChatMessage()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,6 +54,12 @@ fun ChatbotScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val captureState by captureModel.state.collectAsStateWithLifecycle()
+    val hasCaptureContent: Boolean = captureState.busy || captureState.selected != null ||
+        captureState.duplicates.isNotEmpty() ||
+        captureState.message != null || captureState.saved != null
+    val lastMessage: ChatMessage? = uiState.messages.lastOrNull()
+    val showTyping: Boolean = uiState.isProcessing && (lastMessage !is ChatMessage.AI || lastMessage.text.isEmpty())
+    val showRetry: Boolean = uiState.canRetryIncomplete && !uiState.isProcessing
     val listState = rememberLazyListState()
     var textInput by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -100,10 +109,11 @@ fun ChatbotScreen(
         }
     }
 
-    LaunchedEffect(uiState.messages.size) {
-        if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
-        }
+    LaunchedEffect(uiState.messages.size, showTyping, showRetry, hasCaptureContent, captureState.busy,
+        captureState.selected?.uuid, captureState.message, captureState.issues, captureState.saved) {
+        val itemCount: Int = uiState.messages.size + (if (showRetry) 1 else 0) +
+            (if (showTyping) 1 else 0) + (if (hasCaptureContent) 1 else 0)
+        if (itemCount > 0) listState.animateScrollToItem(itemCount - 1)
     }
 
     Scaffold(
@@ -152,9 +162,7 @@ fun ChatbotScreen(
                 tonalElevation = 8.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp)) {
-                    DocumentCapturePanel(captureState, captureModel, onOpenDocument)
-                    if (BuildConfig.DEBUG) OcrBenchmarkButton(enabled = !uiState.isProcessing && !captureState.busy)
+                Column(modifier = Modifier.testTag("chat_composer").navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp)) {
                     // Quick action buttons
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -288,7 +296,7 @@ fun ChatbotScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (uiState.messages.isEmpty()) {
+            if (uiState.messages.isEmpty() && !hasCaptureContent) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -335,7 +343,7 @@ fun ChatbotScreen(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().testTag("chat_messages"),
                     state = listState,
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -345,20 +353,25 @@ fun ChatbotScreen(
                             is ChatMessage.User -> UserMessageBubble(message.text)
                             is ChatMessage.AI -> AIMessageBubble(message.text)
                             is ChatMessage.System -> SystemMessageBubble(message.text)
+                            is ChatMessage.Document -> DocumentMessageBubble(message.text)
                         }
                     }
 
-                    if (uiState.canRetryIncomplete && !uiState.isProcessing) {
+                    if (showRetry) {
                         item { OutlinedButton(onClick = viewModel::retryIncompleteResponse) { Text(stringResource(R.string.chatbot_retry_incomplete)) } }
                     }
                     // Indicador de "escribiendo..." solo si aún no hay un mensaje
                     // AI en streaming rellenándose (placeholder vacío o ausente).
-                    val lastMessage = uiState.messages.lastOrNull()
-                    val showTyping = uiState.isProcessing &&
-                        (lastMessage !is ChatMessage.AI || lastMessage.text.isEmpty())
                     if (showTyping) {
                         item {
                             AIMessageBubble(stringResource(R.string.chatbot_typing_indicator))
+                        }
+                    }
+                    if (hasCaptureContent) {
+                        item(key = "capture_event") {
+                            Column(Modifier.fillMaxWidth().testTag("chat_capture_event")) {
+                                DocumentCapturePanel(captureState, captureModel, onOpenDocument)
+                            }
                         }
                     }
                 }
@@ -378,6 +391,27 @@ fun ChatbotScreen(
                 TextButton(onClick = { showClearDialog = false }) { Text(stringResource(R.string.chatbot_clear_dialog_cancel)) }
             }
         )
+    }
+}
+
+@Composable
+private fun DocumentMessageBubble(text: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().testTag("chat_document_receipt"),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Default.CheckCircle, contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(text.substringBefore('\n'), style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary)
+                Text(text.substringAfter('\n', ""), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
     }
 }
 

@@ -4,6 +4,9 @@ import com.gastos.domain.model.ChatMessageRecord
 
 fun ChatMessageEntity.toDomain(): ChatMessageRecord = ChatMessageRecord(
     id = id,
+    operationUuid = operationUuid,
+    documentUuid = documentUuid,
+    documentKind = documentKind,
     role = role,
     visibleText = visibleText,
     contextText = contextText,
@@ -13,6 +16,9 @@ fun ChatMessageEntity.toDomain(): ChatMessageRecord = ChatMessageRecord(
 
 fun ChatMessageRecord.toEntity(): ChatMessageEntity = ChatMessageEntity(
     id = id,
+    operationUuid = operationUuid,
+    documentUuid = documentUuid,
+    documentKind = documentKind,
     role = role,
     visibleText = visibleText,
     contextText = contextText,

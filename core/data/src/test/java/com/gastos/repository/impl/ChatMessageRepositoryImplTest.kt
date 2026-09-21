@@ -7,6 +7,9 @@ import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.every
+import kotlinx.coroutines.flow.MutableStateFlow
+import app.cash.turbine.test
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -14,6 +17,19 @@ import org.junit.Test
 class ChatMessageRepositoryImplTest {
     private val dao = mockk<ChatMessageDao>()
     private val repository = ChatMessageRepositoryImpl(dao)
+
+    @Test
+    fun `document receipt stream forwards committed messages and deletions`() = runTest {
+        val messages = MutableStateFlow<List<ChatMessageEntity>>(emptyList())
+        every { dao.observeDocumentMessages() } returns messages
+        repository.observeDocumentMessages().test {
+            assertEquals(emptyList<ChatMessageRecord>(), awaitItem())
+            messages.value = listOf(ChatMessageEntity(id = 5, role = "document", visibleText = "Receipt", includeInContext = false, createdAt = 40))
+            assertEquals(ChatMessageRecord(id = 5, role = "document", visibleText = "Receipt", includeInContext = false, createdAt = 40), awaitItem().single())
+            messages.value = emptyList()
+            assertEquals(emptyList<ChatMessageRecord>(), awaitItem())
+        }
+    }
 
     @Test
     fun `messages are mapped from Room in DAO order`() = runTest {

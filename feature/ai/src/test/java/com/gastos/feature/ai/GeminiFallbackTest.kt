@@ -8,11 +8,48 @@ import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import okhttp3.ResponseBody
+import okio.Buffer
+import okio.Source
+import okio.Timeout
+import okio.buffer
+import java.io.IOException
 import org.junit.Assert.*
 import org.junit.Test
 import org.json.JSONObject
 
 class GeminiFallbackTest {
+    @Test fun `completed structured stream does not wait for the server to close the connection`() = runTest {
+        val command = "{\"action\":\"add_income\",\"monto\":120}"
+        val event = "data: " + JSONObject().put("candidates", org.json.JSONArray().put(JSONObject()
+            .put("content", JSONObject().put("parts", org.json.JSONArray().put(JSONObject().put("text", command))))
+            .put("finishReason", "STOP"))) + "\n\n"
+        var readsAfterFinish = 0
+        var calls = 0
+        val pending = Buffer().writeUtf8(event)
+        val openConnection = object : Source {
+            override fun read(sink: Buffer, byteCount: Long): Long {
+                if (pending.size > 0) return pending.read(sink, byteCount)
+                readsAfterFinish++
+                throw IOException("Server keeps completed SSE connection open")
+            }
+            override fun timeout() = Timeout.NONE
+            override fun close() {}
+        }.buffer()
+        val body = object : ResponseBody() {
+            override fun contentType(): okhttp3.MediaType? = null
+            override fun contentLength() = -1L
+            override fun source() = openConnection
+        }
+        val client = GeminiRestClient(GeminiTransport { _, _, _, _, _ ->
+            calls++
+            response(200, "").newBuilder().body(body).build()
+        }, {}, { 0L }, { _, _, _ -> })
+        assertEquals(listOf(command), client.streamGenerateContent(request).toList())
+        assertEquals(1, calls)
+        assertEquals(0, readsAfterFinish)
+    }
+
     private fun imageRequest() = request.copy(contents = listOf(GeminiContent("user",
         inlineDataParts = listOf(GeminiInlineDataPart("image/jpeg", "synthetic")))))
 
@@ -198,6 +235,28 @@ class GeminiFallbackTest {
             assertEquals(if (image) 3 else 4,deadlines.size)
             assertTrue(deadlines.all { it in 1..(if(image) 45_000L else 22_500L) })
         }
+    }
+
+    @Test fun `incomplete structured stream stays invisible and switches models before committing`() = runTest {
+        val calls = mutableListOf<String>()
+        fun event(text: String, stop: Boolean): String {
+            val candidate = JSONObject().put("content",JSONObject().put("parts",org.json.JSONArray().put(JSONObject().put("text",text))))
+            if(stop) candidate.put("finishReason","STOP")
+            return "data: " + JSONObject().put("candidates",org.json.JSONArray().put(candidate)) + "\n\n"
+        }
+        val partial = event("```json\n{\"action\":\"add_income\",",false)
+        val valid = "```json\n{\"action\":\"add_income\",\"monto\":35}\n```"
+        val pieces = client(calls,ArrayDeque(listOf(200 to partial,200 to event(valid,true)))).streamGenerateContent(request).toList()
+        assertEquals(listOf(valid),pieces)
+        assertEquals(listOf(GeminiRestClient.PRIMARY_MODEL,GeminiRestClient.FALLBACK_MODEL),calls)
+    }
+    @Test fun `malformed structured stream with STOP still falls back without exposing JSON`() = runTest {
+        val calls = mutableListOf<String>()
+        val malformed = "data: " + JSONObject().put("candidates",org.json.JSONArray().put(JSONObject()
+            .put("content",JSONObject().put("parts",org.json.JSONArray().put(JSONObject().put("text","{invalid"))))
+            .put("finishReason","STOP"))) + "\n\n"
+        assertEquals(listOf("ok"),client(calls,ArrayDeque(listOf(200 to malformed,200 to "data: ${success("ok")}\n\n"))).streamGenerateContent(request).toList())
+        assertEquals(2,calls.size)
     }
 
 }

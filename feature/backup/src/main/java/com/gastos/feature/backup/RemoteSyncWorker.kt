@@ -26,7 +26,7 @@ class RemoteSyncWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         if (remoteSyncState.shouldDefer()) return Result.retry()
         val now = System.currentTimeMillis()
-        val pending = outbox.pending().filter { (it.status == RemoteSyncStatus.PENDING && it.nextAttemptAt <= now) || it.status == RemoteSyncStatus.WAITING_AUTH }
+        val pending = outbox.pending().filter { (it.status == RemoteSyncStatus.PENDING && it.nextAttemptAt <= now) || it.status == RemoteSyncStatus.WAITING_AUTH || it.status == RemoteSyncStatus.PREPARED }
         for (item in pending) {
             try {
                 when (processor.process(item)) {
@@ -37,6 +37,12 @@ class RemoteSyncWorker @AssistedInject constructor(
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
+                val sheetCode: String? = error.message?.substringBefore(':')?.takeIf { it.startsWith("SHEETS_") }
+                if (sheetCode != null) {
+                    val waiting = sheetCode == "SHEETS_OTHER_DEVICE"
+                    outbox.failed(item, sheetCode, consumeAttempt = !waiting, permanent = !waiting)
+                    continue
+                }
                 val category = GoogleApiErrorClassifier.classify(error,
                     GoogleApiErrorContext("sync", "OFFLINE", "SERVER_UNAVAILABLE", "PERMISSION_OR_QUOTA", "SYNC_FAILED"))
                 val deferred = category.category in setOf(GoogleApiErrorCategory.NETWORK, GoogleApiErrorCategory.AUTH_RECOVERABLE,
@@ -70,6 +76,7 @@ internal class RemoteSyncProcessor(
 
     private suspend fun processDrive(item: RemoteSyncOutboxEntity): RemoteSyncOutcome {
         if (item.action == RemoteSyncAction.DELETE) {
+            if (item.status == RemoteSyncStatus.PREPARED && !sheetsSyncManager.confirmRemoteImageDeletion(item)) return RemoteSyncOutcome.SUCCESS
             if (!item.deleteConsent || item.accountId.isNullOrBlank() || item.remoteFileId.isNullOrBlank()) {
                 outbox.delete(item)
                 return RemoteSyncOutcome.SUCCESS
@@ -102,33 +109,11 @@ internal class RemoteSyncProcessor(
         return RemoteSyncOutcome.SUCCESS
     }
 
-    private suspend fun processExpense(item: RemoteSyncOutboxEntity): RemoteSyncOutcome = when (item.action) {
-        RemoteSyncAction.UPSERT -> {
-            val synced = outbox.withCurrent(item) { sheetsSyncManager.performExpenseSync(item.recordId) }
-                ?: return RemoteSyncOutcome.SUCCESS
-            if (synced) { outbox.delete(item); RemoteSyncOutcome.SUCCESS } else RemoteSyncOutcome.DEFERRED
-        }
-        RemoteSyncAction.DELETE -> {
-            val deleted = outbox.withCurrent(item) { sheetsSyncManager.performExpenseDelete(item.recordId) }
-                ?: return RemoteSyncOutcome.SUCCESS
-            if (deleted) { outbox.delete(item); RemoteSyncOutcome.SUCCESS } else RemoteSyncOutcome.DEFERRED
-        }
-    }
-
-    private suspend fun processIncome(item: RemoteSyncOutboxEntity): RemoteSyncOutcome = when (item.action) {
-        RemoteSyncAction.UPSERT -> {
-            val income = incomeRepository.getIncomeById(item.recordId)
-            if (income == null) { outbox.delete(item); RemoteSyncOutcome.SUCCESS }
-            else {
-                val synced = outbox.withCurrent(item) { sheetsSyncManager.performIncomeUpsert(item.recordId) }
-                    ?: return RemoteSyncOutcome.SUCCESS
-                if (synced) { outbox.delete(item); RemoteSyncOutcome.SUCCESS } else RemoteSyncOutcome.DEFERRED
-            }
-        }
-        RemoteSyncAction.DELETE -> {
-            val deleted = outbox.withCurrent(item) { sheetsSyncManager.performIncomeDelete(item.recordId) }
-                ?: return RemoteSyncOutcome.SUCCESS
-            if (deleted) { outbox.delete(item); RemoteSyncOutcome.SUCCESS } else RemoteSyncOutcome.DEFERRED
-        }
+    private suspend fun processExpense(item: RemoteSyncOutboxEntity): RemoteSyncOutcome = processSheet(item)
+    private suspend fun processIncome(item: RemoteSyncOutboxEntity): RemoteSyncOutcome = processSheet(item)
+    private suspend fun processSheet(item: RemoteSyncOutboxEntity): RemoteSyncOutcome {
+        if (!outbox.isCurrent(item)) return RemoteSyncOutcome.SUCCESS
+        return if (sheetsSyncManager.process(item)) { outbox.delete(item); RemoteSyncOutcome.SUCCESS }
+            else RemoteSyncOutcome.DEFERRED
     }
 }

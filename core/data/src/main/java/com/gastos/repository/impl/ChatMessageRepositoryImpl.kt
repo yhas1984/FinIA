@@ -5,6 +5,8 @@ import com.gastos.data.local.entity.toEntity
 import com.gastos.local.dao.ChatMessageDao
 import com.gastos.domain.model.ChatMessageRecord
 import com.gastos.repository.ChatMessageRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -13,6 +15,8 @@ class ChatMessageRepositoryImpl @Inject constructor(
     private val dao: ChatMessageDao
 ) : ChatMessageRepository {
     override suspend fun getMessages(): List<ChatMessageRecord> = dao.getAllMessages().map { it.toDomain() }
+    override fun observeDocumentMessages(): Flow<List<ChatMessageRecord>> =
+        dao.observeDocumentMessages().map { messages -> messages.map { it.toDomain() } }
     override suspend fun addMessage(message: ChatMessageRecord) {
         dao.insertAndTrim(message.toEntity())
     }

@@ -1,0 +1,6 @@
+<es-ES>
+Recuperamos el registro directo de facturas, tickets y nóminas desde el chat. Eliminamos el bloqueo por desgloses incompletos o importes que no cuadran y el aviso de «Documento pendiente». Se conserva el importe leído, el detalle disponible y la detección de duplicados. También mejoramos los reintentos para reutilizar la lectura cuando falla el guardado.
+</es-ES>
+<en-US>
+Restored direct invoice, receipt and payslip recording from the chat. Incomplete breakdowns or mismatched amounts no longer block saving or show a pending-document notice. The extracted amount, available details and duplicate detection are preserved. Save retries now reuse the existing extraction.
+</en-US>

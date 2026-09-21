@@ -6,6 +6,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -76,6 +77,7 @@ private fun <T> TaxChoice(value: T, options: List<T>, onChange: (T) -> Unit, lab
 fun TaxBreakdownSummary(taxes: List<DocumentTax>, currency: String) {
     var expanded: Boolean by rememberSaveable { mutableStateOf(false) }
     if (taxes.isEmpty()) return
+    val locale: Locale = LocalConfiguration.current.locales[0]
     Column {
         TextButton(onClick = { expanded = !expanded }) { Text(stringResource(R.string.taxes_breakdown_count, taxes.size)) }
         if (expanded) taxes.forEach { tax ->
@@ -87,7 +89,8 @@ fun TaxBreakdownSummary(taxes: List<DocumentTax>, currency: String) {
                 TaxTreatment.UNKNOWN -> R.string.taxes_unknown
             })
             val effect: String = stringResource(if (tax.effect == TaxEffect.CHARGE) R.string.taxes_charge else R.string.taxes_withholding)
-            Text("${tax.name ?: stringResource(R.string.taxes_unknown)} · ${tax.rate?.toString()?.plus(" %").orEmpty()} · $treatment · $effect", style = MaterialTheme.typography.bodySmall)
+            val name: String = formatTaxName(tax.name, tax.rate, stringResource(R.string.taxes_unknown), locale)
+            Text("$name · $treatment · $effect", style = MaterialTheme.typography.bodySmall)
             Text("${stringResource(R.string.taxes_base)}: ${tax.base?.let { formatMoney(it, currency) } ?: "—"} · ${tax.amount?.let { formatMoney(it, currency) } ?: "—"}", style = MaterialTheme.typography.bodySmall)
         }
     }

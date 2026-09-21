@@ -15,8 +15,8 @@ android {
         applicationId = "com.gastos.ingresos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 22
-        versionName = "1.8.5"
+        versionCode = 26
+        versionName = "1.8.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -143,6 +143,11 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(libs.billing)
+    androidTestImplementation(libs.play.services.auth)
+    androidTestImplementation(libs.google.api.client.android)
+    androidTestImplementation(libs.google.api.services.sheets)
+    androidTestImplementation(libs.google.api.services.drive)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation("androidx.room:room-testing:2.8.4")

@@ -13,7 +13,8 @@ import java.util.Date
 import java.util.Locale
 
 internal object SheetsSchema {
-    const val SCHEMA_VERSION = 8
+    const val SCHEMA_VERSION = 9
+    const val RENDER_REVISION = 1 // Refresh remote formulas after locale-aware rendering changes.
     const val SCHEMA_LOCALE_ES = "es"
     const val SCHEMA_LOCALE_EN = "en"
     const val LEGACY_NOMINAS = "Nóminas"
@@ -48,9 +49,9 @@ internal object SheetsSchema {
         ingresosTitle = "Ingresos",
         productosTitle = "Productos",
         resumenTitle = "Resumen",
-        recibidasHeaders = listOf("Nº Factura", "Fecha", "NIF País", "NIF Emisor", "Emisor (Razón Social)", "Base Imponible", "Impuesto %", "Cuota de impuestos", "Recargo Eq.", "IRPF %", "Total antes de retención", "Moneda", "Categoría", "Notas", "ID", "Foto Drive", "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)"),
-        productosHeaders = listOf("Descripción", "Cantidad", "Precio Unitario", "Subtotal", "Impuesto %", "Total (IVA incluido)", "Factura (Proveedor)", "InvoiceID", "ProductID", "Precio Unitario Original", "Subtotal Original", "Total Original (IVA incluido)", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)"),
-        ingresosHeaders = listOf("Concepto", "Fecha", "Importe", "Devengado", "Líquido", "IRPF %", "Moneda", "Fuente", "Categoría", "Notas", "ID", "Importe Original", "Devengado Original", "Líquido Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)"),
+        recibidasHeaders = listOf("Nº Factura", "Fecha", "NIF País", "NIF Emisor", "Emisor (Razón Social)", "Base Imponible", "Impuesto %", "Cuota de impuestos", "Recargo Eq.", "IRPF %", "Total del documento", "Moneda", "Categoría", "Notas", "UUID", "Foto Drive", "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)") + periodHeaders(LocaleCode.ES),
+        productosHeaders = listOf("Descripción", "Cantidad", "Precio Unitario", "Subtotal", "Impuesto %", "Total (IVA incluido)", "Factura (Proveedor)", "Document UUID", "Product UUID", "Precio Unitario Original", "Subtotal Original", "Total Original (IVA incluido)", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)") + listOf("Fecha") + periodHeaders(LocaleCode.ES),
+        ingresosHeaders = listOf("Concepto", "Fecha", "Importe", "Devengado", "Líquido", "IRPF %", "Moneda", "Fuente", "Categoría", "Notas", "UUID", "Importe Original", "Devengado Original", "Líquido Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)") + periodHeaders(LocaleCode.ES) + listOf("Foto Drive"),
         summaryTitle = "Resumen Financiero", summaryUpdatedLabel = "Fecha actualización", summaryCurrencyLabel = "Moneda informe", summaryExpensesLabel = "Total Gastos", summaryIncomeLabel = "Total Ingresos", summaryBalanceLabel = "Balance", summaryPendingLabel = "Conversiones pendientes", conversionOkLabel = "OK", conversionLocalLabel = "Moneda local", conversionPendingLabel = "Tasa pendiente"
     )
     val en = Descriptor(
@@ -59,9 +60,9 @@ internal object SheetsSchema {
         ingresosTitle = "Income",
         productosTitle = "Products",
         resumenTitle = "Summary",
-        recibidasHeaders = listOf("Invoice No.", "Date", "Country VAT ID", "Issuer VAT ID", "Issuer (Legal Name)", "Tax Base", "Tax %", "Tax Amount", "Surcharge", "Withholding %", "Document total", "Currency", "Category", "Notes", "ID", "Drive Photo", "Original Total", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)"),
-        productosHeaders = listOf("Description", "Quantity", "Unit Price", "Subtotal", "Tax %", "Total (VAT included)", "Invoice (Supplier)", "InvoiceID", "ProductID", "Original Unit Price", "Original Subtotal", "Original Total (VAT included)", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)"),
-        ingresosHeaders = listOf("Concept", "Date", "Amount", "Accrued", "Net", "Withholding %", "Currency", "Source", "Category", "Notes", "ID", "Original Amount", "Original Accrued", "Original Net", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)"),
+        recibidasHeaders = listOf("Invoice No.", "Date", "Country VAT ID", "Issuer VAT ID", "Issuer (Legal Name)", "Tax Base", "Tax %", "Tax Amount", "Surcharge", "Withholding %", "Document total", "Currency", "Category", "Notes", "UUID", "Drive Photo", "Original Total", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)") + periodHeaders(LocaleCode.EN),
+        productosHeaders = listOf("Description", "Quantity", "Unit Price", "Subtotal", "Tax %", "Total (VAT included)", "Invoice (Supplier)", "Document UUID", "Product UUID", "Original Unit Price", "Original Subtotal", "Original Total (VAT included)", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)") + listOf("Date") + periodHeaders(LocaleCode.EN),
+        ingresosHeaders = listOf("Concept", "Date", "Amount", "Accrued", "Net", "Withholding %", "Currency", "Source", "Category", "Notes", "UUID", "Original Amount", "Original Accrued", "Original Net", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)") + periodHeaders(LocaleCode.EN) + listOf("Drive Photo"),
         summaryTitle = "Financial Summary", summaryUpdatedLabel = "Updated", summaryCurrencyLabel = "Report currency", summaryExpensesLabel = "Total expenses", summaryIncomeLabel = "Total income", summaryBalanceLabel = "Balance", summaryPendingLabel = "Pending conversions", conversionOkLabel = CONVERSION_OK, conversionLocalLabel = "local currency", conversionPendingLabel = "pending rate"
     )
 
@@ -75,11 +76,11 @@ internal object SheetsSchema {
     val ingresosHeaders: List<Any> get() = es.ingresosHeaders
 
     const val RECIBIDAS_KEY_COLUMN = "O"
-    const val RECIBIDAS_LAST_COLUMN = "V"
+    const val RECIBIDAS_LAST_COLUMN = "X"
     const val INGRESOS_KEY_COLUMN = "K"
-    const val INGRESOS_LAST_COLUMN = "S"
+    const val INGRESOS_LAST_COLUMN = "V"
     const val PRODUCTOS_PARENT_COLUMN = "H"
-    const val PRODUCTOS_LAST_COLUMN = "Q"
+    const val PRODUCTOS_LAST_COLUMN = "T"
 
     fun descriptor(locale: LocaleCode): Descriptor = if (locale == LocaleCode.EN) en else es
 
@@ -158,10 +159,8 @@ internal object SheetsSchema {
         val expenseAmounts = invoices
             .filter { it.tipo == com.gastos.domain.model.InvoiceType.GASTO }
             .map { conversion.convert(it.total, it.moneda) }
-        val invoiceIncomeAmounts = invoices
-            .filter { it.tipo == com.gastos.domain.model.InvoiceType.INGRESO }
-            .map { conversion.convert(it.total, it.moneda) }
-        val incomeAmounts = incomes.map { conversion.convert(it.monto, it.moneda) }
+        val invoiceIncomeAmounts = emptyList<ConvertedAmount>()
+        val incomeAmounts = com.gastos.domain.model.mergeIncomes(invoices, incomes).map { conversion.convert(it.monto, it.moneda) }
         val totalExpenses = expenseAmounts.sumAvailable { it.convertedAmount }
         val totalIncomes = (invoiceIncomeAmounts + incomeAmounts)
             .sumAvailable { it.convertedAmount }
@@ -212,18 +211,8 @@ internal object SheetsSchema {
     fun expenseRow(invoice: Invoice, conversion: ConversionSnapshot): List<Any> {
         val total = conversion.convert(invoice.total, invoice.moneda)
         val convertedTotal = total.convertedAmount
-        val convertedBase = invoice.baseImponible?.let {
-            conversion.convert(it, invoice.moneda).convertedAmount
-        } ?: convertedTotal?.let {
-            invoice.ivaPercent?.let { rate -> round2(it / (1 + rate / 100.0)) }
-        }
-        val convertedQuota = invoice.cuotaIva?.let {
-            conversion.convert(it, invoice.moneda).convertedAmount
-        } ?: if (convertedTotal != null && convertedBase != null) {
-            round2(convertedTotal - convertedBase)
-        } else {
-            null
-        }
+        val convertedBase = invoice.baseImponible?.let { conversion.convert(it, invoice.moneda).convertedAmount }
+        val convertedQuota = invoice.cuotaIva?.let { conversion.convert(it, invoice.moneda).convertedAmount }
         return listOf(
             invoice.numeroFactura ?: extractFromOcr(invoice.ocrRawText, "numero_factura"),
             formatDate(invoice.fecha, conversion.locale),
@@ -233,20 +222,21 @@ internal object SheetsSchema {
             convertedBase ?: "",
             invoice.ivaPercent ?: "",
             convertedQuota ?: "",
-            0.0,
+            "",
             invoice.irpfPercent,
             convertedTotal ?: "",
             conversion.targetCurrency,
             displayCategoryWithSubcategory(invoice.categoria, invoice.subcategoria, conversion.locale),
             invoice.notas ?: "",
-            invoice.id,
+            invoice.documentUuid,
             invoice.driveWebViewLink ?: "",
             total.originalAmount,
             total.originalCurrency,
             total.appliedRate ?: "",
             total.rateTimestampLabel,
             total.status,
-            DocumentTaxCodec.encode(invoice.taxes)
+            DocumentTaxCodec.encode(invoice.taxes),
+            month(invoice.fecha), year(invoice.fecha)
         )
     }
 
@@ -267,7 +257,7 @@ internal object SheetsSchema {
             income.fuente ?: "",
             displayCategoryWithSubcategory(income.categoria, income.subcategoria, conversion.locale),
             income.notas ?: "",
-            income.id,
+            income.documentUuid,
             amount.originalAmount,
             devengado?.originalAmount ?: "",
             liquido?.originalAmount ?: "",
@@ -275,7 +265,8 @@ internal object SheetsSchema {
             amount.appliedRate ?: "",
             amount.rateTimestampLabel,
             amount.status,
-            DocumentTaxCodec.encode(income.taxes)
+            DocumentTaxCodec.encode(income.taxes),
+            month(income.fecha), year(income.fecha), income.driveWebViewLink ?: ""
         )
     }
 
@@ -283,7 +274,9 @@ internal object SheetsSchema {
         product: Product,
         provider: String,
         originalCurrency: String,
-        conversion: ConversionSnapshot
+        conversion: ConversionSnapshot,
+        documentUuid: String = "",
+        documentDate: Long? = null
     ): List<Any> {
         val unit = conversion.convert(product.precioUnitario, originalCurrency)
         val subtotal = conversion.convert(product.subtotal, originalCurrency)
@@ -301,8 +294,8 @@ internal object SheetsSchema {
             product.ivaPercent ?: "",
             totalWithVat.convertedAmount ?: "",
             provider,
-            product.invoiceId,
-            product.id,
+            documentUuid,
+            "$documentUuid:product:${product.id}",
             unit.originalAmount,
             subtotal.originalAmount,
             totalWithVatOriginal ?: "",
@@ -310,12 +303,22 @@ internal object SheetsSchema {
             primary.appliedRate ?: "",
             primary.rateTimestampLabel,
             primary.status,
-            DocumentTaxCodec.encode(product.taxes)
+            DocumentTaxCodec.encode(product.taxes),
+            documentDate?.let { formatDate(it, conversion.locale) } ?: "",
+            documentDate?.let(::month) ?: "", documentDate?.let(::year) ?: ""
         )
     }
 
-    private fun formatDate(timestamp: Long, locale: LocaleCode): String =
-        SimpleDateFormat("dd/MM/yyyy", javaLocale(locale)).format(Date(timestamp))
+    fun periodHeaders(locale: LocaleCode): List<String> = if (locale == LocaleCode.ES) listOf("Mes", "Año") else listOf("Month", "Year")
+    fun month(timestamp: Long): Int = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }.get(java.util.Calendar.MONTH) + 1
+    fun year(timestamp: Long): Int = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }.get(java.util.Calendar.YEAR)
+    private fun formatDate(timestamp: Long, locale: LocaleCode): Double {
+        val calendar = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
+        val utc = java.util.GregorianCalendar(java.util.TimeZone.getTimeZone("UTC")).apply {
+            clear(); set(calendar.get(java.util.Calendar.YEAR), calendar.get(java.util.Calendar.MONTH), calendar.get(java.util.Calendar.DAY_OF_MONTH))
+        }
+        return utc.timeInMillis / 86_400_000.0 + 25569.0
+    }
 
     private fun formatTimestamp(timestamp: Long, locale: LocaleCode): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm", javaLocale(locale)).format(Date(timestamp))

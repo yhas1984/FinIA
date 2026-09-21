@@ -17,6 +17,8 @@
     <string name="ai_income_amounts_format">Devengado: %1$s %2$s / Neto: %3$s %4$s</string>
     <string name="ai_income_added">Ingreso agregado: %1$s - %2$s</string>
     <string name="ai_parse_response_error">No se pudo interpretar la respuesta: %1$s</string>
+    <string name="ai_invalid_response">La respuesta de la IA no tiene un formato válido. Inténtalo de nuevo.</string>
+    <string name="ai_invalid_date">La fecha indicada no es válida. Corrígela y vuelve a enviar el mensaje.</string>
     <string name="ai_no_api_key">Aún no has configurado tu API key de Gemini. Ve a Configuración &gt; IA para añadir la tuya (es gratis en Google AI Studio).</string>
     <string name="ai_manual_review_payroll">Revisión manual: importe de nómina ausente, inválido o no positivo</string>
     <string name="ai_payroll_processed">Nómina procesada: %1$s — líquido %2$s %3$s%4$s</string>

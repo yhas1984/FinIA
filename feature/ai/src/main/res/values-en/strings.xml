@@ -17,6 +17,8 @@
     <string name="ai_income_amounts_format">Accrued: %1$s %2$s / Net: %3$s %4$s</string>
     <string name="ai_income_added">Income added: %1$s - %2$s</string>
     <string name="ai_parse_response_error">Could not parse response: %1$s</string>
+    <string name="ai_invalid_response">The AI response has an invalid format. Please try again.</string>
+    <string name="ai_invalid_date">The specified date is invalid. Correct it and send the message again.</string>
     <string name="ai_no_api_key">You have not configured your Gemini API key yet. Go to Settings &gt; AI to add yours (it is free in Google AI Studio).</string>
     <string name="ai_manual_review_payroll">Manual review: payroll amount is missing, invalid, or not positive</string>
     <string name="ai_payroll_processed">Payroll processed: %1$s — net %2$s %3$s%4$s</string>

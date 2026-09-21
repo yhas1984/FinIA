@@ -16,6 +16,18 @@ import java.io.RandomAccessFile
 import java.nio.file.Files
 
 class DataOnlyBackupTest {
+    @Test fun `restoring backup retains operation identity after chat history was cleared`() = runTest {
+        Fixture().use { f ->
+            val operation = CommandOperation("operation", "Spent 20", "SAVED", "EXPENSE", f.original.invoices.first().documentUuid, "Saved", 123L)
+            f.data.value = f.original.copy(commandOperations = listOf(operation), chatMessages = emptyList())
+            val archive = f.archive()
+            f.data.value = f.original
+            f.service.restore(archive.inputStream(), f.password.copyOf())
+            assertEquals(listOf(operation), f.data.value.commandOperations)
+            assertTrue(f.data.value.chatMessages.isEmpty())
+        }
+    }
+
     @Test fun `encrypted complete and data-only restore preserve mixed international taxes and unknown line VAT`() = runTest {
         for (mode in BackupMode.entries) Fixture().use { f ->
             val taxes = listOf(DocumentTax("GST", 5.0, 100.0, 5.0, TaxTreatment.TAXABLE),

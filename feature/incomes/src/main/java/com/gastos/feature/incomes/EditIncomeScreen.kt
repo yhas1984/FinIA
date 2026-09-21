@@ -44,7 +44,7 @@ fun EditIncomeScreen(
     var showDocumentFields by remember { mutableStateOf(false) }
 
     LaunchedEffect(incomeId) {
-        if (incomeId > 0) {
+        if (incomeId != 0L) {
             viewModel.loadIncome(incomeId, locale)
         }
     }
@@ -77,7 +77,7 @@ fun EditIncomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(if (incomeId > 0) R.string.edit_income else R.string.new_income)) },
+                title = { Text(stringResource(if (incomeId != 0L) R.string.edit_income else R.string.new_income)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))

@@ -6,11 +6,15 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import com.gastos.data.local.entity.ChatMessageEntity
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ChatMessageDao {
     @Query("SELECT * FROM chat_messages ORDER BY createdAt ASC, id ASC")
     suspend fun getAllMessages(): List<ChatMessageEntity>
+
+    @Query("SELECT * FROM chat_messages WHERE role = 'document' ORDER BY createdAt ASC, id ASC")
+    fun observeDocumentMessages(): Flow<List<ChatMessageEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(message: ChatMessageEntity): Long
@@ -21,7 +25,7 @@ interface ChatMessageDao {
         trimToLast(limit)
     }
 
-    @Query("SELECT * FROM chat_messages ORDER BY createdAt DESC, id DESC LIMIT 1")
+    @Query("SELECT * FROM chat_messages WHERE role != 'document' ORDER BY createdAt DESC, id DESC LIMIT 1")
     suspend fun latest(): ChatMessageEntity?
 
     @Transaction

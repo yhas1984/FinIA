@@ -27,7 +27,7 @@ sealed interface CaptureStart {
 
 sealed interface CaptureSave {
     data class Saved(val invoice: Invoice? = null, val income: Income? = null) : CaptureSave
-    data class Review(val issues: List<ReviewIssue>) : CaptureSave
+    data object UnreadableAmount : CaptureSave
     data class Duplicate(val matches: List<DuplicateMatch>) : CaptureSave
     data object MissingDraft : CaptureSave
 }
@@ -77,7 +77,7 @@ class DocumentCaptureStore @Inject constructor(
         database.withTransaction {
             val current: DocumentDraftEntity = get(uuid) ?: return@withTransaction
             database.documentDraftDao().update(current.copy(evidenceJson = evidence?.let(DocumentEvidenceCodec::encode) ?: current.evidenceJson,
-                status = if (error != null) "ERROR" else "REVIEW", error = error))
+                status = if (error != null) "ERROR" else "EXTRACTED", error = error))
         }
     }
 
@@ -85,8 +85,7 @@ class DocumentCaptureStore @Inject constructor(
 
     private suspend fun saveLocked(uuid: String, evidence: DocumentEvidence): CaptureSave = withContext(Dispatchers.IO) {
         val draft: DocumentDraftEntity = get(uuid) ?: return@withContext CaptureSave.MissingDraft
-        val issues: List<ReviewIssue> = DocumentValidator.validate(evidence).issues
-        if (issues.isNotEmpty()) return@withContext CaptureSave.Review(issues)
+        if (DocumentExtraction.amount(evidence.document) == null) return@withContext CaptureSave.UnreadableAmount
         // Original draft survives interruptions and restore directory swaps.
         val promoted: Uri = images.persist(Uri.parse(draft.imageUri))
         var committed: Boolean = false
@@ -95,19 +94,21 @@ class DocumentCaptureStore @Inject constructor(
                 val current: DocumentDraftEntity = get(uuid) ?: return@withTransaction CaptureSave.MissingDraft
                 val stored: DocumentEvidence = evidence.copy(sourceSha256 = current.sourceSha256, fieldEdits = emptyMap())
                 if (stored.document.kind == "nomina" || stored.document.kind == "factura_emitida") {
-                    val income: Income = if (stored.document.kind == "nomina") stored.toPayroll(uuid, promoted.toString())
-                        else stored.toInvoice(uuid, promoted.toString()).first.toIncome()
+                    val income: Income = if (stored.document.kind == "nomina") stored.toPayroll(uuid, promoted.toString(), current.createdAt)
+                        else stored.toInvoice(uuid, promoted.toString(), current.createdAt).first.toIncome()
                     val matches: List<DuplicateMatch> = DocumentDuplicates.blocking(income.documentIdentity(), guard.find(income.documentIdentity()))
                     if (matches.isNotEmpty()) return@withTransaction CaptureSave.Duplicate(matches)
                     val id: Long = database.incomeDao().insertIncomeEntity(income.toEntity())
+                    database.chatMessageDao().insertAndTrim(createDocumentChatMessage(context, income.copy(id = id).documentIdentity()))
                     database.documentDraftDao().delete(uuid)
                     CaptureSave.Saved(income = income.copy(id = id))
                 } else {
-                    val (invoice: Invoice, products: List<Product>) = stored.toInvoice(uuid, promoted.toString())
+                    val (invoice: Invoice, products: List<Product>) = stored.toInvoice(uuid, promoted.toString(), current.createdAt)
                     val matches: List<DuplicateMatch> = DocumentDuplicates.blocking(invoice.documentIdentity(), guard.find(invoice.documentIdentity()))
                     if (matches.isNotEmpty()) return@withTransaction CaptureSave.Duplicate(matches)
                     val id: Long = database.invoiceDao().insertInvoice(invoice.toEntity())
                     database.productDao().insertProducts(products.map { it.copy(invoiceId = id).toEntity() })
+                    database.chatMessageDao().insertAndTrim(createDocumentChatMessage(context, invoice.copy(id = id).documentIdentity()))
                     database.documentDraftDao().delete(uuid)
                     CaptureSave.Saved(invoice = invoice.copy(id = id))
                 }

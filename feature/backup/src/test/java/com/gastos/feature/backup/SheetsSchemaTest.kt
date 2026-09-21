@@ -33,7 +33,7 @@ class SheetsSchemaTest {
         assertEquals("", row[6])
         assertEquals(100.0, row[5])
         assertEquals(112.0, row[10])
-        assertEquals(taxes, DocumentTaxCodec.decode(row.last().toString()))
+        assertEquals(taxes, DocumentTaxCodec.decode(row[21].toString()))
         val unknown = SheetsSchema.productRow(Product(invoiceId = 1, descripcion = "Unknown", precioUnitario = 100.0,
             ivaPercent = null, ivaAmount = null, pricesIncludeTax = false), "Synthetic", "EUR", snapshot())
         assertEquals("", unknown[5])
@@ -46,6 +46,7 @@ class SheetsSchemaTest {
         val row = SheetsSchema.expenseRow(
             Invoice(
                 id = 9,
+                documentUuid = "document-nine",
                 fecha = 1L,
                 proveedor = "Proveedor",
                 tipo = InvoiceType.GASTO,
@@ -64,7 +65,7 @@ class SheetsSchemaTest {
         assertEquals(100.0, row[5])
         assertEquals(21.0, row[7])
         assertEquals("Alimentación", row[12])
-        assertEquals(9L, row[14])
+        assertEquals("document-nine", row[14])
         assertEquals("https://drive.test/9", row[15])
         assertEquals("EUR", row[11])
     }
@@ -80,12 +81,12 @@ class SheetsSchemaTest {
             ),
             "Proveedor",
             "EUR",
-            snapshot()
+            snapshot(), documentUuid = "parent-uuid"
         )
 
         assertEquals(SheetsSchema.productosHeaders.size, row.size)
-        assertEquals(9L, row[7])
-        assertEquals(17L, row[8])
+        assertEquals("parent-uuid", row[7])
+        assertEquals("parent-uuid:product:17", row[8])
         assertEquals(10.0, row[5])
         assertEquals(10.0, row[11])
     }
@@ -156,11 +157,11 @@ class SheetsSchemaTest {
     }
 
     @Test
-    fun `schema v8 preserves stable document columns when adding tax detail`() {
-        assertEquals(8, SheetsSchema.SCHEMA_VERSION)
+    fun `schema v9 retains column positions while replacing local ids with UUIDs`() {
+        assertEquals(9, SheetsSchema.SCHEMA_VERSION)
         assertEquals("K", SheetsSchema.INGRESOS_KEY_COLUMN)
-        assertEquals("S", SheetsSchema.INGRESOS_LAST_COLUMN)
-        assertEquals("ID", SheetsSchema.ingresosHeaders[10])
+        assertEquals("V", SheetsSchema.INGRESOS_LAST_COLUMN)
+        assertEquals("UUID", SheetsSchema.ingresosHeaders[10])
     }
 
     @Test

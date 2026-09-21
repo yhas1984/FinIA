@@ -34,7 +34,6 @@ fun InvoicesScreen(
     viewModel: InvoicesViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var showFilterMenu by remember { mutableStateOf(false) }
     val language = LocalLocale.current.platformLocale.language
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -56,30 +55,7 @@ fun InvoicesScreen(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ),
-                actions = {
-                    IconButton(onClick = { showFilterMenu = !showFilterMenu }) {
-                        Icon(Icons.Default.FilterList, contentDescription = stringResource(R.string.filter))
-                    }
-                    DropdownMenu(
-                        expanded = showFilterMenu,
-                        onDismissRequest = { showFilterMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.all_items)) },
-                            onClick = {
-                                viewModel.filterByType(null)
-                                showFilterMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.only_expenses)) },
-                            onClick = {
-                                viewModel.filterByType(InvoiceType.GASTO)
-                                showFilterMenu = false
-                            }
-                        )
-                    }
-                }
+
             )
         }
     ) { padding ->

@@ -54,7 +54,8 @@ data class ScannedDocument(
     val lines: List<ScannedLine> = emptyList(),
     val linesComplete: Boolean? = null,
     val taxes: List<DocumentTax> = emptyList(),
-    val taxesComplete: Boolean? = null
+    val taxesComplete: Boolean? = null,
+    val payroll: PayrollDetails? = null
 )
 
 @Serializable
@@ -92,7 +93,9 @@ object DocumentValidator {
 
     fun validate(evidence: DocumentEvidence): ValidatedDocument {
         val result: ValidatedDocument = validate(evidence.document)
-        return result.copy(issues = (result.issues + evidence.invalidFields.map { ReviewIssue(it, ReviewReason.INVALID) }).distinct())
+        val legacyPayroll: List<ReviewIssue> = if (evidence.document.kind == "nomina" && evidence.originalExtraction != null && evidence.document.payroll == null)
+            listOf(ReviewIssue("payroll", ReviewReason.INCOMPLETE)) else emptyList()
+        return result.copy(issues = (result.issues + legacyPayroll + evidence.invalidFields.map { ReviewIssue(it, ReviewReason.INVALID) }).distinct())
     }
 
     fun parseDate(value: String?): Long? {
@@ -103,10 +106,11 @@ object DocumentValidator {
     }
 
     fun validate(input: ScannedDocument): ValidatedDocument {
+        if (input.kind == "nomina") return PayrollValidator.validate(input)
         val issues: MutableList<ReviewIssue> = mutableListOf()
         val derived: MutableSet<String> = mutableSetOf()
         fun issue(field: String, reason: ReviewReason) { issues.add(ReviewIssue(field, reason)) }
-        val source: ScannedDocument = normalizeTaxes(input, issues, derived)
+        val source: ScannedDocument = normalizeTaxes(DocumentDiscounts.normalize(input, derived), issues, derived)
         if (source.kind !in kinds) issue("kind", ReviewReason.AMBIGUOUS)
         if (source.issuer.isNullOrBlank()) issue("issuer", ReviewReason.MISSING)
         if (parseDate(source.date) == null) issue("date", if (source.date.isNullOrBlank()) ReviewReason.MISSING else ReviewReason.INVALID)

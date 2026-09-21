@@ -37,7 +37,7 @@ class RemoteSyncOutboxMigrationTest {
         }
 
         val database = Room.databaseBuilder(context, RemoteSyncOutboxDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_REMOTE_SYNC_OUTBOX_1_2, MIGRATION_REMOTE_SYNC_OUTBOX_2_3, MIGRATION_REMOTE_SYNC_OUTBOX_3_4)
+            .addMigrations(MIGRATION_REMOTE_SYNC_OUTBOX_1_2, MIGRATION_REMOTE_SYNC_OUTBOX_2_3, MIGRATION_REMOTE_SYNC_OUTBOX_3_4, MIGRATION_REMOTE_SYNC_OUTBOX_4_5)
             .build()
         database.openHelper.writableDatabase.use { sqlite ->
             sqlite.query("PRAGMA table_info(remote_sync_outbox)").use { cursor ->
@@ -57,7 +57,7 @@ class RemoteSyncOutboxMigrationTest {
         database.close()
     }
     @Test
-    fun v3_discards_unconsented_drive_deletions_but_retains_independent_operations() {
+    fun v3_discards_unconsented_and_unscoped_deletions_but_retains_uploads() {
         context.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null).use { db ->
             db.execSQL("CREATE TABLE remote_sync_outbox (targetKey TEXT NOT NULL PRIMARY KEY, target TEXT NOT NULL, recordId INTEGER NOT NULL, action TEXT NOT NULL, remoteFileId TEXT, operationId TEXT NOT NULL DEFAULT '', updatedAt INTEGER NOT NULL)")
             db.execSQL("INSERT INTO remote_sync_outbox VALUES ('delete','INVOICE_DRIVE',7,'DELETE','legacy','op-delete',1)")
@@ -66,18 +66,17 @@ class RemoteSyncOutboxMigrationTest {
             db.version = 3
         }
         val database = Room.databaseBuilder(context, RemoteSyncOutboxDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_REMOTE_SYNC_OUTBOX_3_4).build()
+            .addMigrations(MIGRATION_REMOTE_SYNC_OUTBOX_3_4, MIGRATION_REMOTE_SYNC_OUTBOX_4_5).build()
         try {
             database.openHelper.writableDatabase.query("SELECT targetKey, operationId, status, attempts, deleteConsent FROM remote_sync_outbox ORDER BY updatedAt").use { cursor ->
-                assertEquals(2, cursor.count)
+                assertEquals(1, cursor.count)
                 assertTrue(cursor.moveToFirst())
                 assertEquals("upload", cursor.getString(0))
                 assertEquals("op-upload", cursor.getString(1))
                 assertEquals("PENDING", cursor.getString(2))
                 assertEquals(0, cursor.getInt(3))
                 assertEquals(0, cursor.getInt(4))
-                assertTrue(cursor.moveToNext())
-                assertEquals("sheet", cursor.getString(0))
+                org.junit.Assert.assertFalse(cursor.moveToNext())
             }
         } finally { database.close() }
     }

@@ -186,7 +186,7 @@ object TransactionCategories {
 
     fun normalizeCategory(value: String?): String? = value
         ?.trim()
-        ?.takeIf { it.isNotBlank() }
+        ?.takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
 
     fun normalizeKey(value: String?): String? = normalizeCategory(value)
         ?.lowercase(Locale.ROOT)

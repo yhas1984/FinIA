@@ -1,0 +1,26 @@
+[
+  {
+    "fixture": "simple-receipt",
+    "readMs": 30560,
+    "result": "Ready",
+    "saved": true,
+    "printedAmountPreserved": true,
+    "duplicateBlocked": true
+  },
+  {
+    "fixture": "three-vat-invoice",
+    "readMs": 3850,
+    "result": "Ready",
+    "saved": true,
+    "printedAmountPreserved": true,
+    "duplicateBlocked": true
+  },
+  {
+    "fixture": "partial-payroll",
+    "readMs": 3492,
+    "result": "Ready",
+    "saved": true,
+    "printedAmountPreserved": true,
+    "duplicateBlocked": true
+  }
+]
