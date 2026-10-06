@@ -55,18 +55,23 @@ class SheetsWorkbookPlanTest {
         for (language in SheetsSchema.LocaleCode.entries) {
             val descriptor = SheetsSchema.descriptor(language)
             val definition = ManagedSheet(descriptor.recibidasTitle,descriptor.recibidasHeaders,14,
-                dateColumns=setOf(1),rateColumns=setOf(18),numberColumns=setOf(10))
+                dateColumns=setOf(1),rateColumns=setOf(18),numberColumns=setOf(10),percentColumns=setOf(6))
             val headers = definition.headers.toMutableList().apply { add(1,"Personal") }
             val plan = SheetsWorkbookPlan(definition,SheetSnapshot(1,definition.title,listOf(headers)))
             plan.put(1,1,45000.0)
             plan.put(1,10,100.25)
             plan.put(1,18,0.123456)
+            plan.put(1,6,21.25)
             val data = plan.finish().mapNotNull { it.updateCells }.filter { it.start.rowIndex == 1 }
             assertEquals(2,data[0].start.columnIndex)
             assertEquals("DATE",data[0].rows.single().getValues().single().userEnteredFormat.numberFormat.type)
             assertEquals(45000.0,data[0].rows.single().getValues().single().userEnteredValue.numberValue,0.0)
             assertEquals("#,##0.00",data[1].rows.single().getValues().single().userEnteredFormat.numberFormat.pattern)
             assertEquals("0.000000",data[2].rows.single().getValues().single().userEnteredFormat.numberFormat.pattern)
+            val percentage = data[3].rows.single().getValues().single()
+            assertEquals("0.00\" %\"",percentage.userEnteredFormat.numberFormat.pattern)
+            assertEquals("NUMBER",percentage.userEnteredFormat.numberFormat.type)
+            assertEquals(21.25,percentage.userEnteredValue.numberValue,0.0)
         }
     }
 

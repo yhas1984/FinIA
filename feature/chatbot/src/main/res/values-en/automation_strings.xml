@@ -1,0 +1,8 @@
+<resources>
+    <string name="category_saved">Category saved.</string>
+    <string name="rule_saved">Rule saved for future transactions.</string>
+    <string name="correction_failed">The change could not be applied. The transaction may have changed; select it again.</string>
+    <string name="attach_document">Attach image or PDF</string>
+    <string name="choose_movement">Which transaction do you want to correct?</string>
+    <string name="undo_correction">Undo correction</string>
+<string name="pdf_too_large">The PDF exceeds 10 MiB. Reduce its size.</string><string name="pdf_page_limit">The PDF exceeds 20 pages. Split it before sending.</string><string name="pdf_invalid">Cannot open this PDF. Check that it is not damaged or password protected.</string><string name="wallet_receipt_question">An existing Wallet or bank payment has this amount and currency on a nearby date. Attach the receipt and keep one expense?</string><string name="wallet_separate_document">Record as a separate expense</string><string name="use_category_for_future">Use this category for future transactions at the same merchant</string><string name="automation_invalid_date">That date does not exist. Correct it before saving.</string><string name="automation_movement_missing">Transaction not found. Specify the merchant or select a specific transaction.</string><string name="automation_invalid_fields">Check the fields and category. Currency changes with a breakdown require manual review.</string></resources>

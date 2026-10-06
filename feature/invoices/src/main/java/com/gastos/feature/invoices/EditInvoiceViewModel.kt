@@ -2,11 +2,13 @@ package com.gastos.feature.invoices
 
 import com.gastos.domain.model.*
 import com.gastos.common.LocalizedNumbers
+import com.gastos.common.ManualField
 import com.gastos.common.SaveState
 import com.gastos.common.TaxFormRow
 import com.gastos.common.reconcileTaxForm
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
@@ -30,6 +32,10 @@ import kotlin.math.abs
 import javax.inject.Inject
 
 data class EditInvoiceUiState(
+    val products: List<Product> = emptyList(),
+    val defaultsReady: Boolean = true,
+    val fieldErrors: Map<ManualField, String> = emptyMap(),
+    val validationAttempt: Int = 0,
     val duplicates: List<DuplicateMatch> = emptyList(),
     val isLoading: Boolean = false,
     val saveState: SaveState = SaveState.Idle,
@@ -49,6 +55,7 @@ data class EditInvoiceUiState(
  * propia edición en la pestaña Ingresos.
  */
 data class EditInvoiceForm(
+    val manualAmountAdjusted: Boolean = false,
     val taxes: List<TaxFormRow> = emptyList(),
     val withheldAmountRead: Double? = null,
     val withheldRateRead: Double? = null,
@@ -70,7 +77,7 @@ data class EditInvoiceForm(
     val isCustomSubcategory: Boolean = false,
     val subcategoria: String = "",
     val notas: String = ""
-) {
+) : java.io.Serializable {
 
     /**
      * Resultado inmutable del cálculo fiscal: cantidades derivadas a
@@ -110,6 +117,12 @@ data class EditInvoiceForm(
         if (baseImponible.isNotBlank() && enteredBase == null) return null
         val enteredCuota: Double? = LocalizedNumbers.parse(cuotaIva, locale)?.takeIf { it >= 0.0 }
         if (cuotaIva.isNotBlank() && enteredCuota == null) return null
+        if (manualAmountAdjusted) {
+            val parsed = TaxFormRow.parseAll(taxes, locale, moneda) ?: return null
+            return FiscalBreakdown(total, if (parsed.isEmpty()) iva else DocumentTaxes.singleRate(parsed), irpf,
+                enteredBase, enteredCuota ?: parsed.takeIf { it.isNotEmpty() }?.let { DocumentTaxes.total(it, TaxEffect.CHARGE) },
+                withheldAmountRead ?: DocumentTaxes.total(parsed, TaxEffect.WITHHOLDING) ?: 0.0, total)
+        }
         if (taxes.isNotEmpty()) {
             val parsed: List<DocumentTax> = TaxFormRow.parseAll(taxes, locale, moneda) ?: return null
             val withholding: Double? = if (withheldRateRead == irpf) withheldAmountRead else enteredBase?.times(irpf / 100.0)
@@ -131,24 +144,78 @@ class EditInvoiceViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val invoiceRepository: InvoiceRepository,
     private val productRepository: ProductRepository,
-    private val sheetsSyncManager: SheetsSyncManager
+    private val sheetsSyncManager: SheetsSyncManager,
+    private val catalog: com.gastos.storage.CategoryCatalog? = null,
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
+    private val entryDefaults: com.gastos.repository.ManualEntryDefaultsProvider? = null
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(EditInvoiceUiState())
+    private val _uiState = MutableStateFlow(EditInvoiceUiState(defaultsReady = entryDefaults == null || savedStateHandle.get<Boolean>("defaultsReady") == true, fieldErrors = savedStateHandle.get<java.util.HashMap<String, String>>("fieldErrors").orEmpty().mapKeys { ManualField.valueOf(it.key) }, saveState = savedStateHandle.get<String>("saveError")?.let(SaveState::Error) ?: SaveState.Idle))
     val uiState: StateFlow<EditInvoiceUiState> = _uiState.asStateFlow()
 
-    private val _form = MutableStateFlow(EditInvoiceForm())
+    private val _form = MutableStateFlow(savedStateHandle.get<EditInvoiceForm>("draft") ?: EditInvoiceForm())
     val form: StateFlow<EditInvoiceForm> = _form.asStateFlow()
 
-    private var originalInvoice: Invoice? = null
+    private val restoredDraft: Boolean = savedStateHandle.contains("draft")
+    private var originalInvoice: Invoice? = savedStateHandle.get<String>("original")?.let {
+        runCatching { kotlinx.serialization.json.Json.decodeFromString(Invoice.serializer(), it) }.getOrNull()
+    }
+    private var baseline: EditInvoiceForm = savedStateHandle.get<EditInvoiceForm>("baseline") ?: _form.value
+    val hasChanges: Boolean get() = _form.value != baseline
+    private fun rememberBaseline() { baseline = _form.value; savedStateHandle["baseline"] = baseline }
     private var duplicateForm: EditInvoiceForm? = null
     private var existingSubcategories: List<String?> = emptyList()
 
+    private var catalogValues: List<com.gastos.domain.model.Category> = emptyList()
+    private fun refreshCatalog() {
+        val roots = catalogValues.filter { it.kind == com.gastos.domain.model.DocumentKind.EXPENSE && it.parentId.isEmpty() && !it.archived }
+        val parent = roots.firstOrNull { it.name == _form.value.categoria }
+        _uiState.update { it.copy(availableCategories = roots.map { category -> category.name },
+            availableSubcategories = catalogValues.filter { parent != null && it.parentId == parent.id && !it.archived }.map { category -> category.name }) }
+    }
     init {
+        _uiState.update { it.copy(invoice = originalInvoice) }
+        viewModelScope.launch { _form.collect { if (_uiState.value.defaultsReady || restoredDraft || it.id != 0L) savedStateHandle["draft"] = it } }
+        viewModelScope.launch { _uiState.collect { savedStateHandle["saveError"] = it.saveResult; savedStateHandle["fieldErrors"] = java.util.HashMap(it.fieldErrors.mapKeys { entry -> entry.key.name }) } }
+        catalog?.let { source -> viewModelScope.launch { source.initialize(); source.categories.collect { catalogValues = it; refreshCatalog() } } }
+        if (_form.value.id > 0) observeProducts(_form.value.id)
         loadAvailableCategories()
     }
 
+    private fun observeProducts(id: Long) {
+        viewModelScope.launch {
+            try { productRepository.getProductsByInvoiceId(id).collect { rows -> _uiState.update { it.copy(products = rows) } } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { _uiState.update { it.copy(error = failure.message ?: context.getString(com.gastos.common.R.string.manual_preferences_failed)) } }
+        }
+    }
+
+    private var defaultsJob: kotlinx.coroutines.Job? = null
+    fun prepareDefaults() {
+        if (_uiState.value.defaultsReady || defaultsJob?.isActive == true) return
+        defaultsJob = viewModelScope.launch {
+            _uiState.update { it.copy(error = null) }
+            try {
+                val defaults = entryDefaults?.manualEntryDefaults()
+                if (!restoredDraft && _form.value.id == 0L && defaults != null) {
+                    _form.update { it.copy(moneda = defaults.currency, paisCodigo = defaults.country) }
+                    rememberBaseline()
+                }
+                savedStateHandle["draft"] = _form.value
+                savedStateHandle["defaultsReady"] = true
+                _uiState.update { it.copy(defaultsReady = true, error = null) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { _uiState.update { it.copy(error = failure.message) } }
+        }
+    }
+
+    private fun validationFailure(errors: Map<ManualField, String>) {
+        _uiState.update { it.copy(fieldErrors = errors, validationAttempt = it.validationAttempt + 1,
+            saveState = SaveState.Error(errors.values.first())) }
+    }
+
     private fun loadAvailableCategories() {
+        if (catalog != null) return
         viewModelScope.launch {
             val invoices = invoiceRepository.getAllInvoices().first()
             val existing = invoices.map { it.categoria }
@@ -165,15 +232,17 @@ class EditInvoiceViewModel @Inject constructor(
     }
 
     fun loadInvoice(id: Long, locale: Locale = Locale.getDefault()) {
-        if (_form.value.id == id) return
+        if (_form.value.id == id) { _uiState.update { it.copy(defaultsReady = true) }; return }
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val invoice = invoiceRepository.getInvoiceById(id)
                 if (invoice != null) {
                     originalInvoice = invoice
+                    savedStateHandle["original"] = kotlinx.serialization.json.Json.encodeToString(Invoice.serializer(), invoice)
                     _form.update {
                         EditInvoiceForm(
+                            manualAmountAdjusted = invoice.manualAmountAdjusted,
                             taxes = invoice.taxes.map { TaxFormRow.from(it, locale) },
                             withheldAmountRead = invoice.evidence?.document?.withholdingAmount,
                             withheldRateRead = invoice.irpfPercent,
@@ -199,6 +268,7 @@ class EditInvoiceViewModel @Inject constructor(
                             notas = invoice.notas ?: ""
                         )
                     }
+                    rememberBaseline()
                     _uiState.update {
                         it.copy(
                             availableSubcategories = TransactionCategories.availableSubcategories(
@@ -207,7 +277,8 @@ class EditInvoiceViewModel @Inject constructor(
                             )
                         )
                     }
-                    _uiState.update { it.copy(isLoading = false, invoice = invoice) }
+                    _uiState.update { it.copy(isLoading = false, invoice = invoice, defaultsReady = true) }
+                    observeProducts(id)
                 } else {
                     _uiState.update {
                         it.copy(isLoading = false, error = context.getString(R.string.invoice_not_found))
@@ -223,38 +294,40 @@ class EditInvoiceViewModel @Inject constructor(
         }
     }
 
-    fun updateTaxes(rows: List<TaxFormRow>) { _form.update { it.copy(taxes = rows, cuotaIva = "") } }
-    fun addTax(locale: Locale) {
+    fun updateTaxes(rows: List<TaxFormRow>) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(taxes = rows, cuotaIva = "", manualAmountAdjusted = false) } }
+    fun addTax(locale: Locale) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return;
         _form.update { form ->
-            if (form.taxes.isNotEmpty()) form.copy(taxes = form.taxes + TaxFormRow()) else {
+            if (form.taxes.isNotEmpty()) form.copy(taxes = form.taxes + TaxFormRow(), manualAmountAdjusted = false) else {
                 val fiscal = form.recalcFiscal(locale)
                 val row = TaxFormRow.from(DocumentTax(name = if (form.paisCodigo == "ES") "IVA" else "Tax",
                     rate = fiscal?.ivaPercent, base = fiscal?.baseImponible, amount = fiscal?.ivaAmount,
                     treatment = if (fiscal?.ivaPercent == 0.0) TaxTreatment.ZERO_RATED else TaxTreatment.TAXABLE), locale)
-                form.copy(taxes = listOf(row))
+                form.copy(taxes = listOf(row), manualAmountAdjusted = false)
             }
         }
     }
 
-    fun updateProveedor(value: String) { _form.update { it.copy(proveedor = value) } }
-    fun updateFecha(value: Long) { _form.update { it.copy(fecha = value) } }
-    fun updateMoneda(value: String) { _form.update { it.copy(moneda = value) } }
-    fun updateTotal(value: String) { _form.update { it.copy(total = value) } }
-    fun updateNumeroFactura(value: String) { _form.update { it.copy(numeroFactura = value) } }
-    fun updateBaseImponible(value: String) { _form.update { it.copy(baseImponible = value) } }
-    fun updateCuotaIva(value: String) { _form.update { it.copy(cuotaIva = value) } }
-    fun updateIvaPercent(value: String) { _form.update { it.copy(ivaPercent = value, baseImponible = "", cuotaIva = "") } }
-    fun updateIrpfPercent(value: String) { _form.update { it.copy(irpfPercent = value) } }
-    fun updatePaisCodigo(value: String) { _form.update { it.copy(paisCodigo = value) } }
-    fun updateNifEmisor(value: String) { _form.update { it.copy(nifEmisor = value) } }
-    fun updateNifReceptor(value: String) { _form.update { it.copy(nifReceptor = value) } }
-    fun updateCategoria(value: String) { _form.update { it.copy(categoria = value) } }
-    fun updateSubcategoria(value: String) { _form.update { it.copy(subcategoria = value) } }
-    fun selectCategory(value: String?, isCustomCategory: Boolean) {
+    fun updateProveedor(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(proveedor = value) } }
+    fun updateFecha(value: Long) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(fecha = value) } }
+    fun updateMoneda(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(moneda = value) } }
+    fun updateTotal(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(total = value) } }
+    fun updateNumeroFactura(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(numeroFactura = value) } }
+    fun updateBaseImponible(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(baseImponible = value, manualAmountAdjusted = false) } }
+    fun updateCuotaIva(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(cuotaIva = value, manualAmountAdjusted = false) } }
+    fun updateIvaPercent(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(ivaPercent = value, baseImponible = "", cuotaIva = "", manualAmountAdjusted = false) } }
+    fun updateIrpfPercent(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(irpfPercent = value, manualAmountAdjusted = false) } }
+    fun updatePaisCodigo(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(paisCodigo = value) } }
+    fun updateNifEmisor(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(nifEmisor = value) } }
+    fun updateNifReceptor(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(nifReceptor = value) } }
+    fun updateCategoria(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(categoria = value) } }
+    fun updateSubcategoria(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(subcategoria = value) } }
+    fun selectCategory(value: String?, isCustomCategory: Boolean) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return;
         _form.update {
             it.copy(
                 categoria = value.orEmpty(),
-                isCustomCategory = isCustomCategory
+                isCustomCategory = isCustomCategory,
+                subcategoria = if (value.orEmpty() != it.categoria) "" else it.subcategoria,
+                isCustomSubcategory = if (value.orEmpty() != it.categoria) false else it.isCustomSubcategory
             )
         }
         _uiState.update {
@@ -265,8 +338,9 @@ class EditInvoiceViewModel @Inject constructor(
                 )
             )
         }
+        if (catalog != null) refreshCatalog()
     }
-    fun selectSubcategory(value: String?, isCustom: Boolean) {
+    fun selectSubcategory(value: String?, isCustom: Boolean) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return;
         _form.update {
             it.copy(
                 subcategoria = value.orEmpty(),
@@ -274,18 +348,37 @@ class EditInvoiceViewModel @Inject constructor(
             )
         }
     }
-    fun updateNotas(value: String) { _form.update { it.copy(notas = value) } }
+    fun updateNotas(value: String) { if (_uiState.value.isSaving || _uiState.value.saveState == SaveState.Success) return; _form.update { it.copy(notas = value) } }
 
     fun saveInvoice(locale: Locale = Locale.getDefault(), distinctFrom: Set<String> = emptySet()) {
+        if (!_uiState.value.defaultsReady) return
         if (_uiState.value.saveState == SaveState.Saving || _uiState.value.saveState == SaveState.Success) return
-        _uiState.update { it.copy(saveState = SaveState.Saving, duplicates = emptyList()) }
+        _uiState.update { it.copy(saveState = SaveState.Saving, duplicates = emptyList(), fieldErrors = emptyMap()) }
         viewModelScope.launch {
             val form = _form.value
+            val errors = linkedMapOf<ManualField, String>()
+            val enteredAmount = LocalizedNumbers.parse(form.total, locale)
+            if (enteredAmount == null || !enteredAmount.isFinite() || enteredAmount <= 0)
+                errors[ManualField.AMOUNT] = context.getString(R.string.validation_total_percentages)
+            if (form.proveedor.isBlank()) errors[ManualField.CONCEPT] = context.getString(R.string.validation_provider_required)
+            if (form.moneda.trim().uppercase() !in SUPPORTED_CURRENCIES)
+                errors[ManualField.CURRENCY] = context.getString(R.string.validation_currency_not_supported)
+            fun checkPercentage(field: ManualField, raw: String, optional: Boolean = false) {
+                if (optional && raw.isBlank()) return
+                val value = LocalizedNumbers.parse(raw, locale)
+                if (value == null || !value.isFinite() || value !in 0.0..100.0)
+                    errors[field] = context.getString(R.string.validation_total_percentages)
+            }
+            if (form.taxes.isEmpty()) checkPercentage(ManualField.VAT, form.ivaPercent, true)
+            checkPercentage(ManualField.WITHHOLDING, form.irpfPercent)
+            for ((field, raw) in listOf(ManualField.BASE to form.baseImponible, ManualField.TAX_AMOUNT to form.cuotaIva)) {
+                if (raw.isNotBlank() && LocalizedNumbers.parse(raw, locale)?.let { it.isFinite() && it >= 0 } != true)
+                    errors[field] = context.getString(R.string.validation_base_vat_mismatch)
+            }
+            if (errors.isNotEmpty()) { validationFailure(errors); return@launch }
             val fiscal = form.recalcFiscal(locale)
             if (fiscal == null || fiscal.total <= 0.0) {
-                _uiState.update {
-                    it.copy(saveState = SaveState.Error(context.getString(if (form.taxes.isNotEmpty()) com.gastos.common.R.string.taxes_inconsistent else R.string.validation_total_percentages)))
-                }
+                validationFailure(mapOf(ManualField.TAX_BREAKDOWN to context.getString(if (form.taxes.isNotEmpty()) com.gastos.common.R.string.taxes_inconsistent else R.string.validation_total_percentages)))
                 return@launch
             }
             if (form.proveedor.isBlank()) {
@@ -299,6 +392,7 @@ class EditInvoiceViewModel @Inject constructor(
             val legacyMixed: Boolean = originalInvoice?.evidence?.document?.lines?.mapNotNull { it.vatPercent }?.distinct()?.size?.let { it > 1 } == true
             val rate: Double? = fiscal.ivaPercent.takeUnless { legacyMixed && form.taxes.isEmpty() }
             val fiscalValuesAreConsistent = when {
+                form.manualAmountAdjusted -> true
                 form.taxes.isNotEmpty() -> parsedTaxes.size == form.taxes.size
                 enteredBase != null && enteredCuota != null ->
                     abs(enteredBase + enteredCuota - withholding - fiscal.total) <= FISCAL_TOLERANCE &&
@@ -311,9 +405,7 @@ class EditInvoiceViewModel @Inject constructor(
                 else -> true
             }
             if (!fiscalValuesAreConsistent) {
-                _uiState.update {
-                    it.copy(saveState = SaveState.Error(context.getString(R.string.validation_base_vat_mismatch)))
-                }
+                validationFailure(mapOf(ManualField.BASE to context.getString(R.string.validation_base_vat_mismatch)))
                 return@launch
             }
             val currency = form.moneda.trim().uppercase()
@@ -333,6 +425,10 @@ class EditInvoiceViewModel @Inject constructor(
                 // ni el texto OCR al guardar.
                 val original = originalInvoice
                 val invoice = Invoice(
+                    categoryId = original?.categoryId, subcategoryId = original?.subcategoryId,
+                    sourceMimeType = original?.sourceMimeType, sourceName = original?.sourceName,
+                    origin = original?.origin ?: "MANUAL", manualAmountAdjusted = original?.manualAmountAdjusted ?: false,
+                    financialRevision = original?.financialRevision ?: 0,
                     taxes = parsedTaxes,
                     evidence = (original?.evidence ?: DocumentEvidence(ScannedDocument())).copy(
                         distinctFrom = distinctFrom,
@@ -340,12 +436,12 @@ class EditInvoiceViewModel @Inject constructor(
                             date = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(java.util.Date(form.fecha)),
                             number = form.numeroFactura.takeIf(String::isNotBlank), issuer = form.proveedor,
                             issuerTaxId = form.nifEmisor.takeIf(String::isNotBlank), recipientTaxId = form.nifReceptor.takeIf(String::isNotBlank),
-                            country = form.paisCodigo, currency = currency, total = fiscal.total,
+                            country = form.paisCodigo, currency = currency, total = if (form.manualAmountAdjusted) original?.evidence?.document?.total else fiscal.total,
                             taxes = parsedTaxes, taxesComplete = if (parsedTaxes.isNotEmpty()) true else null,
                             taxBase = fiscal.baseImponible, vatAmount = fiscal.ivaAmount, vatPercent = fiscal.ivaPercent, withholdingPercent = fiscal.irpfPercent,
                             withholdingAmount = if (form.taxes.isNotEmpty() || form.withheldAmountRead != null) fiscal.irpfAmount else original?.evidence?.document?.withholdingAmount
                         )
-                    ),
+                    ).let { edited -> com.gastos.domain.model.DocumentProvenance.markManual(original?.evidence, edited.document).copy(distinctFrom = distinctFrom) },
                     documentUuid = original?.documentUuid ?: java.util.UUID.randomUUID().toString(),
                     driveAccountId = original?.driveAccountId,
                     driveContentHash = original?.driveContentHash,
@@ -388,7 +484,7 @@ class EditInvoiceViewModel @Inject constructor(
                     invoice.copy(id = invoiceRepository.insertInvoice(invoice))
                 } else {
                     invoiceRepository.updateInvoice(invoice)
-                    invoice
+                    invoice.copy(financialRevision = invoice.financialRevision + 1)
                 }
                 originalInvoice = saved
                 _form.update { it.copy(id = saved.id) }

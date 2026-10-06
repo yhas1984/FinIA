@@ -29,9 +29,14 @@ internal object CommandDocumentParser {
     fun date(value: String?, now: Long = System.currentTimeMillis()): Long =
         if (value.isNullOrBlank()) now else requireNotNull(DocumentValidator.parseDate(value)) { "Invalid date: yyyy-MM-dd required" }
 
-    fun expense(json: JSONObject, currency: String): Pair<Invoice, List<Product>> {
+    fun expense(json: JSONObject, currency: String, originalCommand: String = ""): Pair<Invoice, List<Product>> {
         val description: String = text(json, "descripcion") ?: text(json, "concepto").orEmpty()
-        val amount: Double = requireNotNull(number(json, "total") ?: number(json, "monto")) { "Missing amount" }
+        val generatedAmount: Double = requireNotNull(number(json, "total") ?: number(json, "monto")) { "Missing amount" }
+        val rows: org.json.JSONArray? = json.optJSONArray("productos")
+        if (json.has("productos") && !json.isNull("productos") && rows == null) throw InvalidCommandProductsException()
+        val pricing: ExplicitProductPricing? = resolveProductPricing(json, rows, originalCommand, currency)
+        if (pricing != null && !pricing.isCompatible(generatedAmount)) throw InvalidCommandProductsException()
+        val amount: Double = pricing?.total ?: generatedAmount
         require(description.isNotEmpty() && amount > 0) { "Invalid expense" }
         val rate: Double? = percent(json, "tipo_iva") ?: percent(json, "iva_percent")
         val invoice: Invoice = Invoice(fecha = date(text(json, "fecha")), proveedor = description,
@@ -41,21 +46,43 @@ internal object CommandDocumentParser {
             numeroFactura = text(json, "numero_factura"), taxes = DocumentReader.commandTaxes(json, currency),
             categoria = TransactionCategories.canonicalExpenseCategory(text(json, "categoria")),
             subcategoria = TransactionCategories.normalizeCategory(text(json, "subcategoria")))
-        val rows: org.json.JSONArray? = json.optJSONArray("productos")
-        require(!json.has("productos") || json.isNull("productos") || rows != null) { "Invalid products" }
-        val products: List<Product> = if (rows == null) emptyList() else (0 until rows.length()).map { index ->
-            val row: JSONObject = rows.getJSONObject(index)
-            val quantity: Double = requireNotNull(number(row, "cantidad")) { "Missing quantity" }
-            val price: Double = requireNotNull(number(row, "precio_unitario")) { "Missing unit price" }
-            val subtotal: Double = number(row, "subtotal") ?: quantity * price
-            val name: String = text(row, "descripcion").orEmpty()
-            require(name.isNotEmpty() && quantity > 0 && price >= 0 && subtotal.isFinite() &&
-                abs(quantity * price - subtotal) <= 0.02) { "Inconsistent product" }
-            Product(invoiceId = 0, descripcion = name, cantidad = quantity, precioUnitario = price,
-                subtotal = subtotal, ivaPercent = percent(row, "iva_percent"), taxes = DocumentReader.commandTaxes(row, currency))
+        val products: List<Product> = try {
+            if (rows == null) emptyList() else (0 until rows.length()).map { index: Int ->
+                readProduct(rows.getJSONObject(index), currency, pricing)
+            }
+        } catch (error: IllegalArgumentException) {
+            throw InvalidCommandProductsException()
+        } catch (error: org.json.JSONException) {
+            throw InvalidCommandProductsException()
         }
-        require(products.isEmpty() || abs(products.sumOf { it.subtotal } - amount) <= 0.02) { "Products do not match total" }
+        if (products.isNotEmpty() && abs(products.sumOf { it.subtotal } - amount) > COMMAND_AMOUNT_TOLERANCE) throw InvalidCommandProductsException()
         return invoice to products
+    }
+
+    private fun resolveProductPricing(json: JSONObject, rows: org.json.JSONArray?, original: String, currency: String): ExplicitProductPricing? {
+        if (original.isBlank() || rows?.length() != 1) return null
+        val row: JSONObject = rows.optJSONObject(0) ?: throw InvalidCommandProductsException()
+        // Monetary tax bases/quotas must never be adjusted to fit a different interpretation.
+        if (listOf("base_imponible", "cuota_iva").any { key: String -> !json.isNull(key) } ||
+            (json.optJSONArray("impuestos")?.length() ?: 0) > 0 || (row.optJSONArray("impuestos")?.length() ?: 0) > 0) return null
+        val quantity: Double = try { number(row, "cantidad") ?: return null } catch (error: IllegalArgumentException) {
+            throw InvalidCommandProductsException()
+        }
+        return CommandProductPricing.resolve(original, currency, text(row, "descripcion").orEmpty(), quantity)
+    }
+
+    private fun readProduct(row: JSONObject, currency: String, pricing: ExplicitProductPricing?): Product {
+        val quantity: Double = requireNotNull(number(row, "cantidad")) { "Missing quantity" }
+        val generatedPrice: Double? = number(row, "precio_unitario")
+        val generatedSubtotal: Double? = number(row, "subtotal")
+        if (pricing != null && listOfNotNull(generatedPrice, generatedSubtotal).any { value: Double -> !pricing.isCompatible(value) }) throw InvalidCommandProductsException()
+        val price: Double = pricing?.unitPrice ?: requireNotNull(generatedPrice) { "Missing unit price" }
+        val subtotal: Double = pricing?.total ?: generatedSubtotal ?: quantity * price
+        val name: String = text(row, "descripcion").orEmpty()
+        require(name.isNotEmpty() && quantity > 0 && price >= 0 && subtotal.isFinite() &&
+            abs(quantity * price - subtotal) <= COMMAND_AMOUNT_TOLERANCE) { "Inconsistent product" }
+        return Product(invoiceId = 0, descripcion = name, cantidad = quantity, precioUnitario = price,
+            subtotal = subtotal, ivaPercent = percent(row, "iva_percent"), taxes = DocumentReader.commandTaxes(row, currency))
     }
 
     fun income(json: JSONObject, currency: String): Income {

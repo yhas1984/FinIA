@@ -1,0 +1,15 @@
+<resources>
+    <string name="manual_edit_movement">Editar %1$s</string>
+    <string name="manual_save_expense">Guardar gasto</string>
+    <string name="manual_save_income">Guardar ingreso</string>
+    <string name="manual_saving">Guardando…</string>
+    <string name="manual_multiple_taxes">Varios impuestos</string>
+    <string name="manual_unspecified">Sin especificar</string>
+    <string name="manual_country">País fiscal</string>
+    <string name="manual_general_income">Ingreso general</string>
+    <string name="manual_income_kind">Tipo de ingreso</string>
+    <string name="manual_loading_preferences">Cargando preferencias…</string>
+    <string name="manual_retry_preferences">Reintentar</string>
+    <string name="manual_preferences_failed">No se pudieron cargar las preferencias. Reinténtalo.</string>
+    <string name="manual_loading_document">Cargando documento…</string>
+</resources>

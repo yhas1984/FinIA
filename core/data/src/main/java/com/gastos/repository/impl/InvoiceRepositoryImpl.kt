@@ -23,6 +23,9 @@ class InvoiceRepositoryImpl @Inject constructor(
     private val database: AppDatabase
 ) : InvoiceRepository {
 
+    override fun observeListEntries(): Flow<List<com.gastos.domain.model.MovementListEntry>> =
+        invoiceDao.observeListEntries(InvoiceType.GASTO).map { rows -> rows.map { it.toListEntry(income = false) } }
+
     override fun getAllInvoices(): Flow<List<Invoice>> =
         invoiceDao.getInvoicesByType(InvoiceType.GASTO).map { list -> list.map { it.toDomain() } }
 
@@ -45,7 +48,7 @@ class InvoiceRepositoryImpl @Inject constructor(
         database.withTransaction {
             DocumentGuard(database).check(invoice.documentIdentity())
             val invoiceId = invoiceDao.insertInvoice(
-                invoice.toEntity().copy(updatedAt = System.currentTimeMillis())
+                com.gastos.storage.CategoryCatalog(database).assign(invoice).toEntity().copy(updatedAt = System.currentTimeMillis())
             )
             if (products.isNotEmpty()) {
                 productDao.insertProducts(products.map { it.copy(invoiceId = invoiceId).toEntity() })
@@ -56,7 +59,10 @@ class InvoiceRepositoryImpl @Inject constructor(
     override suspend fun updateInvoice(invoice: Invoice) {
         database.withTransaction {
             DocumentGuard(database).check(invoice.documentIdentity())
-            invoiceDao.updatePreservingImageState(invoice.toEntity().copy(updatedAt = System.currentTimeMillis()))
+            val current: com.gastos.data.local.entity.InvoiceEntity = requireNotNull(invoiceDao.getInvoiceById(invoice.id))
+            check(current.financialRevision == invoice.financialRevision) { "MOVEMENT_CHANGED" }
+            invoiceDao.updatePreservingImageState(com.gastos.storage.CategoryCatalog(database).assign(invoice).toEntity().copy(
+                financialRevision = current.financialRevision + 1, updatedAt = System.currentTimeMillis()))
         }
     }
 

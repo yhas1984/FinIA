@@ -42,6 +42,12 @@ import javax.inject.Inject
 
 
 data class BackupUiState(
+    val sheetsRecoveryLoading: Boolean = false,
+    val sheetsRecoverySnapshots: List<SheetsRecoveryInfo>? = null,
+    val sheetsRecoveryPreview: SheetsRecoveryPreview? = null,
+    val sheetsRecoveryPaused: Boolean = false,
+    val appearanceApplying: Boolean = false,
+    val appearanceError: String? = null,
     val reportProgress: Float = 0f,
     val cloudListError: String? = null,
     val sheetsError: String? = null,
@@ -64,6 +70,7 @@ data class BackupUiState(
     val cloudBackups: List<CloudBackupInfo> = emptyList(),
     val isCloudLoading: Boolean = false,
     val pendingRestore: PendingBackupRestore? = null,
+    val restoreSheetsImpact: RestoreSheetsImpact? = null,
     val restoreState: BackupRestoreState = BackupRestoreState.Idle,
     val error: String? = null
 ) {
@@ -114,6 +121,16 @@ class BackupViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            sheetsExportService.appearance.collect { state ->
+                val account = sheetsExportService.getLastSignedInAccount()
+                val matches = state.bookId.isNotBlank() && account != null && state.accountKey == SheetsLinkStore.getAccountPreferenceKey(account.id, account.email) &&
+                    state.bookId == sheetsSyncManager.getStoredId(account)
+                _uiState.update { it.copy(appearanceApplying = matches && state.applying,
+                    appearanceError = state.error?.takeIf { matches }?.let { code ->
+                        context.getString(R.string.sheets_appearance_failed, sheetsErrorMessage(context, code)) }) }
+            }
+        }
+        viewModelScope.launch {
             sheetsSyncManager.operations.collect { operations ->
                 val sheets = sheetsSyncManager.currentOperations(operations)
                 _uiState.update { it.copy(sheetsPending = sheets.count { row -> row.status != RemoteSyncStatus.FAILED },
@@ -155,11 +172,13 @@ class BackupViewModel @Inject constructor(
 
     private fun checkSignInStatus() {
         val account = sheetsExportService.getLastSignedInAccount()
+        cloudBackupPreferences.selectAccount(account?.let { SheetsLinkStore.getAccountPreferenceKey(it.id, it.email) })
         _uiState.update {
             it.copy(
                 isSignedIn = sheetsExportService.isSignedIn(),
                 email = account?.email,
                 hasSheetLink = account?.let(sheetsSyncManager::isEnabled) == true,
+                sheetsRecoveryPaused = sheetsSyncManager.isRecoveryPaused(),
                 sheetsUrl = account?.let(sheetsSyncManager::getStoredId)?.takeIf(String::isNotBlank)?.let { id -> "https://docs.google.com/spreadsheets/d/$id/edit" }
             )
         }
@@ -186,6 +205,7 @@ class BackupViewModel @Inject constructor(
         try {
             val task = GoogleSignIn.getSignedInAccountFromIntent(data)
             val account: GoogleSignInAccount = task.getResult(ApiException::class.java)
+            cloudBackupPreferences.selectAccount(SheetsLinkStore.getAccountPreferenceKey(account.id, account.email))
             _uiState.update {
                 it.copy(
                     isSignedIn = true,
@@ -226,7 +246,7 @@ class BackupViewModel @Inject constructor(
                 val existingId = sheetsSyncManager.getStoredId(account)
                 if (existingId.isNotBlank() && !rebuild) {
                     val remaining = sheetsSyncManager.syncChanges()
-                    _uiState.update { it.copy(isExportingSheets = false, hasSheetLink = true,
+                    _uiState.update { it.copy(isExportingSheets = false, hasSheetLink = true, sheetsRecoveryPaused = sheetsSyncManager.isRecoveryPaused(),
                         sheetsSynced = remaining == 0,
                         sheetsUrl = "https://docs.google.com/spreadsheets/d/$existingId/edit") }
                     return@launch
@@ -238,7 +258,7 @@ class BackupViewModel @Inject constructor(
                 sheetsSyncManager.setSpreadsheetId(account, spreadsheetId)
                 val remaining = sheetsSyncManager.syncChanges()
                 _uiState.update {
-                    it.copy(isExportingSheets = false, sheetsUrl = url, hasSheetLink = true, sheetsSynced = remaining == 0)
+                    it.copy(isExportingSheets = false, sheetsUrl = url, hasSheetLink = true, sheetsRecoveryPaused = sheetsSyncManager.isRecoveryPaused(), sheetsSynced = remaining == 0)
                 }
             } catch (cancelled: CancellationException) {
                 _uiState.update { it.copy(isExportingSheets = false) }
@@ -255,6 +275,59 @@ class BackupViewModel @Inject constructor(
     }
 
     fun clearSheetsResult() { _uiState.update { it.copy(sheetsError = null) } }
+    fun loadSheetsRecovery() {
+        if (_uiState.value.sheetsRecoveryLoading) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(sheetsRecoveryLoading = true, sheetsError = null) }
+            try { val snapshots = sheetsExportService.recoverySnapshots(); _uiState.update { it.copy(sheetsRecoverySnapshots = snapshots) } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { _uiState.update { it.copy(sheetsError = sheetsErrorMessage(context, sheetsFailureCode(error))) } }
+            finally { _uiState.update { it.copy(sheetsRecoveryLoading = false) } }
+        }
+    }
+
+    fun previewSheetsRecovery(snapshot: SheetsRecoveryInfo) {
+        if (_uiState.value.sheetsRecoveryLoading) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(sheetsRecoveryLoading = true, sheetsError = null) }
+            try {
+                val preview = sheetsExportService.previewRecovery(snapshot)
+                _uiState.update { it.copy(sheetsRecoveryPreview = preview) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { _uiState.update { it.copy(sheetsError = sheetsErrorMessage(context, sheetsFailureCode(error))) } }
+            finally { _uiState.update { it.copy(sheetsRecoveryLoading = false) } }
+        }
+    }
+
+    fun dismissSheetsRecovery() { if (!_uiState.value.sheetsRecoveryLoading) _uiState.update { it.copy(sheetsRecoveryPreview = null, sheetsRecoverySnapshots = null) } }
+
+    fun restoreSheetsRecovery() {
+        val preview = _uiState.value.sheetsRecoveryPreview ?: return
+        if (_uiState.value.sheetsRecoveryLoading) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(sheetsRecoveryLoading = true, sheetsError = null) }
+            try {
+                sheetsExportService.restoreRecovery(preview)
+                _uiState.update { it.copy(sheetsRecoveryPreview = null, sheetsRecoverySnapshots = null,
+                    sheetsRecoveryPaused = true, backupResult = BackupResult(true, context.getString(R.string.sheets_recovery_done))) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { _uiState.update { it.copy(sheetsError = sheetsErrorMessage(context, sheetsFailureCode(error))) } }
+            finally { _uiState.update { it.copy(sheetsRecoveryLoading = false, sheetsRecoveryPaused = sheetsSyncManager.isRecoveryPaused()) } }
+        }
+    }
+
+    fun retrySheetsAppearance(reset: Boolean = false) {
+        if (_uiState.value.appearanceApplying || _uiState.value.isExportingSheets) return
+        viewModelScope.launch {
+            try {
+                val account = requireNotNull(sheetsExportService.getLastSignedInAccount())
+                sheetsExportService.ensureAppearance(account, sheetsSyncManager.getStoredId(account), reset)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { _uiState.update { it.copy(appearanceError = context.getString(R.string.sheets_appearance_failed,
+                sheetsErrorMessage(context, sheetsFailureCode(failure)))) } }
+        }
+    }
+
     fun rebuildSheets() = exportToSheets(rebuild = true)
     fun takeOverSheets() {
         if (_uiState.value.isExportingSheets) return
@@ -357,6 +430,10 @@ class BackupViewModel @Inject constructor(
         _uiState.update { it.copy(pendingRestore = null) }
     }
 
+    private var restoreSheetsApproval: kotlinx.coroutines.CompletableDeferred<Boolean>? = null
+
+    fun confirmRestoreSheets() { restoreSheetsApproval?.complete(true) }
+
     fun restorePendingBackup(context: Context, password: String) {
         val pending = _uiState.value.pendingRestore ?: return
         val chars = password.toCharArray()
@@ -380,7 +457,16 @@ class BackupViewModel @Inject constructor(
                 }
                 restoreCoordinator.updateStage(context.getString(R.string.restore_stage_restoring))
                 val result = input.use {
-                    backupArchiveService.restore(it, chars, restoreCoordinator::beginCommit)
+                    backupArchiveService.restoreWithSheetsPreview(it, chars, restoreCoordinator::beginCommit) { impact ->
+                        val approval = kotlinx.coroutines.CompletableDeferred<Boolean>()
+                        restoreSheetsApproval = approval
+                        _uiState.update { state -> state.copy(restoreSheetsImpact = impact) }
+                        try { approval.await() }
+                        finally {
+                            restoreSheetsApproval = null
+                            _uiState.update { state -> state.copy(restoreSheetsImpact = null) }
+                        }
+                    }
                 }
                 refreshBackupState()
                 _uiState.update {
@@ -443,18 +529,26 @@ class BackupViewModel @Inject constructor(
 
     fun createCloudBackupNow() {
         if (_uiState.value.isCloudLoading) return
+        val operationAccount = sheetsExportService.getLastSignedInAccount()?.let { SheetsLinkStore.getAccountPreferenceKey(it.id, it.email) }
+        _uiState.update { it.copy(isCloudLoading = true, error = null, cloudListError = null) }
         viewModelScope.launch {
-            _uiState.update { it.copy(isCloudLoading = true, error = null, cloudListError = null) }
             try {
                 val backup = cloudBackupService.createBackup()
-                cloudBackupPreferences.recordSuccess()
+                cloudBackupPreferences.recordSuccess(backup.createdAt, backup.accountKey.takeIf(String::isNotBlank))
+                val activeAccount = sheetsExportService.getLastSignedInAccount()?.let { SheetsLinkStore.getAccountPreferenceKey(it.id, it.email) }
+                if (backup.accountKey.isNotBlank() && backup.accountKey != activeAccount) {
+                    _uiState.update { it.copy(isCloudLoading = false) }
+                    return@launch
+                }
                 _uiState.update { it.copy(cloudBackupStatus = cloudBackupPreferences.status(),
-                    backupResult = BackupResult(true, context.getString(R.string.drive_backup_saved, backup.name))) }
+                    cloudListError = if (backup.maintenancePending) context.getString(R.string.cloud_maintenance_pending) else null,
+                    backupResult = BackupResult(true, context.getString(
+                        if (backup.recoveredUpload) R.string.cloud_upload_recovered else R.string.drive_backup_saved, backup.name), backup.createdAt)) }
             } catch (cancelled: CancellationException) {
                 _uiState.update { it.copy(isCloudLoading = false) }
                 throw cancelled
             } catch (error: Exception) {
-                cloudBackupPreferences.recordError(error.message ?: context.getString(R.string.drive_backup_create_failed))
+                cloudBackupPreferences.recordError(error.message ?: context.getString(R.string.drive_backup_create_failed), operationAccount)
                 _uiState.update { it.copy(isCloudLoading = false, cloudBackupStatus = cloudBackupPreferences.status(), error = error.message) }
                 return@launch
             }
@@ -465,7 +559,7 @@ class BackupViewModel @Inject constructor(
     private suspend fun refreshCloudList() {
         try {
             val backups = cloudBackupService.listBackups()
-            _uiState.update { it.copy(cloudBackups = backups, cloudListError = null) }
+            _uiState.update { it.copy(cloudBackups = backups) }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) { _uiState.update { it.copy(cloudListError = context.getString(R.string.cloud_list_error)) } }
         finally { _uiState.update { it.copy(isCloudLoading = false) } }
@@ -506,18 +600,26 @@ class BackupViewModel @Inject constructor(
 
     private var reportJob: kotlinx.coroutines.Job? = null
 
+    var reportDetail: ReportDetail = ReportDetail.SUMMARY
+    var reportFilter: com.gastos.domain.model.ReportFilter = com.gastos.domain.model.ReportFilter()
+    val reportCategories = MutableStateFlow<List<Pair<String?, String?>>>(emptyList())
+    fun loadReportCategories() { viewModelScope.launch {
+        val data = snapshots.financialSnapshot()
+        reportCategories.value = (data.invoices.map { it.categoria to it.subcategoria } + data.incomes.map { it.categoria to it.subcategoria }).distinct()
+    } }
     fun exportToCsv(context: Context, uri: Uri) = exportReport(context, uri, ReportFormat.CSV)
     fun exportToPdf(context: Context, uri: Uri) = exportReport(context, uri, ReportFormat.PDF)
     fun shareReport(context: Context, format: ReportFormat) = exportReport(context, null, format)
+    fun previewReport(context: Context, format: ReportFormat) = exportReport(context, null, format, preview = true)
     fun cancelReport() { reportJob?.cancel() }
 
-    private fun exportReport(context: Context, destination: Uri?, format: ReportFormat) {
+    private fun exportReport(context: Context, destination: Uri?, format: ReportFormat, preview: Boolean = false) {
         if (_uiState.value.isExporting) return
         _uiState.update { it.copy(isExporting = true, exportResult = null, reportProgress = 0f) }
         reportJob = viewModelScope.launch {
             var temporary: File? = null
             try {
-                val file = reportWriter.generate(format) { progress -> _uiState.update { it.copy(reportProgress = progress) } }
+                val file = reportWriter.generateReport(format, reportFilter, reportDetail) { progress -> _uiState.update { it.copy(reportProgress = progress) } }
                 temporary = file
                 if (destination != null) kotlinx.coroutines.withContext(Dispatchers.IO) {
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -530,13 +632,15 @@ class BackupViewModel @Inject constructor(
                     }
                 } else {
                     val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = format.mime
-                        putExtra(Intent.EXTRA_STREAM, uri)
+                    val intent = Intent(if (preview) Intent.ACTION_VIEW else Intent.ACTION_SEND).apply {
+                        if (preview) setDataAndType(uri, format.mime) else {
+                            type = format.mime
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                        }
                         clipData = android.content.ClipData.newRawUri("FinAI report", uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
-                    context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_chooser)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    context.startActivity((if (preview) intent else Intent.createChooser(intent, context.getString(R.string.share_chooser))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
                 _uiState.update { it.copy(exportResult = BackupResult(true, context.getString(R.string.report_ready))) }
             } catch (cancelled: CancellationException) {
@@ -564,6 +668,7 @@ class BackupViewModel @Inject constructor(
         viewModelScope.launch {
             sheetsExportService.signOut()
             cloudBackupScheduler.setEnabled(false)
+            cloudBackupPreferences.selectAccount(null)
             invoiceDriveService.clearAccountCache()
             _uiState.update {
                 it.copy(

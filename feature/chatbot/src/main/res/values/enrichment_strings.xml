@@ -1,0 +1,5 @@
+<resources>
+    <string name="capture_enrichment_conflict">El documento difiere de datos que has corregido. ¿Qué prefieres conservar?</string>
+    <string name="capture_keep_changes">Conservar mis cambios</string>
+    <string name="capture_use_document">Usar datos del documento</string>
+</resources>

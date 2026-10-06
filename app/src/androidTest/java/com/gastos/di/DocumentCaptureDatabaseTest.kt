@@ -2,6 +2,9 @@ package com.gastos.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.gastos.data.local.entity.*
@@ -16,6 +19,8 @@ import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 @RunWith(AndroidJUnit4::class)
 class DocumentCaptureDatabaseTest {
@@ -43,7 +48,7 @@ class DocumentCaptureDatabaseTest {
             db.execSQL("INSERT INTO products (id,invoiceId,descripcion,cantidad,precioUnitario,subtotal,ivaPercent,ivaAmount,createdAt) VALUES (1,1,'Zero rate',1,10,10,0,0,1)")
             db.version = 12
         }
-        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15).build()
+        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17).build()
         try {
             assertEquals(2, database.invoiceDao().getInvoiceCount())
             assertEquals(10.0, database.invoiceDao().getInvoiceById(1)!!.ivaPercent!!, 0.0)
@@ -144,6 +149,71 @@ class DocumentCaptureDatabaseTest {
         } finally { database.close(); source.delete() }
     }
 
+    @Test fun cancellationImmediatelyAfterDraftCommitKeepsItsFileAndRetryResumesTheSameDraft(): Unit = runBlocking {
+        val captureJob = AtomicReference<Job?>(null)
+        val cancelledAtCommit = AtomicBoolean(false)
+        // Cancel at the exact durable boundary, rather than relying on sleeps or dispatcher races.
+        fun intercept(database: SupportSQLiteDatabase): SupportSQLiteDatabase = object : SupportSQLiteDatabase by database {
+            override fun endTransaction() {
+                database.endTransaction()
+                if (captureJob.get() != null && !database.inTransaction()) {
+                    val committed = database.query("SELECT COUNT(*) FROM document_drafts").use { cursor ->
+                        check(cursor.moveToFirst()); cursor.getInt(0) > 0
+                    }
+                    if (committed) captureJob.getAndSet(null)?.let { job ->
+                        cancelledAtCommit.set(true)
+                        job.cancel(CancellationException("Synthetic cancellation after durable draft"))
+                    }
+                }
+            }
+        }
+        val factory = SupportSQLiteOpenHelper.Factory { configuration ->
+            val delegate = FrameworkSQLiteOpenHelperFactory().create(configuration)
+            object : SupportSQLiteOpenHelper by delegate {
+                override val writableDatabase: SupportSQLiteDatabase get() = intercept(delegate.writableDatabase)
+                override val readableDatabase: SupportSQLiteDatabase get() = intercept(delegate.readableDatabase)
+            }
+        }
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).openHelperFactory(factory).build()
+        val images = InvoiceImageStorage(context)
+        val store = DocumentCaptureStore(context, database, images)
+        val source = java.io.File.createTempFile("capture-cancel-", ".jpg", java.io.File(context.cacheDir, "camera").apply { mkdirs() }).apply {
+            writeText("Synthetic cancellation fixture ${java.util.UUID.randomUUID()}")
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", source)
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(source.readBytes()).joinToString("") { "%02x".format(it) }
+        var draftUuid: String? = null
+        try {
+            // Finish schema setup before arming the transaction cancellation interceptor.
+            withContext(Dispatchers.IO) { database.openHelper.writableDatabase }
+            val job = launch(Dispatchers.Default, start = CoroutineStart.LAZY) { store.start(uri) }
+            captureJob.set(job)
+            job.start()
+            withTimeout(10_000) { job.join() }
+            assertTrue(cancelledAtCommit.get())
+            assertTrue(job.isCancelled)
+            val committed = requireNotNull(database.documentDraftDao().findHash(hash))
+            draftUuid = committed.uuid
+            context.contentResolver.openInputStream(android.net.Uri.parse(committed.imageUri)).use { input ->
+                assertArrayEquals(source.readBytes(), requireNotNull(input).readBytes())
+            }
+            val resumed = store.start(uri) as com.gastos.storage.CaptureStart.Draft
+            assertTrue(resumed.resumed)
+            assertEquals(committed, resumed.value)
+            database.openHelper.readableDatabase.query("SELECT COUNT(*) FROM document_drafts").use { cursor ->
+                check(cursor.moveToFirst()); assertEquals(1, cursor.getInt(0))
+            }
+            context.contentResolver.openInputStream(android.net.Uri.parse(resumed.value.imageUri)).use { input ->
+                assertArrayEquals(source.readBytes(), requireNotNull(input).readBytes())
+            }
+        } finally {
+            captureJob.getAndSet(null)?.cancelAndJoin()
+            (draftUuid ?: database.documentDraftDao().findHash(hash)?.uuid)?.let { store.discard(it) }
+            database.close()
+            source.delete()
+        }
+    }
+
     @Test fun failedChatWriteRollsBackFinancialRecordAndRetryCommitsBothOnce(): Unit = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         val images = InvoiceImageStorage(context)
@@ -186,8 +256,8 @@ class DocumentCaptureDatabaseTest {
             savedPhoto = saved.invoice!!.imagenUri
             assertEquals(12.50, saved.invoice!!.total, 0.0)
             assertEquals("XYZ", saved.invoice!!.moneda)
-            assertEquals(draft.createdAt, saved.invoice!!.fecha)
-            assertNull(saved.invoice!!.evidence!!.document.date)
+            assertEquals(DocumentValidator.parseDate(saved.invoice!!.evidence!!.document.date), saved.invoice!!.fecha)
+            assertEquals(DocumentFieldOrigin.CAPTURE, saved.invoice!!.evidence!!.fieldOrigins["date"])
             assertNull(saved.invoice!!.evidence!!.document.issuer)
             assertTrue(database.chatMessageDao().getAllMessages().single().visibleText.contains("XYZ"))
         } finally {
@@ -195,6 +265,73 @@ class DocumentCaptureDatabaseTest {
             savedPhoto?.let { images.delete(it) }
             database.close()
             source.delete()
+        }
+    }
+
+    @Test fun bankReceiptAndPayrollCandidatesIncludeSevenDaysButKeepWalletItsOriginalWindow(): Unit = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val store = DocumentCaptureStore(context, database, InvoiceImageStorage(context))
+        val date = requireNotNull(DocumentValidator.parseDate("2026-10-05"))
+        val day = 24L * 60 * 60 * 1000
+        val document = ScannedDocument(kind = "ticket", issuer = "Synthetic", date = "2026-10-05", currency = "EUR", total = 20.0)
+        try {
+            for (offset in listOf(-8, -7, 4, 7, 8)) {
+                database.invoiceDao().insertInvoice(Invoice(documentUuid = "bank-$offset", fecha = date + offset * day,
+                    proveedor = "Synthetic", tipo = InvoiceType.GASTO, total = 20.0, ivaPercent = null, origin = "BANK").toEntity())
+                database.incomeDao().insertIncomeEntity(Income(documentUuid = "income-$offset", fecha = date + offset * day,
+                    concepto = "Synthetic", monto = 20.0, ivaPercent = null, origin = "BANK").toEntity())
+            }
+            for (offset in listOf(-3, -2, 2, 3, 4)) {
+                database.invoiceDao().insertInvoice(Invoice(documentUuid = "wallet-$offset", fecha = date + offset * day,
+                    proveedor = "Synthetic", tipo = InvoiceType.GASTO, total = 20.0, ivaPercent = null, origin = "WALLET").toEntity())
+            }
+            assertEquals(setOf("bank--7", "bank-4", "bank-7", "wallet--2", "wallet-2"),
+                store.possibleWalletPayments(DocumentEvidence(document)).map { it.documentUuid }.toSet())
+            for (kind in listOf("nomina", "factura_emitida")) {
+                val incomeDocument = document.copy(kind = kind, net = if (kind == "nomina") 20.0 else null)
+                assertEquals(20.0, requireNotNull(DocumentExtraction.amount(incomeDocument)), 0.0)
+                assertEquals(setOf("income--7", "income-4", "income-7"),
+                    store.possibleBankIncomes(DocumentEvidence(incomeDocument)).map { it.documentUuid }.toSet())
+            }
+        } finally { database.close() }
+    }
+
+    @Test fun receiptFourDaysBeforeBankPostingEnrichesTheSameExpenseWithoutDuplicatingIt(): Unit = runBlocking {
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val isolated = object : android.content.ContextWrapper(context) {
+            override fun getSharedPreferences(name: String, mode: Int) = super.getSharedPreferences("qa-bank-posting-$name", mode)
+        }
+        val bank = com.gastos.storage.BankImportStore(isolated, database)
+        val images = InvoiceImageStorage(context)
+        val capture = DocumentCaptureStore(isolated, database, images)
+        val source = java.io.File.createTempFile("bank-posting-", ".jpg", java.io.File(context.cacheDir, "camera").apply { mkdirs() })
+            .apply { writeText("Synthetic receipt four days before posting") }
+        var savedPhoto: String? = null
+        var draftUuid: String? = null
+        try {
+            val account = bank.account("Synthetic", "EUR")
+            val table = BankCsv.read("Fecha;Concepto;Importe\n09/10/2026;Synthetic shop;-20".toByteArray())
+            val batch = bank.stage(table, account, BankCsv.detect(table.headers), "synthetic.csv", false)
+            assertEquals(1, bank.createSafeNew(batch))
+            val imported = bank.transactions().single()
+            val evidence = DocumentEvidence(ScannedDocument(kind = "ticket", issuer = "Synthetic shop", date = "2026-10-05", currency = "EUR", total = 20.0, vatPercent = 10.0))
+            val candidate = capture.possibleWalletPayments(evidence).single()
+            assertEquals(imported.documentUuid, candidate.documentUuid)
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", source)
+            val draft = (capture.start(uri) as com.gastos.storage.CaptureStart.Draft).value
+            draftUuid = draft.uuid
+            val result = capture.attachReceipt(draft.uuid, evidence, candidate) as CaptureSave.Saved
+            savedPhoto = result.invoice!!.imagenUri
+            assertEquals(imported.documentUuid, result.invoice!!.documentUuid)
+            assertEquals("BANK_RECEIPT", result.invoice!!.origin)
+            assertEquals(1, database.invoiceDao().getInvoiceCount())
+            assertEquals(imported, bank.transactions().single())
+            assertEquals(10.0, result.invoice!!.ivaPercent!!, 0.0)
+        } finally {
+            draftUuid?.let { capture.discard(it) }
+            savedPhoto?.let { images.delete(it) }
+            source.delete()
+            database.close()
         }
     }
 

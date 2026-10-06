@@ -157,10 +157,10 @@ class SheetsSchemaTest {
     }
 
     @Test
-    fun `schema v9 retains column positions while replacing local ids with UUIDs`() {
-        assertEquals(9, SheetsSchema.SCHEMA_VERSION)
+    fun `schema v10 retains column positions while replacing local ids with UUIDs`() {
+        assertEquals(10, SheetsSchema.SCHEMA_VERSION)
         assertEquals("K", SheetsSchema.INGRESOS_KEY_COLUMN)
-        assertEquals("V", SheetsSchema.INGRESOS_LAST_COLUMN)
+        assertEquals("AB", SheetsSchema.INGRESOS_LAST_COLUMN)
         assertEquals("UUID", SheetsSchema.ingresosHeaders[10])
     }
 

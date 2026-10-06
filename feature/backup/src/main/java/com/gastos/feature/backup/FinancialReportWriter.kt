@@ -11,12 +11,14 @@ import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
 
+enum class ReportDetail { SUMMARY, DETAILED }
+
 enum class ReportFormat(val extension: String, val mime: String) { CSV("csv", "text/csv"), PDF("pdf", "application/pdf") }
 
-private fun StringBuilder.appendCsvRow(vararg values: Any?) {
+internal fun Appendable.appendCsvRow(vararg values: Any?) {
     append(values.joinToString(",") { value ->
         val raw = value?.toString().orEmpty()
-        val safe = if (value is String && raw.firstOrNull() in setOf('=', '+', '-', '@')) {
+        val safe = if (value is String && raw.trimStart { it <= ' ' }.firstOrNull() in setOf('=', '+', '-', '@')) {
             "'$raw"
         } else {
             raw
@@ -33,7 +35,10 @@ class FinancialReportWriter @Inject constructor(
     private val currencyPreference: CurrencyPreference,
     private val exchangeRateProvider: ExchangeRateProvider
 ) {
-    suspend fun generate(format: ReportFormat, progress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
+    suspend fun generate(format: ReportFormat, filter: ReportFilter = ReportFilter(), progress: (Float) -> Unit): File =
+        generateReport(format, filter, ReportDetail.SUMMARY, progress)
+
+    suspend fun generateReport(format: ReportFormat, filter: ReportFilter, detail: ReportDetail, progress: (Float) -> Unit): File = withContext(Dispatchers.IO) {
         val folder: File = File(context.cacheDir, "report_exports")
         check(folder.isDirectory || folder.mkdirs())
         folder.listFiles()?.filter { it.isFile && it.lastModified() < System.currentTimeMillis() - RETENTION_MILLIS }?.forEach(File::delete)
@@ -44,8 +49,8 @@ class FinancialReportWriter @Inject constructor(
         try {
             progress(0.05f)
             val data: BackupDataset = repository.financialSnapshot()
-            val invoices: List<Invoice> = data.invoices.filter { it.tipo == InvoiceType.GASTO }
-            val incomes: List<Income> = mergeIncomes(data.invoices, data.incomes)
+            val invoices: List<Invoice> = data.invoices.filter { it.tipo == InvoiceType.GASTO && filter.includes(it.fecha, DocumentKind.EXPENSE, it.categoria, it.subcategoria) }
+            val incomes: List<Income> = mergeIncomes(data.invoices, data.incomes).filter { filter.includes(it.fecha, DocumentKind.INCOME, it.categoria, it.subcategoria) }
             val target: String = currencyPreference.defaultCurrency.value
             val rates: Map<String, Double> = exchangeRateProvider.rates.value.toMap()
             val updatedAt: Long? = exchangeRateProvider.lastUpdated.value
@@ -60,28 +65,38 @@ class FinancialReportWriter @Inject constructor(
                 summarizeConversions(invoices.map { it.moneyRecord() }, target, updatedAt, ::convert) to
                 summarizeConversions(incomes.map { it.moneyRecord() }, target, updatedAt, ::convert)
             if (format == ReportFormat.CSV) {
-                val csv: String = buildCsvContent(invoices, incomes, data.products, target, totals, progress)
-                currentCoroutineContext().ensureActive()
-                file.writeText(csv, Charsets.UTF_8)
-            } else writePdf(file, invoices, incomes, target, totals, progress)
+                val parents = invoices.map { it.id }.toSet() + incomes.filter { it.id < 0 }.map { -it.id }
+                file.bufferedWriter(Charsets.UTF_8).use { writer ->
+                    writeCsvContent(writer, invoices, incomes, data.products.filter { it.invoiceId in parents }, target, totals, progress, filter)
+                }
+            } else writePdf(file, invoices, incomes, data.products, target, totals, progress, filter, detail)
             currentCoroutineContext().ensureActive()
             progress(1f)
             file
         } catch (error: Throwable) { file.delete(); throw error }
     }
+    private fun filterDescription(filter: ReportFilter): String {
+        val dates = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+        val end = filter.endExclusive?.let { Calendar.getInstance().apply { timeInMillis = it; add(Calendar.DATE, -1) }.time }
+        return listOfNotNull(filter.startInclusive?.let { dates.format(Date(it)) }, end?.let(dates::format),
+            filter.kind?.let { context.getString(if (it == DocumentKind.EXPENSE) R.string.csv_type_expense else R.string.csv_type_income) }, filter.category, filter.subcategory).joinToString(" · ").ifEmpty { context.getString(R.string.report_all_records) }
+    }
     private fun convertedText(summary: ConversionSummary, currency: String): String =
         summary.amount?.let { com.gastos.domain.model.formatMoney(it, currency) +
             if (summary.isPartial) " · " + context.getString(R.string.total_partial) else "" }
             ?: context.getString(R.string.total_unavailable)
-    private suspend fun buildCsvContent(
+    private suspend fun writeCsvContent(
+        output: Appendable,
         invoices: List<Invoice>,
         incomes: List<Income>,
         products: List<Product>,
         target: String,
         totals: Pair<ConversionSummary, ConversionSummary>,
-        progress: (Float) -> Unit
-    ): String = buildString {
+        progress: (Float) -> Unit,
+        filter: ReportFilter
+    ) = with(output) {
         append('\uFEFF')
+        appendCsvRow(context.getString(R.string.report_filters), filterDescription(filter))
         appendCsvRow(
             context.getString(R.string.csv_header_type),
             context.getString(R.string.csv_header_id),
@@ -99,7 +114,7 @@ class FinancialReportWriter @Inject constructor(
             context.getString(R.string.csv_header_category),
             context.getString(R.string.csv_header_subcategory),
             context.getString(R.string.csv_header_notes),
-            "taxes_json_original_currency", "document_uuid", "parent_document_uuid"
+            "taxes_json_original_currency", "document_uuid", "parent_document_uuid", "origin", "manual_amount_adjusted"
         )
         val invoiceById = invoices.associateBy { it.id }
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
@@ -126,7 +141,7 @@ class FinancialReportWriter @Inject constructor(
                 invoice.categoria.orEmpty(),
                 invoice.subcategoria.orEmpty(),
                 invoice.notas.orEmpty(),
-                com.gastos.domain.model.DocumentTaxCodec.encode(invoice.taxes), invoice.documentUuid, ""
+                com.gastos.domain.model.DocumentTaxCodec.encode(invoice.taxes), invoice.documentUuid, "", invoice.origin, invoice.manualAmountAdjusted
             )
         }
         products.forEach { product ->
@@ -147,13 +162,13 @@ class FinancialReportWriter @Inject constructor(
                 "",
                 product.ivaPercent ?: "",
                 "",
-                0,
                 "",
                 "",
                 "",
                 "",
                 "",
-                com.gastos.domain.model.DocumentTaxCodec.encode(product.taxes), "", parentUuid
+                "",
+                com.gastos.domain.model.DocumentTaxCodec.encode(product.taxes), "", parentUuid, parent?.origin ?: legacy?.origin.orEmpty(), parent?.manualAmountAdjusted ?: legacy?.manualAmountAdjusted ?: false
             )
         }
         incomes.forEach { income ->
@@ -176,7 +191,7 @@ class FinancialReportWriter @Inject constructor(
                 income.categoria.orEmpty(),
                 income.subcategoria.orEmpty(),
                 income.notas.orEmpty(),
-                com.gastos.domain.model.DocumentTaxCodec.encode(income.taxes), income.documentUuid, ""
+                com.gastos.domain.model.DocumentTaxCodec.encode(income.taxes), income.documentUuid, "", income.origin, income.manualAmountAdjusted
             )
         }
 
@@ -195,7 +210,7 @@ class FinancialReportWriter @Inject constructor(
     }
 
 
-    private suspend fun writePdf(file: File, invoices: List<Invoice>, incomes: List<Income>, currency: String, totals: Pair<ConversionSummary, ConversionSummary>, progress: (Float) -> Unit) {
+    private suspend fun writePdf(file: File, invoices: List<Invoice>, incomes: List<Income>, products: List<Product>, currency: String, totals: Pair<ConversionSummary, ConversionSummary>, progress: (Float) -> Unit, filter: ReportFilter, detail: ReportDetail) {
         val job: kotlin.coroutines.CoroutineContext = currentCoroutineContext()
         val date: SimpleDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
         val paint: android.graphics.Paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f }
@@ -212,6 +227,7 @@ class FinancialReportWriter @Inject constructor(
                 paint.isFakeBoldText = bold
                 var remaining: String = value
                 do {
+                    job.ensureActive()
                     if (y > 780f) {
                         pdf.finishPage(page)
                         page = pdf.startPage(PdfDocument.PageInfo.Builder(595,842,++number).create())
@@ -231,7 +247,17 @@ class FinancialReportWriter @Inject constructor(
                     remaining = remaining.drop(count).trimStart()
                 } while (remaining.isNotEmpty())
             }
+            fun productLines(rows: List<Product>, currencyCode: String) {
+                if (rows.isEmpty()) return
+                line(context.getString(R.string.report_products), true)
+                rows.forEach { product ->
+                    line("${product.descripcion} · ${product.cantidad} × ${formatMoney(product.precioUnitario, currencyCode)}")
+                    product.totalIncludingTax?.let { line(formatMoney(it, currencyCode)) }
+                    product.taxes.forEach { line(com.gastos.common.describeTax(context, it, currencyCode)) }
+                }
+            }
             line(context.getString(R.string.pdf_title), true)
+            line(filterDescription(filter))
             line(context.getString(R.string.pdf_total_expenses, convertedText(expenses, currency)))
             line(context.getString(R.string.pdf_total_income, convertedText(revenue, currency)))
             val balance: String = partialBalance(expenses, revenue)?.let { formatMoney(it, currency) } ?: context.getString(R.string.total_unavailable)
@@ -243,15 +269,53 @@ class FinancialReportWriter @Inject constructor(
             invoices.forEach { invoice ->
                 line("${date.format(Date(invoice.fecha))} · ${formatMoney(invoice.total, invoice.moneda)}", true)
                 line(invoice.proveedor)
+                line(listOfNotNull(invoice.categoria, invoice.subcategoria).joinToString(" / "))
+                if (invoice.manualAmountAdjusted) line(context.getString(R.string.report_manual_adjustment))
                 invoice.numeroFactura?.let { line(it) }
                 invoice.taxes.forEach { line(com.gastos.common.describeTax(context, it, invoice.moneda)) }
+                if (detail == ReportDetail.DETAILED) {
+                    invoice.notas?.takeIf(String::isNotBlank)?.let { line(it) }
+                    productLines(products.filter { it.invoiceId == invoice.id }, invoice.moneda)
+                }
                 progress(0.1f + 0.85f * ++completed / count)
             }
             line(context.getString(R.string.pdf_income), true)
             incomes.forEach { income ->
                 line("${date.format(Date(income.fecha))} · ${formatMoney(income.monto, income.moneda)}", true)
                 line(income.concepto)
+                line(listOfNotNull(income.categoria, income.subcategoria).joinToString(" / "))
+                if (income.manualAmountAdjusted) line(context.getString(R.string.report_manual_adjustment))
                 income.taxes.forEach { line(com.gastos.common.describeTax(context, it, income.moneda)) }
+                if (detail == ReportDetail.DETAILED) {
+                    income.evidence?.document?.number?.let { line(it) }
+                    income.notas?.takeIf(String::isNotBlank)?.let { line(it) }
+                    val document = income.evidence?.document
+                    val gross = income.totalDevengado.takeIf { it > 0 } ?: document?.gross
+                    val net = income.totalNeto.takeIf { it > 0 } ?: document?.net
+                    if (gross != null || net != null || document?.payroll != null) {
+                        line(context.getString(R.string.report_payroll), true)
+                        gross?.let { line(context.getString(R.string.csv_header_gross) + ": " + formatMoney(it, income.moneda)) }
+                        net?.let { line(context.getString(R.string.csv_header_net) + ": " + formatMoney(it, income.moneda)) }
+                        document?.payroll?.let { payroll ->
+                            listOfNotNull(payroll.periodStart, payroll.periodEnd).joinToString(" – ").takeIf(String::isNotBlank)?.let { line(it) }
+                            payroll.lines.forEach { row ->
+                                val label = when (row.type) {
+                                    PayrollLineType.EARNING -> R.string.report_earning
+                                    PayrollLineType.DEDUCTION -> R.string.report_deduction
+                                    PayrollLineType.UNKNOWN -> R.string.report_payroll_item
+                                }
+                                line(listOfNotNull(context.getString(label), row.description,
+                                    row.amount?.let { formatMoney(it, income.moneda) }).joinToString(" · "))
+                            }
+                        }
+                    }
+                    if (income.id < 0) productLines(products.filter { it.invoiceId == -income.id }, income.moneda)
+                    else if (document?.payroll == null && !document?.lines.isNullOrEmpty()) {
+                        line(context.getString(R.string.report_products), true)
+                        document?.lines?.forEach { row -> line(listOfNotNull(row.description,
+                            row.subtotal?.let { formatMoney(it, income.moneda) }).joinToString(" · ")) }
+                    }
+                }
                 progress(0.1f + 0.85f * ++completed / count)
             }
             pdf.finishPage(page)

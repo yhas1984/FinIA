@@ -15,6 +15,7 @@ import com.gastos.MainActivity
 import com.gastos.domain.model.*
 import com.gastos.feature.backup.BackupScreen
 import com.gastos.feature.backup.BackupViewModel
+import com.gastos.feature.backup.DataPage
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
@@ -69,6 +70,10 @@ class LiveSheetsSingleWorkbookTest {
         val credential = GoogleAccountCredential.usingOAuth2(context,listOf(DriveScopes.DRIVE_FILE)).setSelectedAccount(account.account)
         val sheets = Sheets.Builder(NetHttpTransport(),GsonFactory.getDefaultInstance(),credential).setApplicationName("FinAI QA").build()
         val drive = Drive.Builder(NetHttpTransport(),GsonFactory.getDefaultInstance(),credential).setApplicationName("FinAI QA").build()
+        val linkedMetadata = drive.files().get(book).setFields("name,mimeType,trashed").execute()
+        val expectedName = requireNotNull(InstrumentationRegistry.getArguments().getString("expectedWorkbookName"))
+        check(linkedMetadata.name == expectedName && linkedMetadata.trashed != true &&
+            linkedMetadata.mimeType == "application/vnd.google-apps.spreadsheet") { "Unexpected linked test workbook" }
         fun books(): Set<String> {
             var token: String? = null
             val ids = mutableSetOf<String>()
@@ -103,7 +108,7 @@ class LiveSheetsSingleWorkbookTest {
                 lateinit var model: BackupViewModel
                 scenario.onActivity { activity ->
                     model = ViewModelProvider(activity)[BackupViewModel::class.java]
-                    activity.setContent { MaterialTheme { BackupScreen(onNavigateBack={},viewModel=model) } }
+                    activity.setContent { MaterialTheme { BackupScreen(onNavigateBack={},page=DataPage.SHEETS,viewModel=model) } }
                 }
                 withTimeout(20_000) { while(!model.uiState.value.isPremium) delay(100) }
                 suspend fun tap(name: String) {
@@ -179,6 +184,7 @@ class LiveSheetsSingleWorkbookTest {
             if (expense.id>0 && app.invoices().getInvoiceById(expense.id)!=null) app.sync().deleteLocal(expense)
             if (income.id>0 && app.incomes().getIncomeById(income.id)!=null) app.sync().deleteLocal(income)
             if (historical.id>0 && app.invoices().getInvoiceById(historical.id)!=null) app.sync().deleteLocal(historical.asLegacyIncome())
+            runCatching { app.sync().syncChanges() }.onFailure { report.put("cleanupPending",true) }
             reportFile.writeText(report.toString(2))
         }
     }

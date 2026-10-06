@@ -1,6 +1,7 @@
 package com.gastos.feature.invoices
 
 import android.content.Context
+import com.gastos.domain.model.listEntry
 import app.cash.turbine.test
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
@@ -44,6 +45,7 @@ class InvoicesViewModelTest {
     ): InvoicesViewModel {
         val repo = mockk<InvoiceRepository>()
         every { repo.getAllInvoices() } returns flowOf(invoices)
+        every { repo.observeListEntries() } returns flowOf(invoices.map { it.listEntry() })
         every { repo.getInvoicesByType(any()) } returns flowOf(invoices)
         val exchange = mockk<ExchangeRateProvider>()
         every { exchange.rates } returns MutableStateFlow(rates)
@@ -200,6 +202,47 @@ class InvoicesViewModelTest {
                 state = awaitItem()
             }
             assertEquals(0.0, state.totalGastosConvertido!!, 0.001)
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+    @Test fun `period selection uses the same rows for partial total and reset restores all rows`() = runTest(dispatcher) {
+        val jan = java.time.LocalDate.parse("2026-01-15").atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val feb = java.time.LocalDate.parse("2026-02-15").atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val vm = newViewModel(listOf(invoice(1, 10.0, "EUR").copy(fecha = jan), invoice(2, 20.0, "EUR").copy(fecha = feb), invoice(3, 30.0, "USD").copy(fecha = feb)))
+        vm.filterByPeriod(feb, feb)
+        vm.uiState.test {
+            var state = awaitItem()
+            while (state.isLoading || state.invoices.size != 2) state = awaitItem()
+            assertEquals(20.0, state.totalGastosConvertido!!, 0.001)
+            assertEquals(2, state.conversion!!.recordCount)
+            assertEquals(1, state.conversion!!.excluded.size)
+            vm.filterByPeriod(null, null)
+            while (vm.uiState.value.invoices.size != 3) awaitItem()
+            assertEquals(30.0, vm.uiState.value.totalGastosConvertido!!, 0.001)
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+
+    @Test fun `search pages all matching transactions while total includes offscreen rows`() = runTest(UnconfinedTestDispatcher()) {
+        val rows = (1L..125L).map { invoice(it, 1.0, "EUR").copy(proveedor = "Café Example $it", notas = "Trabajo", documentUuid = "row-$it") }
+        val vm = newViewModel(rows)
+        vm.uiState.test {
+            var state = awaitItem()
+            while (state.isLoading) state = awaitItem()
+            assertEquals(50, state.invoices.size)
+            assertEquals(125, state.matchingCount)
+            assertEquals(125.0, state.totalGastosConvertido!!, .001)
+            vm.search("CAFE trabajo")
+            do { state = awaitItem() } while (state.query != "CAFE trabajo" || state.matchingCount != 125)
+            vm.loadMore()
+            do { state = awaitItem() } while (state.invoices.size != 100)
+            assertEquals(125.0, state.totalGastosConvertido!!, .001)
+            vm.search("does not exist")
+            do { state = awaitItem() } while (state.query != "does not exist" || state.matchingCount != 0)
+            assertEquals(0.0, state.totalGastosConvertido!!, .001)
+            vm.clearFilters()
+            do { state = awaitItem() } while (state.matchingCount != 125 || state.invoices.size != 50)
             cancelAndConsumeRemainingEvents()
         }
     }

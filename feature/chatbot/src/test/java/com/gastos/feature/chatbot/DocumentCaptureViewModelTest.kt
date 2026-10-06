@@ -105,6 +105,26 @@ class DocumentCaptureViewModelTest {
         coVerify(exactly = 1) { store.save(any(), any()) }
     }
 
+    @Test fun `receipt association stays saved when remote enqueue fails`() = runTest(dispatcher) {
+        val wallet = evidence.toInvoice("wallet-uuid", "photo").first.copy(id = 8, origin = "WALLET", imagenUri = null)
+        val attached = wallet.copy(origin = "WALLET_RECEIPT", imagenUri = "photo")
+        coEvery { store.start(any()) } returns CaptureStart.Draft(draft, false)
+        coEvery { reader.readDocument(any(), any()) } returns DocumentReadResult.Ready(evidence)
+        coEvery { store.possibleWalletPayments(any()) } returns listOf(wallet)
+        coEvery { store.attachReceipt("uuid", evidence.copy(sourceSha256 = "hash"), wallet) } returns CaptureSave.Saved(attached)
+        coEvery { sheets.upsertExpense(any()) } throws IllegalStateException("synthetic outage")
+        model.processImage(uri)
+        advanceUntilIdle()
+        assertEquals(listOf(wallet), model.state.value.walletChoices)
+        model.attachWalletReceipt(wallet)
+        advanceUntilIdle()
+        assertEquals("wallet-uuid", model.state.value.saved!!.uuid)
+        assertNull(model.state.value.selected)
+        assertTrue(model.state.value.walletChoices.isEmpty())
+        coVerify(exactly = 1) { store.attachReceipt(any(), any(), any()) }
+        coVerify(exactly = 0) { store.save(any(), any()) }
+    }
+
     @Test fun `reopening a valid interrupted draft saves without another API call`() = runTest(dispatcher) {
         val pending = draft.copy(evidenceJson = DocumentEvidenceCodec.encode(evidence))
         val invoice = evidence.toInvoice("uuid", "photo").first.copy(id = 9)

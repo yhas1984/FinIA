@@ -8,7 +8,7 @@
     <string name="chatbot_scan">Escanear</string>
     <string name="chatbot_menu_take_photo">📷 Hacer foto</string>
     <string name="chatbot_menu_attach_image">🖼️ Adjuntar imagen</string>
-    <string name="chatbot_input_placeholder">Escribe un comando o consulta...</string>
+    <string name="chatbot_input_placeholder">Escribe aquí…</string>
     <string name="chatbot_cd_send">Enviar</string>
     <string name="chatbot_welcome_title">¡Hola! Soy tu asistente FinAI</string>
     <string name="chatbot_welcome_body">Puedo ayudarte a registrar gastos, ingresos y consultar tus finanzas.</string>

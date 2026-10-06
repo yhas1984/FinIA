@@ -50,7 +50,8 @@ data class AIResult(
     val invoice: Invoice? = null,
     val income: Income? = null,
     val products: List<Product> = emptyList(),
-    val queryResult: String? = null
+    val queryResult: String? = null,
+    val automationCommand: String? = null
 )
 
 internal fun calculateDecodeSampleSize(width: Int, height: Int, maxDimension: Int): Int {
@@ -152,8 +153,8 @@ class AIService @Inject constructor(
 
     fun isConfigured(): Boolean = currentApiKey.isNotBlank()
 
-    suspend fun validateApiKey(apiKey: String): String? = withContext(Dispatchers.IO) {
-        if (apiKey.isBlank()) return@withContext context.getString(R.string.ai_api_key_empty)
+    suspend fun validateApiKey(apiKey: String): GeminiKeyValidation = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) return@withContext GeminiKeyValidation.Rejected(context.getString(R.string.ai_api_key_empty))
         try {
             geminiRestClient.generateContent(
                 GeminiGenerateRequest(
@@ -162,12 +163,12 @@ class AIService @Inject constructor(
                     contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart("ping"))))
                 )
             )
-            null
+            GeminiKeyValidation.Valid
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
             SafeLog.e(TAG, "Error validando API key: ${error.javaClass.simpleName}")
-            friendlyError(error)
+            keyValidationFailure(error, friendlyError(error))
         }
     }
 
@@ -230,8 +231,15 @@ class AIService @Inject constructor(
         if (!isConfigured()) return DocumentReadResult.Failure(context.getString(R.string.ai_no_api_key))
         return try {
             val preparationStartedAt = SystemClock.elapsedRealtime()
+            val isPdf: Boolean = context.contentResolver.getType(imageUri) == "application/pdf"
             val inlineImage = withContext(Dispatchers.IO) {
-                uriToBitmap(imageUri)?.let { bitmap ->
+                if (isPdf) {
+                    val bytes: ByteArray = context.contentResolver.openInputStream(imageUri).use { input ->
+                        requireNotNull(input).readBytes()
+                    }
+                    require(bytes.size <= com.gastos.storage.PdfSandbox.MAX_BYTES) { "PDF_TOO_LARGE" }
+                    GeminiInlineDataPart("application/pdf", android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP), bytes.size)
+                } else uriToBitmap(imageUri)?.let { bitmap ->
                     try {
                         bitmap.toInlineImagePart()
                     } finally {
@@ -242,7 +250,8 @@ class AIService @Inject constructor(
             val preparationTimeMs = SystemClock.elapsedRealtime() - preparationStartedAt
             val fiscalConfig = currentFiscalConfig()
             val defaultCurrency = getDefaultCurrency()
-            val prompt = buildOcrUserPrompt(fiscalConfig, defaultCurrency)
+            val prompt = buildOcrUserPrompt(fiscalConfig, defaultCurrency) + if (isPdf)
+                "\nRead all pages as one document. Return document_count=1 for a single invoice/payroll, even with multiple pages. If independent invoices/payrolls occur, document_count must be their count; do not combine totals." else ""
             val networkStartedAt = SystemClock.elapsedRealtime()
             val raw = geminiRestClient.generateContent(
                 GeminiGenerateRequest(
@@ -258,16 +267,18 @@ class AIService @Inject constructor(
                     generationConfig = GeminiGenerationConfig(
                         thinkingLevel = profile.thinkingLevel,
                         responseMimeType = OCR_RESPONSE_MIME_TYPE,
-                        responseSchema = buildOcrResponseSchema(),
+                        responseSchema = buildOcrResponseSchema().apply { if (isPdf) getJSONArray("required").put("document_count") },
                         mediaResolution = OCR_MEDIA_RESOLUTION
                     )
                 )
             ) { response ->
                 try {
-                    DocumentReader.parse(response, defaultCurrency)
+                    if (isPdf) require(PdfDocumentResponse.count(response) >= 1)
+                    if (!isPdf || PdfDocumentResponse.count(response) == 1) DocumentReader.parse(response, defaultCurrency)
                     true
                 } catch (_: com.gastos.domain.model.UnreadableDocumentAmountException) {
                     false
+                } catch (_: IllegalArgumentException) { false
                 } catch (error: org.json.JSONException) {
                     val location: StackTraceElement? = error.stackTrace.firstOrNull { it.className.startsWith("com.gastos.") }
                     SafeLog.d(TAG, "Document parser failed: type=${error.javaClass.simpleName} location=${location?.className}.${location?.methodName}:${location?.lineNumber}")
@@ -276,6 +287,7 @@ class AIService @Inject constructor(
             }
             val networkTimeMs = SystemClock.elapsedRealtime() - networkStartedAt
             val parsingStartedAt = SystemClock.elapsedRealtime()
+            if (isPdf && PdfDocumentResponse.count(raw) != 1) return DocumentReadResult.Failure(context.getString(R.string.pdf_multiple_documents))
             val result = DocumentReader.parse(raw, defaultCurrency)
             val parsingTimeMs = SystemClock.elapsedRealtime() - parsingStartedAt
             SafeLog.d(
@@ -426,7 +438,15 @@ class AIService @Inject constructor(
                - Si pregunta por un producto concreto, NO uses query_type="balance".
 
             2. REGISTRAR GASTO: si dice que gastó, compró o pagó algo:
+
+                Additional actions (only when explicitly requested):
+                {"action":"create_category","kind":"EXPENSE|INCOME","name":"exact user label","parent":"optional parent label"}
+                {"action":"create_rule","kind":"EXPENSE|INCOME","merchant":"exact merchant","category":"label","subcategory":"optional label","match":"EXACT|CONTAINS"}
+                {"action":"update_movement","kind":"EXPENSE|INCOME","target_uuid":"optional UUID","last":true,"description":"optional target label","patch":{"amount":20.0,"date":"yyyy-MM-dd","category":"label","subcategory":"label","merchant":"label","notes":"text"}}
+                {"action":"undo_movement"}
+                For updates include ONLY fields explicitly requested. Never adjust tax/product/payroll breakdown. If target is ambiguous return its description for selection; never invent a UUID. Use kind INCOME for income, otherwise EXPENSE only when user asks an expense. To add a transaction in a new category, use add_expense/add_income with the user's exact category and subcategory. Never create another transaction when asked to correct one. Never output raw JSON as a chat response.
                 {"action":"add_expense","descripcion":"texto","total":0.0,"tipo_iva":null,"productos":[],"moneda":"$defaultCurrency","fecha":"$today","categoria":"texto","subcategoria":"texto"}
+                $COMMAND_PRODUCT_RULES
                 - Si el usuario no menciona otra moneda, usa $defaultCurrency.
                 - Usa una categoría predeterminada de gasto si encaja claramente.
                 - Si el usuario menciona una categoría personalizada explícita, consérvala.
@@ -479,7 +499,15 @@ class AIService @Inject constructor(
                 Product rules: generic names use match_mode="group"; exact line descriptions use match_mode="exact".
                 Do not use balance for product questions.
             2. ADD EXPENSE: if the user says they spent, bought or paid for something:
+
+                Additional actions (only when explicitly requested):
+                {"action":"create_category","kind":"EXPENSE|INCOME","name":"exact user label","parent":"optional parent label"}
+                {"action":"create_rule","kind":"EXPENSE|INCOME","merchant":"exact merchant","category":"label","subcategory":"optional label","match":"EXACT|CONTAINS"}
+                {"action":"update_movement","kind":"EXPENSE|INCOME","target_uuid":"optional UUID","last":true,"description":"optional target label","patch":{"amount":20.0,"date":"yyyy-MM-dd","category":"label","subcategory":"label","merchant":"label","notes":"text"}}
+                {"action":"undo_movement"}
+                For updates include ONLY fields explicitly requested. Never adjust tax/product/payroll breakdown. If target is ambiguous return its description for selection; never invent a UUID. Use kind INCOME for income, otherwise EXPENSE only when user asks an expense. To add a transaction in a new category, use add_expense/add_income with the user's exact category and subcategory. Never create another transaction when asked to correct one. Never output raw JSON as a chat response.
                 {"action":"add_expense","descripcion":"texto","total":0.0,"tipo_iva":null,"productos":[],"moneda":"$defaultCurrency","fecha":"$today","categoria":"texto","subcategoria":"texto"}
+                $COMMAND_PRODUCT_RULES
             3. ADD INCOME: if the user mentions salary, payment or received income:
                 Missing taxes, gross/net and product details must be null or omitted; never invent them. Keep explicit dates unchanged even if invalid.
                 {"action":"add_income","concepto":"texto","total_devengado":null,"total_neto":null,"monto":0.0,"moneda":"$defaultCurrency","fecha":"$today","fuente":"texto","categoria":"texto","subcategoria":"texto"}
@@ -515,6 +543,7 @@ class AIService @Inject constructor(
     private fun buildOcrResponseSchema(): JSONObject = JSONObject().apply {
         put("type", "OBJECT")
         put("properties", JSONObject().apply {
+            put("document_count", JSONObject().put("type", "INTEGER"))
             put("tipo_documento", JSONObject().apply {
                 put("type", "STRING")
                 put("nullable", true)
@@ -700,16 +729,22 @@ class AIService @Inject constructor(
             if (json.optString("action") in setOf("add_expense", "add_income")) {
                 CommandDocumentParser.preserveExplicitDate(json, originalCommand, context.resources.configuration.locales[0])
             }
+            if (json.optString("action") == "update_movement") {
+                val dates = JSONObject()
+                CommandDocumentParser.preserveExplicitDate(dates, originalCommand, context.resources.configuration.locales[0])
+                if (dates.has("fecha")) json.getJSONObject("patch").put("date", dates.getString("fecha"))
+            }
             when (json.optString("action", "chat")) {
                 "add_expense" -> {
                     val currency = resolveCommandCurrency(json.optString("moneda"), getDefaultCurrency(), originalCommand)
-                    val (invoice, products) = CommandDocumentParser.expense(json, currency)
+                    val (invoice, products) = CommandDocumentParser.expense(json, currency, originalCommand)
                     AIResult(success = true, message = "", invoice = invoice, products = products)
                 }
                 "add_income" -> {
                     val currency = resolveCommandCurrency(json.optString("moneda"), getDefaultCurrency(), originalCommand)
                     AIResult(success = true, message = "", income = CommandDocumentParser.income(json, currency))
                 }
+                "create_category", "create_rule", "update_movement", "undo_movement" -> AIResult(success = true, message = "", automationCommand = json.toString())
                 "query" -> AIResult(success = true, message = context.getString(R.string.ai_query_processed), queryResult = json.toString())
                 "chat" -> json.optString("response", "").takeIf { it.isNotBlank() }?.let {
                     AIResult(success = true, message = it)
@@ -718,6 +753,7 @@ class AIService @Inject constructor(
             }
         } catch (error: Exception) {
             val message: String = when {
+                error is InvalidCommandProductsException -> context.getString(R.string.ai_invalid_command_products)
                 error is org.json.JSONException -> context.getString(R.string.ai_invalid_response)
                 error.message == "Invalid date: yyyy-MM-dd required" -> context.getString(R.string.ai_invalid_date)
                 else -> context.getString(R.string.ai_parse_response_error, error.message.orEmpty())
@@ -783,6 +819,21 @@ class AIService @Inject constructor(
 
     companion object {
         private const val TAG = "AIService"
+        private val COMMAND_PRODUCT_RULES: String = """
+            Total is the money actually spent, not a unit price. For a single product, a price stated
+            as 'por/for', 'ambos/both' or 'en total/in total' is the total for all units unless explicitly
+            stated 'cada uno/each', 'por unidad/per unit' or 'a/at' a unit price. Ask for clarification
+            when both meanings are explicitly given. Never multiply a shared total by quantity.
+            Examples: '2 cafés por 2,60€ ambos' and '2 coffees for 2.60 EUR both' mean total=2.60,
+            productos=[{"descripcion":"Café","cantidad":2,"precio_unitario":1.30,"subtotal":2.60,"iva_percent":null}].
+            '2 cafés a 2,60€ cada uno' and '2 coffees at 2.60 EUR each' mean total=5.20,
+            productos=[{"descripcion":"Café","cantidad":2,"precio_unitario":2.60,"subtotal":5.20,"iva_percent":null}].
+            A known quantity and shared total allow unit price=total/quantity without rounding it to cents.
+            Keep product names in the user's language (Café in Spanish, Coffee in English).
+            Include products only when their description, quantity and price are known or follow from
+            that explicit arithmetic. With insufficient details use productos=[]; do not invent quantity,
+            taxes, gross/net or other details. Product subtotals must sum to the expense total.
+        """.trimIndent()
         private const val MAX_IMAGE_DIMENSION = 2048
         private const val IMAGE_COMPRESSION_QUALITY = 88
         private const val MIME_TYPE_JPEG = "image/jpeg"

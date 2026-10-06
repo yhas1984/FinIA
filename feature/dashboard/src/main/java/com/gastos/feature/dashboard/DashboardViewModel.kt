@@ -7,6 +7,8 @@ import com.gastos.domain.model.moneyRecord
 import com.gastos.domain.model.summarize
 import com.gastos.domain.model.sumAvailable
 import com.gastos.domain.model.Income
+import com.gastos.domain.model.MovementReference
+import com.gastos.domain.model.movementReference
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.TransactionCategories
@@ -84,6 +86,7 @@ data class SubcategorySlice(
 
 /** Movimiento individual listado en el drill-down. */
 data class AnalyticsMovement(
+    val reference: MovementReference? = null,
     val id: Long,
     val fecha: Long,
     val descripcion: String,
@@ -593,6 +596,7 @@ class DashboardViewModel @Inject constructor(
         val records = expenseInvoices.map { invoice ->
             AnalyticsRecord(
                 id = invoice.id,
+                reference = invoice.movementReference(),
                 fecha = invoice.fecha,
                 descripcion = invoice.proveedor,
                 amount = exchangeRateProvider.convert(invoice.total, invoice.moneda, target),
@@ -604,6 +608,7 @@ class DashboardViewModel @Inject constructor(
         } + incomes.map { income ->
             AnalyticsRecord(
                 id = income.id,
+                reference = income.movementReference(),
                 fecha = income.fecha,
                 descripcion = income.concepto,
                 amount = exchangeRateProvider.convert(income.monto, income.moneda, target),
@@ -644,6 +649,7 @@ class DashboardViewModel @Inject constructor(
             .map { record ->
                 AnalyticsMovement(
                     id = record.id,
+                    reference = record.reference,
                     fecha = record.fecha,
                     descripcion = record.descripcion,
                     monto = record.amount ?: record.originalAmount,
@@ -675,6 +681,7 @@ class DashboardViewModel @Inject constructor(
             expenseInvoices.map { inv ->
                 AnalyticsRecord(
                     id = inv.id,
+                reference = inv.movementReference(),
                     fecha = inv.fecha,
                     descripcion = inv.proveedor,
                     amount = exchangeRateProvider.convert(inv.total, inv.moneda, target),
@@ -688,6 +695,7 @@ class DashboardViewModel @Inject constructor(
             incomes.map { inc ->
                 AnalyticsRecord(
                     id = inc.id,
+                reference = inc.movementReference(),
                     fecha = inc.fecha,
                     descripcion = inc.concepto,
                     amount = exchangeRateProvider.convert(inc.monto, inc.moneda, target),
@@ -753,6 +761,7 @@ class DashboardViewModel @Inject constructor(
             matching.map {
                 AnalyticsMovement(
                     id = it.id,
+                    reference = it.reference,
                     fecha = it.fecha,
                     descripcion = it.descripcion,
                     monto = it.amount!!,
@@ -767,6 +776,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     private data class AnalyticsRecord(
+        val reference: MovementReference,
         val id: Long,
         val fecha: Long,
         val descripcion: String,

@@ -24,7 +24,10 @@ data class RemoteSyncDriveDelete(
 
 data class RemoteSyncSheetDelete(
     val target: RemoteSyncTarget,
-    val recordId: Long
+    val recordId: Long,
+    val documentUuid: String = "",
+    val accountId: String? = null,
+    val spreadsheetId: String? = null
 )
 
 @Entity(tableName = "remote_sync_outbox")

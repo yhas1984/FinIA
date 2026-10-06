@@ -18,11 +18,33 @@ internal data class BackupEntitySnapshot(
     val incomes: List<IncomeEntity>,
     val fiscalConfigs: List<CountryFiscalConfigEntity>,
     val chatMessages: List<ChatMessageEntity>,
+    val categories: List<com.gastos.data.local.entity.CategoryEntity> = emptyList(),
+    val automationRecords: List<com.gastos.data.local.entity.AutomationRecordEntity> = emptyList(),
+    val monthlyLimits: List<com.gastos.data.local.entity.MonthlyLimitEntity> = emptyList(),
     val commandOperations: List<com.gastos.data.local.entity.CommandOperationEntity> = emptyList()
 )
 
 @Dao
 abstract class BackupDao {
+    @Query("SELECT * FROM categories")
+    internal abstract suspend fun categories(): List<com.gastos.data.local.entity.CategoryEntity>
+    @Query("SELECT * FROM automation_records")
+    internal abstract suspend fun automationRecords(): List<com.gastos.data.local.entity.AutomationRecordEntity>
+    @Query("SELECT * FROM monthly_limits")
+    internal abstract suspend fun monthlyLimits(): List<com.gastos.data.local.entity.MonthlyLimitEntity>
+    @Query("DELETE FROM categories")
+    internal abstract suspend fun clearCategories()
+    @Query("DELETE FROM automation_records")
+    internal abstract suspend fun clearAutomationRecords()
+    @Query("DELETE FROM monthly_limits")
+    internal abstract suspend fun clearMonthlyLimits()
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    internal abstract suspend fun insertCategories(values: List<com.gastos.data.local.entity.CategoryEntity>)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    internal abstract suspend fun insertAutomationRecords(values: List<com.gastos.data.local.entity.AutomationRecordEntity>)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    internal abstract suspend fun insertMonthlyLimits(values: List<com.gastos.data.local.entity.MonthlyLimitEntity>)
+
     @Query("SELECT * FROM invoices WHERE id = :id")
     internal abstract suspend fun invoice(id: Long): InvoiceEntity?
 
@@ -114,11 +136,15 @@ abstract class BackupDao {
         incomes = incomes(),
         fiscalConfigs = fiscalConfigs(),
         chatMessages = chatMessages(),
+        categories = categories(), automationRecords = automationRecords(), monthlyLimits = monthlyLimits(),
         commandOperations = commandOperations()
     )
 
     @Transaction
     internal open suspend fun replaceAll(snapshot: BackupEntitySnapshot, restoreId: String?) {
+        clearCategories()
+        clearAutomationRecords()
+        clearMonthlyLimits()
         clearProducts()
         clearInvoices()
         clearIncomes()
@@ -126,6 +152,9 @@ abstract class BackupDao {
         clearChatMessages()
         clearCommandOperations()
 
+        insertCategories(snapshot.categories)
+        insertAutomationRecords(snapshot.automationRecords)
+        insertMonthlyLimits(snapshot.monthlyLimits)
         insertInvoices(snapshot.invoices)
         insertProducts(snapshot.products)
         insertIncomes(snapshot.incomes)

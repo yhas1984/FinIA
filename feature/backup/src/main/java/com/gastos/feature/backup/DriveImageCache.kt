@@ -32,19 +32,20 @@ class DriveImageCache @Inject constructor(
             val key = MessageDigest.getInstance("SHA-256").digest("$activeAccount\u0000$fileId".toByteArray())
                 .joinToString("") { "%02x".format(it) }
             val target = File(directory, key)
-            if (target.isFile) { target.setLastModified(System.currentTimeMillis()); return@withLock target }
+            if (target.isFile && (contentHash == null || checksum(target).equals(contentHash, ignoreCase = true))) {
+                target.setLastModified(System.currentTimeMillis())
+                return@withLock target
+            }
+            // A file ID can survive a replacement in Drive. Never reuse bytes that no longer
+            // match the document's persisted identity (including after a restore).
+            if (target.exists() && !target.delete()) throw ImageAccessException("CACHE_WRITE_FAILED")
             val temporary = File(directory, "$key.part")
             try {
                 temporary.outputStream().use { output ->
                     drive.downloadImage(fileId, activeAccount, LimitedImageOutput(output, MAX_IMAGE_BYTES))
                 }
                 if (contentHash != null) {
-                    val digest = MessageDigest.getInstance("MD5")
-                    temporary.inputStream().use { input ->
-                        val buffer = ByteArray(8192)
-                        while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
-                    }
-                    if (digest.digest().joinToString("") { "%02x".format(it) } != contentHash)
+                    if (!checksum(temporary).equals(contentHash, ignoreCase = true))
                         throw ImageAccessException("IDENTITY_REVIEW_REQUIRED")
                 }
                 check(temporary.renameTo(target)) { "CACHE_WRITE_FAILED" }
@@ -53,6 +54,15 @@ class DriveImageCache @Inject constructor(
                 target
             } finally { temporary.delete() }
         }
+    }
+
+    private fun checksum(file: File): String {
+        val digest = MessageDigest.getInstance("MD5")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(8192)
+            while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun trim(protected: File) {

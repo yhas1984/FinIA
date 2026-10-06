@@ -11,6 +11,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.activity.compose.BackHandler
+import com.gastos.common.design.EssentialSection
+import com.gastos.common.design.*
+import com.gastos.common.ManualField
+import com.gastos.common.ManualSection
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import com.gastos.common.design.EssentialHeader
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
@@ -37,15 +46,29 @@ fun EditIncomeScreen(
     val form by viewModel.form.collectAsStateWithLifecycle()
     val locale = LocalLocale.current.platformLocale
     val scrollState = rememberScrollState()
-    var showDatePicker by remember { mutableStateOf(false) }
-    var showCurrencyPicker by remember { mutableStateOf(false) }
-    var showCategoryPicker by remember { mutableStateOf(false) }
-    var showSubcategoryPicker by remember { mutableStateOf(false) }
-    var showDocumentFields by remember { mutableStateOf(false) }
+    var showDiscard by rememberSaveable { mutableStateOf(false) }
+    fun requestBack() { if (!uiState.isSaving) { if (viewModel.hasChanges) showDiscard = true else onNavigateBack() } }
+    BackHandler { requestBack() }
+    if (showDiscard) AlertDialog(onDismissRequest = { showDiscard = false },
+        title = { Text(stringResource(com.gastos.common.R.string.essential_discard_title)) },
+        confirmButton = { TextButton(onClick = { showDiscard = false; onNavigateBack() }) { Text(stringResource(com.gastos.common.R.string.essential_discard)) } },
+        dismissButton = { TextButton(onClick = { showDiscard = false }) { Text(stringResource(com.gastos.common.R.string.essential_keep_editing)) } })
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var showCategoryPicker by rememberSaveable { mutableStateOf(false) }
+    var showSubcategoryPicker by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(incomeId) {
         if (incomeId != 0L) {
             viewModel.loadIncome(incomeId, locale)
+        } else viewModel.prepareDefaults()
+    }
+
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    LaunchedEffect(uiState.isSaving) {
+        if (uiState.isSaving) {
+            showDatePicker = false; showCategoryPicker = false; showSubcategoryPicker = false
+            keyboard?.hide(); focus.clearFocus()
         }
     }
 
@@ -74,107 +97,67 @@ fun EditIncomeScreen(
             dismissButton = { TextButton(onClick = viewModel::dismissDuplicate) { Text(stringResource(R.string.document_correct)) } })
     }
 
+    val saveDescription = stringResource(R.string.save)
+    CompositionLocalProvider(LocalManualInputEnabled provides !uiState.isSaving) {
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(if (incomeId != 0L) R.string.edit_income else R.string.new_income)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { viewModel.saveIncome(locale) },
-                        enabled = !uiState.isSaving &&
-                            LocalizedNumbers.parse(form.monto, locale)?.let { it.isFinite() && it > 0 } == true &&
-                            form.concepto.isNotBlank()
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = stringResource(R.string.save))
-                    }
+        topBar = { EssentialHeader(stringResource(if (incomeId != 0L) R.string.edit_income else R.string.new_income), { requestBack() }) },
+        bottomBar = {
+            Surface(tonalElevation = 2.dp) {
+                Column(Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (uiState.fieldErrors.isEmpty()) uiState.saveResult?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Button(onClick = { viewModel.saveIncome(locale) }, enabled = uiState.defaultsReady && !uiState.isLoading && !uiState.isSaving,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                        .semantics { contentDescription = saveDescription }) {
+                    if (uiState.isSaving) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary); Spacer(Modifier.width(8.dp)) }
+                    Text(stringResource(if (uiState.isSaving) com.gastos.common.R.string.manual_saving else com.gastos.common.R.string.manual_save_income))
                 }
-            )
+                }
+            }
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .imePadding()
-                .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Concepto
-            OutlinedTextField(
-                value = form.concepto,
-                onValueChange = { viewModel.updateConcepto(it) },
-                label = { Text(stringResource(R.string.concept)) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
+        if (!uiState.defaultsReady || uiState.isLoading) {
+            Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(EssentialLayout.fieldSpacing)) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+                Text(stringResource(if (incomeId != 0L) com.gastos.common.R.string.manual_loading_document else com.gastos.common.R.string.manual_loading_preferences))
+                uiState.error?.let { Text(it, color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = { if (incomeId != 0L) viewModel.loadIncome(incomeId, locale) else viewModel.prepareDefaults() }) { Text(stringResource(com.gastos.common.R.string.manual_retry_preferences)) }
+                }
+            }
+        } else Column(Modifier.fillMaxSize().padding(padding).verticalScroll(scrollState).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(EssentialLayout.fieldSpacing)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ManualTextField(form.monto, viewModel::updateMonto, stringResource(R.string.amount),
+                    ManualField.AMOUNT, uiState.fieldErrors, uiState.validationAttempt, numeric = true, modifier = Modifier.weight(1f))
+                ManualErrorTarget(ManualField.CURRENCY, uiState.fieldErrors, uiState.validationAttempt, Modifier.width(116.dp)) { target, error ->
+                    ManualChoice(form.moneda, stringResource(R.string.currency), com.gastos.domain.model.SUPPORTED_CURRENCIES,
+                        viewModel::updateMoneda, target.fillMaxWidth(), error)
+                }
+            }
+            ManualTextField(form.concepto, viewModel::updateConcepto, stringResource(R.string.concept),
+                ManualField.CONCEPT, uiState.fieldErrors, uiState.validationAttempt)
             // Fecha
             OutlinedTextField(
-                value = SimpleDateFormat("dd/MM/yyyy", locale).format(Date(form.fecha)),
+                    shape = EssentialLayout.fieldShape, colors = essentialFieldColors(),
+                    enabled = !uiState.isSaving,
+                value = java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT, locale).format(Date(form.fecha)),
                 onValueChange = {},
                 label = { Text(stringResource(R.string.date)) },
                 modifier = Modifier.fillMaxWidth(),
                 readOnly = true,
                 trailingIcon = {
-                    IconButton(onClick = { showDatePicker = true }) {
+                    IconButton(onClick = { showDatePicker = true }, enabled = !uiState.isSaving) {
                         Icon(Icons.Default.CalendarToday, contentDescription = stringResource(R.string.select_date))
                     }
                 }
             )
 
-            // Moneda
-            ExposedDropdownMenuBox(
-                expanded = showCurrencyPicker,
-                onExpandedChange = { showCurrencyPicker = it }
-            ) {
-                OutlinedTextField(
-                    value = form.moneda,
-                    onValueChange = {},
-                    label = { Text(stringResource(R.string.currency)) },
-                    readOnly = true,
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = showCurrencyPicker) },
-                    modifier = Modifier
-                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
-                        .fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = showCurrencyPicker,
-                    onDismissRequest = { showCurrencyPicker = false }
-                ) {
-                    com.gastos.domain.model.SUPPORTED_CURRENCIES.forEach { currency ->
-                        DropdownMenuItem(
-                            text = { Text(currency) },
-                            onClick = {
-                                viewModel.updateMoneda(currency)
-                                showCurrencyPicker = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Monto (cantidad principal)
-            OutlinedTextField(
-                value = form.monto,
-                onValueChange = { viewModel.updateMonto(it) },
-                label = { Text(stringResource(R.string.amount)) },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true,
-                prefix = { Text(form.moneda) }
-            )
-
             ExposedDropdownMenuBox(
                 expanded = showCategoryPicker,
-                onExpandedChange = { showCategoryPicker = it }
+                onExpandedChange = { if (!uiState.isSaving) showCategoryPicker = it }
             ) {
                 OutlinedTextField(
+                    shape = EssentialLayout.fieldShape, colors = essentialFieldColors(),
+                    enabled = !uiState.isSaving,
                     value = when {
                         form.isCustomCategory && form.categoria.isNotBlank() -> form.categoria
                          form.isCustomCategory -> TransactionCategories.currentCustomOptionLabel(locale.language)
@@ -193,6 +176,7 @@ fun EditIncomeScreen(
                     onDismissRequest = { showCategoryPicker = false }
                 ) {
                     DropdownMenuItem(
+                        enabled = !uiState.isSaving,
                          text = { Text(TransactionCategories.currentUncategorizedLabel(locale.language)) },
                         onClick = {
                             viewModel.selectCategory(value = null, isCustomCategory = false)
@@ -201,6 +185,7 @@ fun EditIncomeScreen(
                     )
                     uiState.availableCategories.forEach { category ->
                         DropdownMenuItem(
+                        enabled = !uiState.isSaving,
                              text = { Text(TransactionCategories.displayCategory(category, locale.language)) },
                             onClick = {
                                 viewModel.selectCategory(value = category, isCustomCategory = false)
@@ -209,6 +194,7 @@ fun EditIncomeScreen(
                         )
                     }
                     DropdownMenuItem(
+                        enabled = !uiState.isSaving,
                          text = { Text(TransactionCategories.currentCustomOptionLabel(locale.language)) },
                         onClick = {
                             viewModel.selectCategory(
@@ -223,6 +209,8 @@ fun EditIncomeScreen(
 
                 if (form.isCustomCategory) {
                     OutlinedTextField(
+                    shape = EssentialLayout.fieldShape, colors = essentialFieldColors(),
+                    enabled = !uiState.isSaving,
                         value = form.categoria,
                         onValueChange = { viewModel.updateCategoria(it) },
                         label = { Text(stringResource(R.string.custom_category)) },
@@ -235,9 +223,11 @@ fun EditIncomeScreen(
             if (form.categoria.isNotBlank()) {
                 ExposedDropdownMenuBox(
                     expanded = showSubcategoryPicker,
-                    onExpandedChange = { showSubcategoryPicker = it }
+                    onExpandedChange = { if (!uiState.isSaving) showSubcategoryPicker = it }
                 ) {
                     OutlinedTextField(
+                    shape = EssentialLayout.fieldShape, colors = essentialFieldColors(),
+                    enabled = !uiState.isSaving,
                         value = when {
                             form.isCustomSubcategory && form.subcategoria.isNotBlank() -> form.subcategoria
                              form.isCustomSubcategory -> TransactionCategories.currentCustomOptionLabel(locale.language)
@@ -256,6 +246,7 @@ fun EditIncomeScreen(
                         onDismissRequest = { showSubcategoryPicker = false }
                     ) {
                         DropdownMenuItem(
+                        enabled = !uiState.isSaving,
                              text = { Text(TransactionCategories.currentUncategorizedLabel(locale.language)) },
                             onClick = {
                                 viewModel.selectSubcategory(value = null, isCustom = false)
@@ -264,6 +255,7 @@ fun EditIncomeScreen(
                         )
                         uiState.availableSubcategories.forEach { subcategory ->
                             DropdownMenuItem(
+                        enabled = !uiState.isSaving,
                                  text = { Text(TransactionCategories.displayCategory(subcategory, locale.language)) },
                                 onClick = {
                                     viewModel.selectSubcategory(value = subcategory, isCustom = false)
@@ -272,6 +264,7 @@ fun EditIncomeScreen(
                             )
                         }
                         DropdownMenuItem(
+                        enabled = !uiState.isSaving,
                          text = { Text(TransactionCategories.currentCustomOptionLabel(locale.language)) },
                             onClick = {
                                 viewModel.selectSubcategory(
@@ -286,6 +279,8 @@ fun EditIncomeScreen(
 
                 if (form.isCustomSubcategory) {
                     OutlinedTextField(
+                    shape = EssentialLayout.fieldShape, colors = essentialFieldColors(),
+                    enabled = !uiState.isSaving,
                         value = form.subcategoria,
                         onValueChange = { viewModel.updateSubcategoria(it) },
                         label = { Text(stringResource(R.string.custom_subcategory)) },
@@ -296,132 +291,56 @@ fun EditIncomeScreen(
                 }
             }
 
-            TextButton(onClick = { showDocumentFields = !showDocumentFields }) { Text(stringResource(R.string.document_identity)) }
-            if (showDocumentFields) {
-                Row {
-                    FilterChip(selected = form.documentKind == "factura_emitida", onClick = { viewModel.updateDocumentField("kind", "factura_emitida") }, label = { Text(stringResource(R.string.document_invoice)) })
-                    Spacer(Modifier.width(8.dp))
-                    FilterChip(selected = form.documentKind == "nomina", onClick = { viewModel.updateDocumentField("kind", "nomina") }, label = { Text(stringResource(R.string.document_payroll)) })
-                }
-                listOf(
-                    Triple("number", form.documentNumber, R.string.document_number),
-                    Triple("issuerTaxId", form.issuerTaxId, R.string.document_issuer_tax),
-                    Triple("workerId", form.workerId, R.string.document_worker),
-                    Triple("payPeriod", form.payPeriod, R.string.document_period),
-                    Triple("paymentKind", form.paymentKind, R.string.document_payment_kind),
-                    Triple("payrollReference", form.payrollReference, R.string.document_payroll_reference)
-                ).forEach { (field, value, label) ->
-                    OutlinedTextField(value, onValueChange = { viewModel.updateDocumentField(field, it) },
-                        label = { Text(stringResource(label)) }, modifier = Modifier.fillMaxWidth())
+            Text(stringResource(com.gastos.common.R.string.manual_income_kind), style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("" to com.gastos.common.R.string.manual_general_income, "factura_emitida" to R.string.document_invoice,
+                    "nomina" to R.string.document_payroll).forEach { (value, label) ->
+                    FilterChip(enabled = !uiState.isSaving, selected = if (value.isEmpty()) form.documentKind !in listOf("factura_emitida", "nomina") else form.documentKind == value, onClick = { viewModel.updateDocumentField("kind", value) }, label = { Text(stringResource(label)) })
                 }
             }
-
-            // Devengado (bruto) y Líquido (neto)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedTextField(
-                    value = form.totalDevengado,
-                    onValueChange = { viewModel.updateTotalDevengado(it) },
-                    label = { Text(stringResource(R.string.gross_amount)) },
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    prefix = { Text(form.moneda) }
-                )
-                OutlinedTextField(
-                    value = form.totalNeto,
-                    onValueChange = { viewModel.updateTotalNeto(it) },
-                    label = { Text(stringResource(R.string.net_amount)) },
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    prefix = { Text(form.moneda) }
-                )
+            ManualFormSection(stringResource(com.gastos.common.R.string.essential_document_data), ManualSection.DOCUMENT, uiState.fieldErrors, uiState.validationAttempt) {
+                ManualTextField(form.fuente, viewModel::updateFuente, stringResource(R.string.source_optional))
+                listOf(Triple("number", form.documentNumber, R.string.document_number), Triple("issuerTaxId", form.issuerTaxId, R.string.document_issuer_tax),
+                    Triple("paymentKind", form.paymentKind, R.string.document_payment_kind)).forEach { (field, value, label) ->
+                    ManualTextField(value, { viewModel.updateDocumentField(field, it) }, stringResource(label))
+                }
+                ManualChoice(form.paisCodigo, stringResource(com.gastos.common.R.string.manual_country), com.gastos.domain.model.SUPPORTED_FISCAL_COUNTRIES, viewModel::updatePaisCodigo)
             }
-
-            // Cálculo automático: si hay devengado e IRPF, mostrar neto
-            val dev = LocalizedNumbers.parse(form.totalDevengado, locale) ?: 0.0
-            val irpf = LocalizedNumbers.parse(form.irpfPercent, locale) ?: 0.0
-            if (dev > 0 && irpf > 0 && form.documentKind != "nomina") {
-                val netoCalc = dev * (1.0 - irpf / 100.0)
-                Text(
-                    stringResource(R.string.calculated_net, String.format("%.2f", netoCalc), form.moneda),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 4.dp)
-                )
-            }
-
-            // Fuente
-            OutlinedTextField(
-                value = form.fuente,
-                onValueChange = { viewModel.updateFuente(it) },
-                label = { Text(stringResource(R.string.source_optional)) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-
-            // IVA e IRPF
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                if (form.taxes.isEmpty()) OutlinedTextField(
-                    value = form.ivaPercent,
-                    onValueChange = { viewModel.updateIvaPercent(it) },
-                    label = { Text(stringResource(R.string.vat_percent)) },
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
-                )
-                if (form.taxes.none { it.effect == com.gastos.domain.model.TaxEffect.WITHHOLDING }) OutlinedTextField(
-                    value = form.irpfPercent,
-                    onValueChange = { viewModel.updateIrpfPercent(it) },
-                    label = { Text(stringResource(R.string.irpf_percent)) },
-                    modifier = Modifier.weight(1f),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
-                )
-            }
-
-            com.gastos.common.TaxBreakdownEditor(form.taxes, form.moneda, locale, viewModel::updateTaxes, { viewModel.addTax(locale) })
-            if (form.taxes.isNotEmpty()) OutlinedTextField(form.taxBase, viewModel::updateTaxBase,
-                label = { Text(stringResource(com.gastos.common.R.string.taxes_base)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
-
-            // Notas
-            OutlinedTextField(
-                value = form.notas,
-                onValueChange = { viewModel.updateNotas(it) },
-                label = { Text(stringResource(R.string.notes_optional)) },
-                modifier = Modifier.fillMaxWidth().height(120.dp),
-                minLines = 3
-            )
-
-            // Resultado del guardado
-            uiState.saveResult?.let { msg ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (uiState.saveState is SaveState.Error)
-                            MaterialTheme.colorScheme.errorContainer
-                        else
-                            MaterialTheme.colorScheme.secondaryContainer
-                    )
-                ) {
-                    Text(
-                        text = msg,
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (uiState.saveState is SaveState.Error)
-                            MaterialTheme.colorScheme.onErrorContainer
-                        else
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                    )
+            key(form.documentKind) {
+                ManualFormSection(stringResource(com.gastos.common.R.string.essential_payroll), ManualSection.PAYROLL, uiState.fieldErrors, uiState.validationAttempt,
+                    initiallyExpanded = form.documentKind == "nomina") {
+                    ManualTextField(form.totalDevengado, viewModel::updateTotalDevengado, stringResource(R.string.gross_amount), ManualField.GROSS, uiState.fieldErrors, uiState.validationAttempt, true)
+                    ManualTextField(form.totalNeto, viewModel::updateTotalNeto, stringResource(R.string.net_amount), ManualField.NET, uiState.fieldErrors, uiState.validationAttempt, true)
+                    listOf(Triple("workerId", form.workerId, R.string.document_worker), Triple("payPeriod", form.payPeriod, R.string.document_period),
+                        Triple("payrollReference", form.payrollReference, R.string.document_payroll_reference)).forEach { (field, value, label) ->
+                        ManualTextField(value, { viewModel.updateDocumentField(field, it) }, stringResource(label))
+                    }
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            ManualFormSection(stringResource(com.gastos.common.R.string.essential_taxes), ManualSection.TAXES, uiState.fieldErrors, uiState.validationAttempt,
+                summary = manualTaxSummary(form.taxes, form.ivaPercent, locale)) {
+                if (form.taxes.isEmpty()) ManualTextField(form.ivaPercent, viewModel::updateIvaPercent, stringResource(R.string.vat_percent),
+                    ManualField.VAT, uiState.fieldErrors, uiState.validationAttempt, true)
+                if (form.taxes.none { it.effect == com.gastos.domain.model.TaxEffect.WITHHOLDING }) ManualTextField(form.irpfPercent, viewModel::updateIrpfPercent, stringResource(R.string.irpf_percent),
+                    ManualField.WITHHOLDING, uiState.fieldErrors, uiState.validationAttempt, true)
+                if (form.taxes.isNotEmpty()) ManualTextField(form.taxBase, viewModel::updateTaxBase, stringResource(com.gastos.common.R.string.taxes_base), ManualField.BASE, uiState.fieldErrors, uiState.validationAttempt, true)
+                ManualErrorTarget(ManualField.TAX_BREAKDOWN, uiState.fieldErrors, uiState.validationAttempt) { target, error ->
+                    Column(target) {
+                        com.gastos.common.TaxBreakdownEditor(form.taxes, form.moneda, locale, viewModel::updateTaxes, { viewModel.addTax(locale) }, showDisclosure = false)
+                        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    }
+                }
+            }
+            ManualFormSection(stringResource(com.gastos.common.R.string.essential_notes), ManualSection.NOTES, uiState.fieldErrors, uiState.validationAttempt) {
+                OutlinedTextField(form.notas, viewModel::updateNotas, shape = EssentialLayout.fieldShape, colors = essentialFieldColors(), enabled = !uiState.isSaving, label = { Text(stringResource(R.string.notes_optional)) }, modifier = Modifier.fillMaxWidth(), minLines = 3)
+            }
+            uiState.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Spacer(Modifier.height(16.dp))
         }
     }
 
-    // Date picker dialog
+    }
+
     if (showDatePicker) {
         androidx.compose.material3.DatePickerDialog(
             onDismissRequest = { showDatePicker = false },

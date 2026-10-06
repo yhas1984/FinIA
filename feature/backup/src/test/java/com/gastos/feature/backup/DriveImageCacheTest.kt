@@ -12,6 +12,25 @@ import java.io.RandomAccessFile
 import java.nio.file.Files
 
 class DriveImageCacheTest {
+    @Test fun `cached bytes with a different expected checksum are replaced and checked`() = runTest {
+        val root = Files.createTempDirectory("finai-cache-hash").toFile()
+        try {
+            val drive = mockk<InvoiceDriveService> { every { activeAccountId() } returns "A" }
+            var content = "old"
+            coEvery { drive.downloadImage(any(),any(),any()) } coAnswers { arg<OutputStream>(2).write(content.toByteArray()) }
+            val cache = DriveImageCache(mockk<Context> { every { cacheDir } returns root }, drive,
+                mockk { every { managedFile(any()) } returns null })
+            cache.resolve(null,"file","A",null)
+            content = "new"
+            val hash = java.security.MessageDigest.getInstance("MD5").digest(content.toByteArray()).joinToString("") { "%02x".format(it) }
+            assertEquals("new", cache.resolve(null,"file","A",hash).readText())
+            cache.resolve(null,"file","A",hash)
+            coVerify(exactly=2) { drive.downloadImage(any(),any(),any()) }
+            try { cache.resolve(null,"file","A","bad-hash"); fail() }
+            catch (error: ImageAccessException) { assertEquals("IDENTITY_REVIEW_REQUIRED", error.code) }
+            assertTrue(File(root,"drive_images").listFiles()!!.isEmpty())
+        } finally { root.deleteRecursively() }
+    }
     @Test fun `restored image downloads only on opening and cache is separated by account`() = runTest {
         val root = Files.createTempDirectory("finai-cache").toFile()
         try {

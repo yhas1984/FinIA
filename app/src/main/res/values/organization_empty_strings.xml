@@ -1,0 +1,4 @@
+<resources>
+    <string name="organization_no_subcategories">Esta categoría aún no tiene subcategorías. Puedes añadirlas cuando las necesites.</string>
+    <string name="organization_no_limits_hint">Este mes no tiene límites. Crea uno para comparar lo gastado en una categoría con el importe que elijas.</string>
+</resources>

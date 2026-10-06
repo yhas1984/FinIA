@@ -11,22 +11,23 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.gastos.domain.model.*
+import com.gastos.common.design.LocalManualInputEnabled
 import java.util.Locale
 
 @Composable
-fun TaxBreakdownEditor(rows: List<TaxFormRow>, currency: String, locale: Locale, onChange: (List<TaxFormRow>) -> Unit, onAdd: () -> Unit) {
+fun TaxBreakdownEditor(rows: List<TaxFormRow>, currency: String, locale: Locale, onChange: (List<TaxFormRow>) -> Unit, onAdd: () -> Unit, showDisclosure: Boolean = true) {
     var expanded: Boolean by rememberSaveable { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        TextButton(onClick = { expanded = !expanded }) {
+        if (showDisclosure) TextButton(enabled = LocalManualInputEnabled.current, onClick = { expanded = !expanded }) {
             Text(stringResource(if (rows.isEmpty()) R.string.taxes_add_breakdown else R.string.taxes_breakdown_count, rows.size))
         }
-        if (expanded) {
+        if (!showDisclosure || expanded) {
             Text(stringResource(R.string.taxes_help), style = MaterialTheme.typography.bodySmall)
             rows.forEachIndexed { index, row ->
                 fun update(value: TaxFormRow) { onChange(rows.toMutableList().apply { set(index, value) }) }
                 Card {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(row.name, { update(row.copy(name = it)) }, label = { Text(stringResource(R.string.taxes_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        OutlinedTextField(row.name, { update(row.copy(name = it)) }, enabled = LocalManualInputEnabled.current, label = { Text(stringResource(R.string.taxes_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                         TaxChoice(row.treatment, TaxTreatment.entries, { update(row.copy(treatment = it)) }) { treatment ->
                             stringResource(when (treatment) {
                                 TaxTreatment.TAXABLE -> R.string.taxes_taxable
@@ -47,18 +48,18 @@ fun TaxBreakdownEditor(rows: List<TaxFormRow>, currency: String, locale: Locale,
                         if (row.amount.isBlank()) row.parse(locale, currency)?.amount?.let {
                             Text(stringResource(R.string.taxes_calculated, LocalizedNumbers.format(it, locale), currency))
                         }
-                        TextButton(onClick = { onChange(rows.filterIndexed { position, _ -> position != index }) }) { Text(stringResource(R.string.taxes_remove)) }
+                        TextButton(enabled = LocalManualInputEnabled.current, onClick = { onChange(rows.filterIndexed { position, _ -> position != index }) }) { Text(stringResource(R.string.taxes_remove)) }
                     }
                 }
             }
-            TextButton(onClick = onAdd) { Text(stringResource(R.string.taxes_add)) }
+            TextButton(enabled = LocalManualInputEnabled.current, onClick = onAdd) { Text(stringResource(R.string.taxes_add)) }
         }
     }
 }
 
 @Composable
 private fun TaxInput(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier) {
-    OutlinedTextField(value, onChange, label = { Text(label) }, singleLine = true,
+    OutlinedTextField(value, onChange, enabled = LocalManualInputEnabled.current, label = { Text(label) }, singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = modifier)
 }
 
@@ -66,9 +67,9 @@ private fun TaxInput(value: String, onChange: (String) -> Unit, label: String, m
 private fun <T> TaxChoice(value: T, options: List<T>, onChange: (T) -> Unit, label: @Composable (T) -> String) {
     var expanded: Boolean by remember { mutableStateOf(false) }
     Box {
-        TextButton(onClick = { expanded = true }) { Text(label(value)) }
+        TextButton(enabled = LocalManualInputEnabled.current, onClick = { expanded = true }) { Text(label(value)) }
         DropdownMenu(expanded, { expanded = false }) {
-            options.forEach { option -> DropdownMenuItem(text = { Text(label(option)) }, onClick = { onChange(option); expanded = false }) }
+            options.forEach { option -> DropdownMenuItem(enabled = LocalManualInputEnabled.current, text = { Text(label(option)) }, onClick = { onChange(option); expanded = false }) }
         }
     }
 }
@@ -79,7 +80,7 @@ fun TaxBreakdownSummary(taxes: List<DocumentTax>, currency: String) {
     if (taxes.isEmpty()) return
     val locale: Locale = LocalConfiguration.current.locales[0]
     Column {
-        TextButton(onClick = { expanded = !expanded }) { Text(stringResource(R.string.taxes_breakdown_count, taxes.size)) }
+        TextButton(enabled = LocalManualInputEnabled.current, onClick = { expanded = !expanded }) { Text(stringResource(R.string.taxes_breakdown_count, taxes.size)) }
         if (expanded) taxes.forEach { tax ->
             val treatment: String = stringResource(when (tax.treatment) {
                 TaxTreatment.TAXABLE -> R.string.taxes_taxable

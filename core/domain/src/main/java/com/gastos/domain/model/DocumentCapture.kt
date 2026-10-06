@@ -68,8 +68,12 @@ data class DocumentEvidence(
     val derivedFields: Set<String> = emptySet(),
     val invalidFields: Set<String> = emptySet(),
     /** Candidate UUID and version explicitly confirmed as a distinct document. */
-    val distinctFrom: Set<String> = emptySet()
+    val distinctFrom: Set<String> = emptySet(),
+    val fieldOrigins: Map<String, DocumentFieldOrigin> = emptyMap()
 )
+
+@Serializable
+enum class DocumentFieldOrigin { EXTRACTED, MANUAL, PREFERENCE, CAPTURE, DERIVED, BANK, WALLET }
 
 object DocumentEvidenceCodec {
     val json: Json = Json { ignoreUnknownKeys = true; encodeDefaults = true }

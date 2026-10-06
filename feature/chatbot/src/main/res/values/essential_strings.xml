@@ -1,0 +1,5 @@
+<resources>
+    <string name="manual_expense">Gasto manual</string>
+    <string name="manual_income">Ingreso manual</string>
+    <string name="open_transaction">Ver movimiento</string>
+</resources>

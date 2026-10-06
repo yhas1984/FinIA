@@ -1,0 +1,4 @@
+<resources>
+    <string name="gemini_validation_unavailable">No se pudo comprobar la clave ahora. Tu configuración anterior se conserva; puedes reintentar.</string>
+    <string name="gemini_key_storage_failed">No se pudo guardar la configuración de Gemini. Vuelve a intentarlo.</string>
+</resources>

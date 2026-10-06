@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.gastos.common.design.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,12 +34,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+enum class SettingsPage { OVERVIEW, GEMINI, PREFERENCES, HELP }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToPremium: () -> Unit = {},
     onNavigateToBackup: () -> Unit = {},
+    onNavigateToAutomation: () -> Unit = {},
+    onNavigateToWallet: () -> Unit = {},
+    page: SettingsPage = SettingsPage.OVERVIEW,
+    onNavigateToSection: (SettingsPage) -> Unit = {},
+    onNavigateToPersonalize: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -45,32 +54,25 @@ fun SettingsScreen(
     val context = LocalContext.current
     val locale = LocalLocale.current.platformLocale
 
-    var showApiKeyDialog by remember { mutableStateOf(false) }
+    var showApiKeyDialog by rememberSaveable { mutableStateOf(false) }
+    var apiGuideStep by remember { mutableIntStateOf(0) }
     var apiKeyInput by remember { mutableStateOf(uiState.settings.geminiApiKey) }
     var showDeleteApiKeyConfirmation by remember { mutableStateOf(false) }
     var apiKeyDialogError by remember { mutableStateOf<String?>(null) }
 
     // El campo de instrucciones se sincroniza con el estado persistido en cada
     // carga (evita que quede vacío si las settings llegan asíncronamente).
-    var instructionsInput by remember(uiState.settings.systemInstructions) {
+    var instructionsInput by rememberSaveable(uiState.settings.systemInstructions) {
         mutableStateOf(uiState.settings.systemInstructions)
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        }
+        topBar = { EssentialHeader(stringResource(when (page) {
+            SettingsPage.OVERVIEW -> com.gastos.common.R.string.essential_settings
+            SettingsPage.GEMINI -> com.gastos.common.R.string.essential_gemini
+            SettingsPage.PREFERENCES -> com.gastos.common.R.string.essential_preferences
+            SettingsPage.HELP -> com.gastos.common.R.string.essential_help
+        }), onNavigateBack) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -78,6 +80,22 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(scrollState),
         ) {
+            if (page == SettingsPage.OVERVIEW) {
+                Surface(Modifier.fillMaxWidth()) { Column {
+                    EssentialRow(stringResource(com.gastos.common.R.string.essential_organization), stringResource(com.gastos.common.R.string.essential_organization_hint), Icons.Outlined.Category, onNavigateToAutomation)
+                    EssentialRow(stringResource(R.string.wallet_settings), null, Icons.Outlined.Payments, onNavigateToWallet)
+                    HorizontalDivider()
+                    EssentialRow(stringResource(com.gastos.common.R.string.essential_gemini), stringResource(com.gastos.common.R.string.essential_gemini_hint), Icons.Outlined.SmartToy, { onNavigateToSection(SettingsPage.GEMINI) })
+                    EssentialRow(stringResource(com.gastos.common.R.string.essential_data), stringResource(com.gastos.common.R.string.essential_data_hint), Icons.Outlined.Storage, onNavigateToBackup)
+                    HorizontalDivider()
+                    EssentialRow(stringResource(com.gastos.common.R.string.essential_personalize), stringResource(com.gastos.common.R.string.essential_personalize_hint), Icons.Outlined.DashboardCustomize, onNavigateToPersonalize)
+                    EssentialRow(stringResource(com.gastos.common.R.string.essential_preferences), stringResource(com.gastos.common.R.string.essential_preferences_hint), Icons.Outlined.Tune, { onNavigateToSection(SettingsPage.PREFERENCES) })
+                    HorizontalDivider()
+                    EssentialRow(stringResource(R.string.settings_premium_title), if (uiState.isPremium) stringResource(R.string.settings_premium_enabled) else stringResource(R.string.settings_premium_pitch), Icons.Outlined.StarBorder, onNavigateToPremium)
+                    EssentialRow(stringResource(com.gastos.common.R.string.essential_help), stringResource(com.gastos.common.R.string.essential_help_hint), Icons.Outlined.HelpOutline, { onNavigateToSection(SettingsPage.HELP) })
+                } }
+            }
+            if (page == SettingsPage.GEMINI) {
             // Sección IA
             SettingsSection(
                 title = stringResource(R.string.settings_ai_section),
@@ -134,10 +152,15 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                if (!showApiKeyDialog && uiState.apiKeyValidation == ApiKeyValidation.StorageError) {
+                    Text(stringResource(R.string.gemini_key_storage_failed), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
+                }
                 OutlinedButton(
                     onClick = {
                         apiKeyInput = uiState.settings.geminiApiKey
                         viewModel.resetApiKeyValidation()
+                        apiGuideStep = if (uiState.settings.geminiApiKey.isBlank()) 0 else 2
                         showApiKeyDialog = true
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -203,6 +226,9 @@ fun SettingsScreen(
                 }
             }
 
+            }
+
+            if (page == SettingsPage.PREFERENCES) {
             // Sección Apariencia
             SettingsSection(
                 title = stringResource(R.string.settings_appearance_section),
@@ -339,53 +365,9 @@ fun SettingsScreen(
                 }
             }
 
-            // Sección Premium
-            SettingsSection(
-                title = stringResource(R.string.settings_premium_title),
-                icon = if (uiState.isPremium) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                headerContent = {
-                    if (uiState.isPremium) {
-                        AssistChip(
-                            onClick = {},
-                            label = { Text(stringResource(R.string.settings_premium_chip)) },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            },
-                            colors = AssistChipDefaults.assistChipColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            )
-                        )
-                    }
-                }
-            ) {
-                if (uiState.isPremium) {
-                    Text(
-                        text = stringResource(R.string.settings_premium_enabled),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    Text(
-                        text = stringResource(R.string.settings_premium_pitch),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(
-                        onClick = onNavigateToPremium,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.see_premium))
-                    }
-                }
             }
 
+            if (page == SettingsPage.PREFERENCES) {
             SettingsSection(
                 title = stringResource(R.string.settings_floating_buttons_title),
                 icon = Icons.Outlined.OpenWith
@@ -407,29 +389,10 @@ fun SettingsScreen(
                 }
             }
 
-            // Sección Datos
-            SettingsSection(
-                title = stringResource(R.string.settings_data_title),
-                icon = Icons.Outlined.Storage
-            ) {
-                Text(
-                    text = stringResource(R.string.data_help),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = onNavigateToBackup,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Download, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.go_backup))
-                }
             }
 
             // Sección Debug (solo visible en builds debug)
-            if (uiState.isDebug) {
+            if (uiState.isDebug && page == SettingsPage.PREFERENCES) {
                 SettingsSection(
                     title = stringResource(R.string.settings_debug_title),
                     icon = Icons.Outlined.BugReport
@@ -458,6 +421,10 @@ fun SettingsScreen(
                 }
             }
 
+            if (page == SettingsPage.HELP) {
+                SettingsSection(stringResource(com.gastos.common.R.string.essential_help), Icons.Outlined.HelpOutline) {
+                    Text(stringResource(R.string.essential_help_body), style = MaterialTheme.typography.bodyMedium)
+                }
             // Footer
             Column(
                 modifier = Modifier
@@ -486,11 +453,13 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(32.dp))
             }
+            }
         }
     }
 
     // Diálogo API Key
     if (showApiKeyDialog) {
+        DisposableEffect(viewModel) { onDispose { viewModel.resetApiKeyValidation() } }
         AlertDialog(
             onDismissRequest = {
                 showApiKeyDialog = false
@@ -500,60 +469,25 @@ fun SettingsScreen(
             title = { Text(stringResource(R.string.settings_api_key_dialog_title)) },
             text = {
                 Column {
-                    Text(
-                        text = stringResource(R.string.settings_api_key_help_title),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = stringResource(R.string.settings_api_key_help_steps),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedButton(
-                        onClick = {
-                            apiKeyDialogError = openTrustedUrl(
-                                context = context,
-                                rawUrl = "https://aistudio.google.com/apikey",
-                                allowedHosts = setOf("aistudio.google.com")
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(stringResource(R.string.settings_open_google_ai_studio))
+                    Text(stringResource(R.string.gemini_guide_step, apiGuideStep + 1), style = MaterialTheme.typography.titleSmall)
+                    Spacer(Modifier.height(8.dp))
+                    when (apiGuideStep) {
+                        0 -> Text(stringResource(R.string.gemini_guide_why))
+                        1 -> {
+                            Text(stringResource(R.string.settings_api_key_help_steps))
+                            OutlinedButton(onClick = { apiKeyDialogError = openTrustedUrl(context, "https://aistudio.google.com/apikey", setOf("aistudio.google.com")) }) {
+                                Text(stringResource(R.string.settings_open_google_ai_studio))
+                            }
+                        }
+                        2 -> {
+                            Text(stringResource(R.string.gemini_guide_paste))
+                            OutlinedTextField(value = apiKeyInput, onValueChange = { apiKeyInput = it; viewModel.resetApiKeyValidation() },
+                                label = { Text(stringResource(R.string.settings_api_key_label)) }, singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+                        }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    apiKeyDialogError?.let { message ->
-                        Text(
-                            text = message,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-                    Text(
-                        text = stringResource(R.string.settings_gemini_note),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = apiKeyInput,
-                        onValueChange = {
-                            apiKeyInput = it
-                            viewModel.resetApiKeyValidation()
-                        },
-                        label = { Text(stringResource(R.string.settings_api_key_label)) },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
+                    apiKeyDialogError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (apiGuideStep > 0) TextButton(onClick = { apiGuideStep-- }) { Text(stringResource(R.string.back)) }
                     // Feedback de validación
                     when (val v = uiState.apiKeyValidation) {
                         ApiKeyValidation.None -> {}
@@ -589,15 +523,21 @@ fun SettingsScreen(
                                 )
                             }
                         }
+                        is ApiKeyValidation.Unavailable -> {
+                            Text(stringResource(R.string.gemini_validation_unavailable), style = MaterialTheme.typography.bodySmall)
+                            Text(v.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        ApiKeyValidation.StorageError -> Text(stringResource(R.string.gemini_key_storage_failed),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                     }
                 }
             },
             confirmButton = {
                 TextButton(
                     enabled = !uiState.isApiKeyValidating,
-                    onClick = { viewModel.updateGeminiApiKey(apiKeyInput) }
+                    onClick = { if (apiGuideStep < 2) apiGuideStep++ else viewModel.updateGeminiApiKey(apiKeyInput) }
                 ) {
-                    Text(if (uiState.isApiKeyValidating) stringResource(R.string.settings_api_key_validating_short) else stringResource(R.string.save))
+                    Text(if (apiGuideStep < 2) stringResource(R.string.gemini_guide_next) else if (uiState.isApiKeyValidating) stringResource(R.string.settings_api_key_validating_short) else stringResource(R.string.gemini_guide_validate))
                 }
             },
             dismissButton = {

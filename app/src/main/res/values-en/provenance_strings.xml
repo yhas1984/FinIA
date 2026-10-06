@@ -1,0 +1,4 @@
+<resources>
+    <string name="document_capture_date">Capture date: no readable date was found on the document.</string>
+    <string name="document_preference_currency">Preferences currency: it could not be read from the document.</string>
+</resources>

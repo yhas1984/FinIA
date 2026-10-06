@@ -1,0 +1,12 @@
+<resources>
+    <string name="movements_search">Buscar movimientos</string>
+    <string name="movements_search_hint">Comercio, concepto, número o notas</string>
+    <string name="movements_search_close">Limpiar y cerrar búsqueda</string>
+    <string name="movements_result_count">%1$d de %2$d movimientos · El total incluye todos los resultados</string>
+    <string name="movements_load_more">Mostrar más</string>
+    <string name="movements_no_results">No hay resultados para estos filtros</string>
+    <plurals name="movements_count">
+        <item quantity="one">%d movimiento</item>
+        <item quantity="other">%d movimientos</item>
+    </plurals>
+</resources>

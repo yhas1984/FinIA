@@ -34,7 +34,7 @@ class BackupReportUiTest {
                     val locale = Locale(language)
                     Locale.setDefault(locale)
                     activity.resources.updateConfiguration(Configuration(activity.resources.configuration).apply { setLocale(locale) }, activity.resources.displayMetrics)
-                    activity.setContent { MaterialTheme { BackupScreen(onNavigateBack = {}) } }
+                    activity.setContent { MaterialTheme { BackupScreen(onNavigateBack = {}, page = com.gastos.feature.backup.DataPage.REPORTS) } }
                 }
                 val export = if (language == "es") "Exportar informe" else "Export report"
                 compose.onNodeWithText(export).performScrollTo().assertIsDisplayed().performClick()

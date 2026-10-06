@@ -257,7 +257,7 @@ fun CalendarDayDetailSheet(
     movements: List<AnalyticsMovement>,
     balance: Double,
     fmt: (Double) -> String,
-    onOpenMovement: (Boolean, Long) -> Unit,
+    onOpenMovement: (AnalyticsMovement) -> Unit,
     onDismiss: () -> Unit
 ) {
     BackHandler(enabled = true, onBack = onDismiss)

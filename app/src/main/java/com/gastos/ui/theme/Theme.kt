@@ -1,6 +1,9 @@
 package com.gastos.ui.theme
 
 import android.app.Activity
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
+import com.gastos.common.design.EssentialLayout
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -10,43 +13,33 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 private val DarkColorScheme = darkColorScheme(
-    primary = ElectricViolet,
-    onPrimary = Color.Black,
-    primaryContainer = ElectricVioletContainer,
-    onPrimaryContainer = Color.White,
-    secondary = NeonEmerald,
-    onSecondary = Color.Black,
-    secondaryContainer = NeonEmeraldContainer,
-    onSecondaryContainer = Color.White,
-    background = ObsidianBackground,
-    onBackground = OnSurfaceText,
-    surface = ObsidianBackground,
-    onSurface = OnSurfaceText,
-    surfaceVariant = SurfaceHigh,
-    onSurfaceVariant = OnSurfaceText,
-    error = ErrorRed,
-    errorContainer = ErrorContainer,
-    outlineVariant = OutlineVariant
+    primary = Color(0xFFCDB7F7), onPrimary = Color(0xFF2B1947),
+    primaryContainer = Color(0xFF2D243E), onPrimaryContainer = Color(0xFFEADDFF),
+    secondary = Color(0xFF8BD6B1), onSecondary = Color(0xFF003923),
+    secondaryContainer = Color(0xFF2D243E), onSecondaryContainer = Color(0xFFEADDFF),
+    tertiary = Color(0xFF8BD6B1), tertiaryContainer = Color(0xFF193B2B),
+    background = Color(0xFF10131A), onBackground = Color(0xFFEFEBF5),
+    surface = Color(0xFF1D2026), onSurface = Color(0xFFEFEBF5),
+    surfaceVariant = Color(0xFF29252F), onSurfaceVariant = Color(0xFFBCB4C8),
+    surfaceContainerLowest = Color(0xFF10131A), surfaceContainerLow = Color(0xFF1D2026),
+    surfaceContainer = Color(0xFF1D2026), surfaceContainerHigh = Color(0xFF29252F),
+    surfaceContainerHighest = Color(0xFF29252F),
+    outlineVariant = Color(0xFF36303F), error = Color(0xFFFFB4AB), errorContainer = Color(0xFF57241F)
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF6750A4),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFE8DEF8),
-    onPrimaryContainer = Color(0xFF21005D),
-    secondary = Color(0xFF388E3C),
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFC8E6C9),
-    onSecondaryContainer = Color(0xFF1B5E20),
-    background = Color(0xFFFFFBFE),
-    onBackground = Color(0xFF1C1B1F),
-    surface = Color(0xFFFFFBFE),
-    onSurface = Color(0xFF1C1B1F),
-    surfaceVariant = Color(0xFFE7E0EC),
-    onSurfaceVariant = Color(0xFF49454F),
-    error = Color(0xFFBA1A1A),
-    errorContainer = Color(0xFFFFDAD6),
-    outlineVariant = Color(0xFFCAC4D0)
+    primary = Color(0xFF6750A4), onPrimary = Color.White,
+    primaryContainer = Color(0xFFF0EAF9), onPrimaryContainer = Color(0xFF3B2469),
+    secondary = Color(0xFF247154), onSecondary = Color.White,
+    secondaryContainer = Color(0xFFF0EAF9), onSecondaryContainer = Color(0xFF3B2469),
+    tertiary = Color(0xFF247154), tertiaryContainer = Color(0xFFE5F4EB),
+    background = Color(0xFFFCFAFF), onBackground = Color(0xFF25212E),
+    surface = Color.White, onSurface = Color(0xFF25212E),
+    surfaceVariant = Color(0xFFF3F0F7), onSurfaceVariant = Color(0xFF736C7E),
+    surfaceContainerLowest = Color.White, surfaceContainerLow = Color.White,
+    surfaceContainer = Color.White, surfaceContainerHigh = Color(0xFFF3F0F7),
+    surfaceContainerHighest = Color.White,
+    outlineVariant = Color(0xFFECE6F1), error = Color(0xFFB3261E), errorContainer = Color(0xFFFCE9E7)
 )
 
 @Composable
@@ -74,6 +67,12 @@ fun GastosEIngresosTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = Shapes(
+            small = EssentialLayout.fieldShape,
+            medium = EssentialLayout.cardShape,
+            large = EssentialLayout.cardShape,
+            extraLarge = RoundedCornerShape(24.dp)
+        ),
         content = content
     )
 }

@@ -168,17 +168,21 @@ class GeminiRestClient internal constructor(
             .joinToString("") { "%02x".format(it) }
         var step = 0
         var last: Exception? = null
+        val attemptedModels = mutableSetOf<String>()
         while (step < models.size) {
             currentCoroutineContext().ensureActive()
             val model = models[step]
             val cacheKey = "$keyFingerprint:$model"
             val pause = unavailableUntil[cacheKey]
-            if (isImageRequest(request) && pause != null && pause.untilNanos > System.nanoTime()) {
+            // Share known outages across chat, key validation and OCR. A bounded retry
+            // already budgeted by this operation is still allowed for transient failures.
+            if (model !in attemptedModels && pause != null && pause.untilNanos > System.nanoTime()) {
                 last = pause.failure
                 step++
                 continue
             }
             val started = System.nanoTime()
+            attemptedModels.add(model)
             try {
                 val remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime())
                 if (remainingMillis <= 0) throw GeminiApiException(408, "Gemini operation timed out")
@@ -205,7 +209,7 @@ class GeminiRestClient internal constructor(
                 if (!mayRetry() || failure.category in setOf(GeminiFailure.AUTH, GeminiFailure.BAD_REQUEST,
                         GeminiFailure.SAFETY, GeminiFailure.GLOBAL_QUOTA)) throw failure
                 last = failure
-                if (isImageRequest(request) && failure.category in setOf(GeminiFailure.DAILY_QUOTA, GeminiFailure.MODEL_UNAVAILABLE, GeminiFailure.RECOVERABLE)) {
+                if (failure.category in setOf(GeminiFailure.DAILY_QUOTA, GeminiFailure.MODEL_UNAVAILABLE, GeminiFailure.RECOVERABLE)) {
                     val cooldown = when (failure.category) {
                         GeminiFailure.DAILY_QUOTA, GeminiFailure.MODEL_UNAVAILABLE -> 300_000L
                         else -> 30_000L
@@ -263,8 +267,10 @@ class GeminiRestClient internal constructor(
             }
             var daily = false
             var global = false
+            var invalidCredential = false
             for (index in 0 until (details?.length() ?: 0)) {
                 val detail = details!!.optJSONObject(index) ?: continue
+                if (detail.optString("reason") in setOf("API_KEY_INVALID", "API_KEY_EXPIRED")) invalidCredential = true
                 detail.optString("retryDelay").removeSuffix("s").toDoubleOrNull()?.let { retry = maxOf(retry, (it * 1000).toLong()) }
                 val violations = detail.optJSONArray("violations")
                 for (v in 0 until (violations?.length() ?: 0)) {
@@ -277,7 +283,7 @@ class GeminiRestClient internal constructor(
                 }
             }
             val category = when {
-                status == 401 || status == 403 -> GeminiFailure.AUTH
+                status == 401 || status == 403 || invalidCredential -> GeminiFailure.AUTH
                 status == 400 -> GeminiFailure.BAD_REQUEST
                 status == 404 -> GeminiFailure.MODEL_UNAVAILABLE
                 status == 429 && global -> GeminiFailure.GLOBAL_QUOTA

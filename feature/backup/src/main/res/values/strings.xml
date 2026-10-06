@@ -229,4 +229,6 @@
     <string name="backup_image_unrecoverable">Una imagen no se puede recuperar. Exporta solo datos.</string>
     <string name="backup_image_count_limit">Hay demasiadas imágenes. Exporta solo datos.</string>
     <string name="backup_json_limit">Los datos superan el límite de 25 MiB.</string>
+    <string name="sheets_linked_workbook">Libro vinculado</string>
+    <string name="sheets_setup_workbook">Configura tu libro financiero</string>
 </resources>

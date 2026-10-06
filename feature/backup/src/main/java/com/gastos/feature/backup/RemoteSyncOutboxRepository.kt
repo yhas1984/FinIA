@@ -60,6 +60,14 @@ class RemoteSyncOutboxRepository @Inject constructor(
             if (preserveDeletes) merged += previous.values.filter {
                 (it.action != RemoteSyncAction.DELETE || !it.target.isDrive || it.deleteConsent && !it.accountId.isNullOrBlank()) &&
                 merged.none { replacement -> replacement.targetKey == it.targetKey } }
+            val present = wanted.map { it.target to it.documentUuid }.toSet()
+            sheetDeletes.filter { !it.target.isDrive && it.documentUuid.isNotBlank() &&
+                !it.accountId.isNullOrBlank() && !it.spreadsheetId.isNullOrBlank() &&
+                (it.target to it.documentUuid) !in present }.distinctBy { listOf(it.target.name, it.documentUuid, it.accountId, it.spreadsheetId) }.forEach { deletion ->
+                merged += RemoteSyncOutboxEntity("${deletion.target.name}:${deletion.accountId}:${deletion.spreadsheetId}:${deletion.documentUuid}",
+                    deletion.target, deletion.recordId, RemoteSyncAction.DELETE, documentUuid = deletion.documentUuid,
+                    accountId = deletion.accountId, spreadsheetId = deletion.spreadsheetId)
+            }
             dao.replaceAll(merged)
         }
         queue.schedule()
@@ -147,7 +155,7 @@ class RemoteSyncOutboxRepository @Inject constructor(
         if (isCurrent(item)) block() else null
 
     companion object {
-        private val AUTH_ERRORS = setOf("SHEETS_OTHER_DEVICE", "AUTH_REQUIRED", "WRONG_ACCOUNT", "PREMIUM_REQUIRED", "AUTH_OR_LINK_REQUIRED",
+        private val AUTH_ERRORS = setOf("SHEETS_RECOVERY_PAUSED", "SHEETS_OTHER_DEVICE", "AUTH_REQUIRED", "WRONG_ACCOUNT", "PREMIUM_REQUIRED", "AUTH_OR_LINK_REQUIRED",
             "AUTH_RECOVERABLE", "AUTH_PERMANENT", "PLAY_SERVICES", "PERMISSION_REQUIRED")
         val RETRY_DELAYS = listOf(30_000L, 120_000L, 600_000L, 3_600_000L, 21_600_000L)
     }

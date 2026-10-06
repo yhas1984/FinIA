@@ -4,4 +4,8 @@
     <string name="document_chat_income">Income recorded</string>
     <string name="document_chat_reference">Reference: %1$s</string>
     <string name="document_chat_period_date">Accounting date: period end. Payment date not stated.</string>
+    <string name="movement_updated">Movement updated.</string>
+    <string name="amount_manually_adjusted">Amount manually adjusted. Original breakdown retained.</string>
+    <string name="movement_undo_success">Change undone.</string>
+<string name="wallet_event_date">Wallet payment notification date; does not confirm an invoice date.</string>
 </resources>

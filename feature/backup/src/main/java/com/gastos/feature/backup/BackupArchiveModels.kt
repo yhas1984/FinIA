@@ -14,7 +14,7 @@ import com.gastos.storage.InvoiceImageStorage
 import kotlinx.serialization.Serializable
 
 internal const val LEGACY_BACKUP_FORMAT_VERSION = 1
-internal const val BACKUP_FORMAT_VERSION = 3
+internal const val BACKUP_FORMAT_VERSION = 4
 @Serializable
 enum class BackupMode { DATA_ONLY, COMPLETE }
 
@@ -56,7 +56,10 @@ data class CloudBackupInfo(
     val name: String,
     val createdAt: Long,
     val sizeBytes: Long,
-    val preview: BackupPreview
+    val preview: BackupPreview,
+    val accountKey: String = "",
+    val recoveredUpload: Boolean = false,
+    val maintenancePending: Boolean = false
 )
 
 @Serializable
@@ -69,6 +72,7 @@ internal data class BackupPayloadDto(
     val fiscalConfigs: List<FiscalConfigDto>,
     val chatMessages: List<ChatMessageDto>,
     val settings: RestorableSettingsDto,
+    val automation: com.gastos.domain.model.AutomationData = com.gastos.domain.model.AutomationData(),
     val commandOperations: List<com.gastos.domain.model.CommandOperation> = emptyList()
 ) {
     val imageFileNames: Set<String>
@@ -81,12 +85,16 @@ internal data class BackupPayloadDto(
         incomes = incomes.map { it.toDomain(restoredImages) },
         fiscalConfigs = fiscalConfigs.map(FiscalConfigDto::toDomain),
         chatMessages = chatMessages.map(ChatMessageDto::toDomain),
+        automation = automation,
         commandOperations = commandOperations
     )
 }
 
 @Serializable
 internal data class InvoiceDto(
+    val categoryId: String? = null, val subcategoryId: String? = null,
+    val sourceMimeType: String? = null, val sourceName: String? = null,
+    val origin: String = "MANUAL", val manualAmountAdjusted: Boolean = false, val financialRevision: Long = 0,
     val documentUuid: String = java.util.UUID.randomUUID().toString(),
     val evidence: com.gastos.domain.model.DocumentEvidence? = null,
     val driveAccountId: String? = null,
@@ -120,6 +128,8 @@ internal data class InvoiceDto(
     val taxes: List<com.gastos.domain.model.DocumentTax> = emptyList()
 ) {
     fun toDomain(images: Map<String, String>): Invoice = Invoice(
+        categoryId = categoryId, subcategoryId = subcategoryId, sourceMimeType = sourceMimeType, sourceName = sourceName,
+        origin = origin, manualAmountAdjusted = manualAmountAdjusted, financialRevision = financialRevision,
         taxes = taxes,
         documentUuid = documentUuid,
         evidence = evidence,
@@ -184,6 +194,9 @@ internal data class ProductDto(
 
 @Serializable
 internal data class IncomeDto(
+    val categoryId: String? = null, val subcategoryId: String? = null,
+    val sourceMimeType: String? = null, val sourceName: String? = null,
+    val origin: String = "MANUAL", val manualAmountAdjusted: Boolean = false, val financialRevision: Long = 0,
     val documentUuid: String = java.util.UUID.randomUUID().toString(),
     val evidence: com.gastos.domain.model.DocumentEvidence? = null,
     val driveAccountId: String? = null,
@@ -212,6 +225,8 @@ internal data class IncomeDto(
     val taxes: List<com.gastos.domain.model.DocumentTax> = emptyList()
 ) {
     fun toDomain(images: Map<String, String>): Income = Income(
+        categoryId = categoryId, subcategoryId = subcategoryId, sourceMimeType = sourceMimeType, sourceName = sourceName,
+        origin = origin, manualAmountAdjusted = manualAmountAdjusted, financialRevision = financialRevision,
         taxes = taxes,
         documentUuid = documentUuid,
         evidence = evidence,
@@ -331,9 +346,13 @@ internal fun BackupDataset.toDto(
     imageStorage: InvoiceImageStorage,
     mode: BackupMode = BackupMode.COMPLETE
 ): BackupPayloadDto = BackupPayloadDto(
+    automation = automation.copy(records = automation.records.filter { it.type != "SYNC" }),
     createdAt = createdAt,
     invoices = invoices.map { invoice ->
         InvoiceDto(
+            categoryId = invoice.categoryId, subcategoryId = invoice.subcategoryId,
+            sourceMimeType = invoice.sourceMimeType, sourceName = invoice.sourceName,
+            origin = invoice.origin, manualAmountAdjusted = invoice.manualAmountAdjusted, financialRevision = invoice.financialRevision,
             taxes = invoice.taxes,
             documentUuid = invoice.documentUuid,
             evidence = invoice.evidence,
@@ -384,6 +403,9 @@ internal fun BackupDataset.toDto(
     },
     incomes = incomes.map { income ->
         IncomeDto(
+            categoryId = income.categoryId, subcategoryId = income.subcategoryId,
+            sourceMimeType = income.sourceMimeType, sourceName = income.sourceName,
+            origin = income.origin, manualAmountAdjusted = income.manualAmountAdjusted, financialRevision = income.financialRevision,
             taxes = income.taxes,
             documentUuid = income.documentUuid,
             evidence = income.evidence,

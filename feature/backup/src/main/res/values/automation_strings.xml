@@ -1,0 +1,8 @@
+<resources><string name="view_document_source">Ver documento</string><string name="report_filters">Filtros del informe</string>
+<string name="report_all_records">Todos</string>
+<string name="report_start">Desde (AAAA-MM-DD, opcional)</string>
+<string name="report_end">Hasta (AAAA-MM-DD, opcional)</string>
+<string name="report_type">Tipo</string>
+<string name="report_invalid_period">Revisa las fechas y el orden del periodo.</string>
+<string name="report_manual_adjustment">Importe ajustado manualmente; se conserva el desglose original.</string>
+</resources>

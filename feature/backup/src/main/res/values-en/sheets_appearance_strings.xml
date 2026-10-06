@@ -1,0 +1,7 @@
+<resources>
+    <string name="sheets_appearance_failed">The workbook design could not be updated: %1$s</string>
+    <string name="sheets_reset_appearance">Reset FinAI design</string>
+    <string name="sheets_applying_appearance">Updating workbook design…</string>
+    <string name="sheets_retry_appearance">Retry design</string>
+    <string name="sheets_error_appearance_memory">There is not enough memory to apply this workbook design. Close other apps and retry.</string>
+</resources>

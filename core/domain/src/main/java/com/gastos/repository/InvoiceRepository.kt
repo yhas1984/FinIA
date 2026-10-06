@@ -4,8 +4,12 @@ import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
 import com.gastos.domain.model.Product
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import com.gastos.domain.model.MovementListEntry
+import com.gastos.domain.model.listEntry
 
 interface InvoiceRepository {
+    fun observeListEntries(): Flow<List<MovementListEntry>> = getAllInvoices().map { rows -> rows.map { it.listEntry() } }
     fun getAllInvoices(): Flow<List<Invoice>>
     fun getInvoicesByType(type: InvoiceType): Flow<List<Invoice>>
     fun getInvoicesByDateRange(startDate: Long, endDate: Long): Flow<List<Invoice>>

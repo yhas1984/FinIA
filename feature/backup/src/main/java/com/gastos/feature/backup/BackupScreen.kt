@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,8 @@ import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.gastos.common.design.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -30,27 +33,42 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.text.SimpleDateFormat
 import java.util.*
 
+enum class DataPage { OVERVIEW, SHEETS, DRIVE, COPIES, REPORTS }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BackupScreen(
     onNavigateBack: () -> Unit,
     onNavigateToPremium: () -> Unit = {},
+    page: DataPage = DataPage.OVERVIEW,
+    onNavigateToSection: (DataPage) -> Unit = {},
+    onNavigateToBank: () -> Unit = {},
     viewModel: BackupViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    BackHandler(enabled = uiState.isRestoring) { /* Restore cancellation uses its explicit progress action. */ }
     val context = LocalContext.current
     val locale = LocalLocale.current.platformLocale
-    var showReportDialog by remember { mutableStateOf(false) }
-    var reportFormat by remember { mutableStateOf(ReportFormat.CSV) }
-    var showSheetsAdvanced by remember { mutableStateOf(false) }
-    var confirmSheetsAction by remember { mutableStateOf<String?>(null) }
-    var exportMode by remember { mutableStateOf(BackupMode.DATA_ONLY) }
-    var showPasswordSetup by remember { mutableStateOf(false) }
+    var showReportDialog by rememberSaveable { mutableStateOf(false) }
+    val reportCategories by viewModel.reportCategories.collectAsStateWithLifecycle()
+    var reportFilter by rememberSaveable(stateSaver = androidx.compose.runtime.saveable.listSaver(
+        save = { listOf(it.startInclusive ?: -1L, it.endExclusive ?: -1L, it.kind?.name.orEmpty(), it.category.orEmpty(), it.subcategory.orEmpty()) },
+        restore = { com.gastos.domain.model.ReportFilter((it[0] as Long).takeIf { v -> v != -1L }, (it[1] as Long).takeIf { v -> v != -1L },
+            (it[2] as String).takeIf(String::isNotEmpty)?.let(com.gastos.domain.model.DocumentKind::valueOf), (it[3] as String).takeIf(String::isNotEmpty), (it[4] as String).takeIf(String::isNotEmpty)) }
+    )) { mutableStateOf(viewModel.reportFilter) }
+    var reportFilterValid by rememberSaveable { mutableStateOf(true) }
+    LaunchedEffect(showReportDialog) { if (showReportDialog) viewModel.loadReportCategories() }
+    var reportDetail by rememberSaveable { mutableStateOf(ReportDetail.SUMMARY) }
+    var reportFormat by rememberSaveable { mutableStateOf(ReportFormat.CSV) }
+    var showSheetsAdvanced by rememberSaveable { mutableStateOf(false) }
+    var confirmSheetsAction by rememberSaveable { mutableStateOf<String?>(null) }
+    var exportMode by rememberSaveable { mutableStateOf(BackupMode.DATA_ONLY) }
+    var showPasswordSetup by rememberSaveable { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
     var passwordConfirmation by remember { mutableStateOf("") }
     var passwordValidationError by remember { mutableStateOf<String?>(null) }
     var restorePassword by remember { mutableStateOf("") }
-    var showDeleteCloudConfirmation by remember { mutableStateOf(false) }
+    var showDeleteCloudConfirmation by rememberSaveable { mutableStateOf(false) }
     var externalLinkError by remember { mutableStateOf<String?>(null) }
 
     val exportBackupLauncher = rememberLauncherForActivityResult(
@@ -91,7 +109,17 @@ fun BackupScreen(
     if (showReportDialog) {
         AlertDialog(onDismissRequest = { showReportDialog = false }, title = { Text(stringResource(R.string.export_report)) },
             text = {
-                Column {
+                Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+                    ReportFilters(reportCategories, reportFilter) { filter, valid -> reportFilter = filter; reportFilterValid = valid }
+                    TextButton(onClick = { viewModel.reportFilter = reportFilter; viewModel.reportDetail = reportDetail; showReportDialog = false; viewModel.previewReport(context, reportFormat) }, enabled = reportFilterValid) {
+                        Text(stringResource(com.gastos.common.R.string.essential_preview))
+                    }
+                    if (reportFormat == ReportFormat.PDF) ReportDetail.entries.forEach { detail ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = reportDetail == detail, onClick = { reportDetail = detail })
+                            Text(stringResource(if (detail == ReportDetail.SUMMARY) R.string.report_detail_summary else R.string.report_detail_full))
+                        }
+                    }
                     ReportFormat.entries.forEach { format ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = reportFormat == format, onClick = { reportFormat = format })
@@ -101,13 +129,38 @@ fun BackupScreen(
                 }
             }, confirmButton = {
                 TextButton(onClick = {
+                    viewModel.reportFilter = reportFilter
+                    viewModel.reportDetail = reportDetail
                     showReportDialog = false
                     val name = "finai_report_${System.currentTimeMillis()}.${reportFormat.extension}"
                     if (reportFormat == ReportFormat.CSV) exportCsvLauncher.launch(name) else exportPdfLauncher.launch(name)
-                }) { Text(stringResource(R.string.save_report)) }
+                }, enabled = reportFilterValid) { Text(stringResource(R.string.save_report)) }
             }, dismissButton = {
-                TextButton(onClick = { showReportDialog = false; viewModel.shareReport(context, reportFormat) }) { Text(stringResource(R.string.share_report)) }
+                TextButton(onClick = { viewModel.reportFilter = reportFilter; viewModel.reportDetail = reportDetail; showReportDialog = false; viewModel.shareReport(context, reportFormat) }, enabled = reportFilterValid) { Text(stringResource(R.string.share_report)) }
             })
+    }
+    uiState.sheetsRecoverySnapshots?.let { snapshots ->
+        if (uiState.sheetsRecoveryPreview == null) AlertDialog(onDismissRequest = viewModel::dismissSheetsRecovery,
+            title = { Text(stringResource(R.string.sheets_recovery_title)) },
+            text = { Column {
+                if (snapshots.isEmpty()) Text(stringResource(R.string.sheets_recovery_empty))
+                snapshots.forEach { snapshot -> TextButton(onClick = { viewModel.previewSheetsRecovery(snapshot) }, enabled = !uiState.sheetsRecoveryLoading) {
+                    Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(snapshot.createdAt)))
+                } }
+                if (uiState.sheetsRecoveryLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                uiState.sheetsError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            } }, confirmButton = { TextButton(onClick = viewModel::dismissSheetsRecovery, enabled = !uiState.sheetsRecoveryLoading) { Text(stringResource(R.string.cancel_action)) } })
+    }
+    uiState.sheetsRecoveryPreview?.let { preview ->
+        AlertDialog(onDismissRequest = viewModel::dismissSheetsRecovery,
+            title = { Text(stringResource(R.string.sheets_recovery_title)) },
+            text = { Column {
+                Text(stringResource(R.string.sheets_recovery_scope, preview.restoredRows, preview.removedRows))
+                Text(stringResource(R.string.sheets_recovery_pause))
+                if (uiState.sheetsRecoveryLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                uiState.sheetsError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            } }, confirmButton = { TextButton(onClick = viewModel::restoreSheetsRecovery, enabled = !uiState.sheetsRecoveryLoading) { Text(stringResource(R.string.sheets_recovery_apply)) } },
+            dismissButton = { TextButton(onClick = viewModel::dismissSheetsRecovery, enabled = !uiState.sheetsRecoveryLoading) { Text(stringResource(R.string.cancel_action)) } })
     }
     confirmSheetsAction?.let { action ->
         AlertDialog(onDismissRequest = { confirmSheetsAction = null },
@@ -121,20 +174,13 @@ fun BackupScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.backup_screen_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack, enabled = !uiState.isRestoring) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            )
-        }
+        topBar = { EssentialHeader(stringResource(when (page) {
+            DataPage.OVERVIEW -> com.gastos.common.R.string.essential_data
+            DataPage.SHEETS -> com.gastos.common.R.string.essential_sheets
+            DataPage.DRIVE -> com.gastos.common.R.string.essential_drive
+            DataPage.COPIES -> com.gastos.common.R.string.essential_copies
+            DataPage.REPORTS -> com.gastos.common.R.string.essential_reports
+        }), { if (!uiState.isRestoring) onNavigateBack() }) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -156,8 +202,64 @@ fun BackupScreen(
                     )
                 }
             }
-            ImageSyncStatusPanel()
+            if (page == DataPage.OVERVIEW) {
+                EssentialRow(stringResource(com.gastos.common.R.string.bank_statements_title), stringResource(com.gastos.common.R.string.bank_statements_hint), Icons.Default.AccountBalance, onNavigateToBank)
+                Surface(shape = MaterialTheme.shapes.large) { Column {
+                    EssentialRow(stringResource(com.gastos.common.R.string.essential_sheets), stringResource(com.gastos.common.R.string.essential_sheets_hint), Icons.Default.TableChart, { onNavigateToSection(DataPage.SHEETS) })
+                    HorizontalDivider()
+                    EssentialRow(stringResource(com.gastos.common.R.string.essential_drive), stringResource(com.gastos.common.R.string.essential_drive_hint), Icons.Default.CloudQueue, { onNavigateToSection(DataPage.DRIVE) })
+                    HorizontalDivider()
+                    EssentialRow(stringResource(com.gastos.common.R.string.essential_copies), stringResource(com.gastos.common.R.string.essential_copies_hint), Icons.Default.Lock, { onNavigateToSection(DataPage.COPIES) })
+                    HorizontalDivider()
+                    EssentialRow(stringResource(com.gastos.common.R.string.essential_reports), stringResource(com.gastos.common.R.string.essential_reports_hint), Icons.Default.Description, { onNavigateToSection(DataPage.REPORTS) })
+                } }
+            }
+            if (page == DataPage.OVERVIEW || page == DataPage.DRIVE ||
+                (uiState.isSignedIn && (page == DataPage.SHEETS || page == DataPage.COPIES))) {
+            // Cuenta Google compartida por Drive y Sheets
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(stringResource(R.string.google_account_section), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (uiState.isSignedIn) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(stringResource(R.string.google_connected))
+                                Text(uiState.email.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        if (page == DataPage.OVERVIEW || page == DataPage.DRIVE) TextButton(onClick = viewModel::signOut, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.google_sign_out))
+                        }
+                    } else {
+                        Text(
+                            stringResource(R.string.google_connect_backup_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = { signInLauncher.launch(viewModel.getSignInIntent()) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.google_sign_in))
+                        }
+                    }
+                }
+            }
 
+            }
+
+            if (page == DataPage.DRIVE) ImageSyncStatusPanel()
+            if (page == DataPage.COPIES && uiState.isLoading && !uiState.isRestoring) LinearProgressIndicator(Modifier.fillMaxWidth())
+
+            if (page == DataPage.COPIES) {
             // Backup portable cifrado
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -167,12 +269,6 @@ fun BackupScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(R.string.backup_encrypted_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
                     if (!uiState.isBackupKeyConfigured) {
                         Button(onClick = { showPasswordSetup = true }, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.Password, contentDescription = null)
@@ -187,7 +283,6 @@ fun BackupScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text(stringResource(R.string.backup_mode_help))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         RadioButton(selected = exportMode == BackupMode.DATA_ONLY, onClick = { exportMode = BackupMode.DATA_ONLY })
                         Text(stringResource(R.string.backup_mode_data))
@@ -217,6 +312,10 @@ fun BackupScreen(
                             Text(stringResource(R.string.restore))
                         }
                     }
+                    EssentialSection(stringResource(com.gastos.common.R.string.essential_how_it_works)) {
+                        Text(stringResource(R.string.backup_encrypted_description), style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(R.string.backup_mode_help), style = MaterialTheme.typography.bodySmall)
+                    }
                     Text(
                         text = stringResource(R.string.keep_password_safe_warning),
                         style = MaterialTheme.typography.bodySmall,
@@ -226,54 +325,20 @@ fun BackupScreen(
                 }
             }
 
-            // Cuenta Google compartida por Drive y Sheets
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(stringResource(R.string.google_account_section), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    if (uiState.isSignedIn) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(stringResource(R.string.google_connected))
-                                Text(uiState.email.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        TextButton(onClick = viewModel::signOut, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.google_sign_out))
-                        }
-                    } else {
-                        Text(
-                            stringResource(R.string.google_connect_backup_hint),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = { signInLauncher.launch(viewModel.getSignInIntent()) },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.google_sign_in))
-                        }
-                    }
-                }
             }
 
+            if (page == DataPage.COPIES) {
             // Backup automático Premium
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(stringResource(R.string.drive_backup_section), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        stringResource(R.string.drive_backup_description),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 12.dp)
-                    )
+                    uiState.cloudBackupStatus.lastSuccessAt?.let { timestamp ->
+                        Text(stringResource(R.string.last_backup_prefix, SimpleDateFormat("dd/MM/yyyy HH:mm", locale).format(Date(timestamp))),
+                            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 8.dp))
+                    }
+                    EssentialSection(stringResource(com.gastos.common.R.string.essential_how_it_works)) {
+                        Text(stringResource(R.string.drive_backup_description), style = MaterialTheme.typography.bodySmall)
+                    }
                     when {
                         !uiState.isPremium -> Button(onClick = onNavigateToPremium, modifier = Modifier.fillMaxWidth()) {
                             Icon(Icons.Default.Lock, contentDescription = null)
@@ -289,6 +354,11 @@ fun BackupScreen(
                             modifier = Modifier.fillMaxWidth()
                         ) { Text(stringResource(R.string.configure_recovery_password_action)) }
                         else -> {
+                            if (uiState.cloudBackupStatus.needsConsentConfirmation) {
+                                Text(stringResource(R.string.cloud_confirm_legacy_account),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(bottom = 8.dp))
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -315,13 +385,6 @@ fun BackupScreen(
                                     Text(stringResource(R.string.create_backup))
                                 }
 
-                            }
-                            uiState.cloudBackupStatus.lastSuccessAt?.let { timestamp ->
-                                Text(
-                                    stringResource(R.string.last_backup_prefix, SimpleDateFormat("dd/MM/yyyy HH:mm", locale).format(Date(timestamp))),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(top = 8.dp)
-                                )
                             }
                             uiState.cloudBackupStatus.lastError?.let { message ->
                                 Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -357,22 +420,21 @@ fun BackupScreen(
                 }
             }
 
+            }
+
+            if (page == DataPage.SHEETS) {
             // Exportación a Google Sheets
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = stringResource(R.string.google_sheets_section),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(R.string.google_sheets_description_localized),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-
+                    Text(stringResource(if (uiState.hasSheetLink) R.string.sheets_linked_workbook else R.string.sheets_setup_workbook),
+                        style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    if (uiState.hasSheetLink) {
+                        Text(stringResource(R.string.sheets_queue_state, uiState.sheetsPending, uiState.sheetsFailed), style = MaterialTheme.typography.bodySmall)
+                        if (uiState.sheetsSynced && uiState.sheetsPending == 0 && uiState.sheetsFailed == 0 && uiState.sheetsError == null && uiState.sheetsSyncError == null)
+                            Text(stringResource(R.string.sheets_all_synced), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                        Spacer(Modifier.height(8.dp))
+                    }
                     if (!uiState.isPremium) {
                         Button(
                             onClick = onNavigateToPremium,
@@ -401,14 +463,7 @@ fun BackupScreen(
                                 Spacer(Modifier.width(8.dp))
                                 Text(stringResource(if (uiState.isExportingSheets) R.string.sheets_syncing_changes else R.string.sync_changes))
                             }
-                            TextButton(onClick = { showSheetsAdvanced = !showSheetsAdvanced }) { Text(stringResource(R.string.sheets_advanced)) }
-                            if (showSheetsAdvanced) {
-                                TextButton(onClick = { confirmSheetsAction = "rebuild" }, enabled = !uiState.isExportingSheets) { Text(stringResource(R.string.sheets_rebuild)) }
-                                TextButton(onClick = { confirmSheetsAction = "takeover" }, enabled = !uiState.isExportingSheets) { Text(stringResource(R.string.sheets_takeover)) }
-                            }
-                            Text(stringResource(R.string.sheets_queue_state, uiState.sheetsPending, uiState.sheetsFailed), style = MaterialTheme.typography.bodySmall)
-                            if (uiState.sheetsSynced && uiState.sheetsPending == 0 && uiState.sheetsFailed == 0)
-                                Text(stringResource(R.string.sheets_all_synced), style = MaterialTheme.typography.bodySmall)
+                            if (uiState.sheetsRecoveryPaused) Text(stringResource(R.string.sheets_recovery_pause), style = MaterialTheme.typography.bodySmall)
 
                         } else {
                             Button(
@@ -431,37 +486,43 @@ fun BackupScreen(
                         }
                     }
 
+                    if (uiState.appearanceApplying) Text(stringResource(R.string.sheets_applying_appearance), style = MaterialTheme.typography.bodySmall)
+                    uiState.appearanceError?.let { message ->
+                        Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { viewModel.retrySheetsAppearance() }, enabled = !uiState.appearanceApplying && !uiState.isExportingSheets) { Text(stringResource(R.string.sheets_retry_appearance)) }
+                    }
                     (uiState.sheetsError ?: uiState.sheetsSyncError)?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     // Persistent workbook access is independent of the last sync result.
                     uiState.sheetsUrl?.let { url ->
                         Spacer(modifier = Modifier.height(12.dp))
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            )
+                        OutlinedButton(
+                            onClick = { externalLinkError = openTrustedUrl(context = context, rawUrl = url, allowedHosts = setOf("docs.google.com")) },
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-
-                                OutlinedButton(
-                                    onClick = {
-                                        externalLinkError = openTrustedUrl(
-                                            context = context,
-                                            rawUrl = url,
-                                            allowedHosts = setOf("docs.google.com")
-                                        )
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(R.string.open_in_google_sheets_action))
-                                }
-                            }
+                            Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(R.string.open_in_google_sheets_action))
                         }
                     }
+                    EssentialSection(stringResource(com.gastos.common.R.string.essential_how_it_works)) {
+                        Text(stringResource(R.string.google_sheets_description_localized), style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (uiState.isSignedIn && uiState.isPremium && uiState.hasSheetLink) {
+                            TextButton(onClick = { showSheetsAdvanced = !showSheetsAdvanced }) { Text(stringResource(R.string.sheets_advanced)) }
+                            if (showSheetsAdvanced) {
+                                TextButton(onClick = viewModel::loadSheetsRecovery, enabled = !uiState.isExportingSheets && !uiState.sheetsRecoveryLoading) { Text(stringResource(R.string.sheets_recovery_title)) }
+                                TextButton(onClick = { viewModel.retrySheetsAppearance(reset = true) }, enabled = !uiState.isExportingSheets && !uiState.appearanceApplying) { Text(stringResource(R.string.sheets_reset_appearance)) }
+                                TextButton(onClick = { confirmSheetsAction = "rebuild" }, enabled = !uiState.isExportingSheets) { Text(stringResource(R.string.sheets_rebuild)) }
+                                TextButton(onClick = { confirmSheetsAction = "takeover" }, enabled = !uiState.isExportingSheets) { Text(stringResource(R.string.sheets_takeover)) }
+                            }
+                    }
+
                 }
             }
 
+            }
+
+            if (page == DataPage.COPIES) {
             // Resultado del backup
             uiState.backupResult?.let { result ->
                 Card(
@@ -484,6 +545,9 @@ fun BackupScreen(
                 }
             }
 
+            }
+
+            if (page == DataPage.REPORTS) {
             // Exportar datos
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -511,6 +575,9 @@ fun BackupScreen(
                 }
             }
 
+            }
+
+            if (page == DataPage.REPORTS) {
             // Resultado de exportación
             uiState.exportResult?.let { result ->
                 Card(
@@ -533,8 +600,10 @@ fun BackupScreen(
                 }
             }
 
+            }
+
             // Error
-            uiState.error?.let { error ->
+            uiState.error?.takeIf { page == DataPage.COPIES || page == DataPage.OVERVIEW }?.let { error ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -635,7 +704,11 @@ fun BackupScreen(
                         enabled = running == null,
                         singleLine = true
                     )
-                    if (running != null) {
+                    uiState.restoreSheetsImpact?.let { impact ->
+                        Text(stringResource(R.string.restore_sheets_scope, impact.expenses, impact.incomes))
+                        Text("https://docs.google.com/spreadsheets/d/${impact.workbookId}/edit", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (running != null && uiState.restoreSheetsImpact == null) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -647,7 +720,9 @@ fun BackupScreen(
                 }
             },
             confirmButton = {
-                if (running == null) {
+                if (uiState.restoreSheetsImpact != null) {
+                    TextButton(onClick = viewModel::confirmRestoreSheets) { Text(stringResource(R.string.restore_sheets_confirm)) }
+                } else if (running == null) {
                     TextButton(
                         onClick = {
                             viewModel.restorePendingBackup(context, restorePassword)

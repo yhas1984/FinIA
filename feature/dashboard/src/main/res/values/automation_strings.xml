@@ -1,0 +1,7 @@
+<resources>
+<string name="monthly_limits">Límites mensuales</string>
+<string name="no_monthly_limits">Configura tus límites por categoría en Ajustes.</string>
+<string name="limit_partial">Total parcial: %1$d movimientos sin tasa.</string>
+<string name="limit_remaining">Disponible: %1$s</string>
+<string name="limit_exceeded">Superado en %1$s</string>
+</resources>

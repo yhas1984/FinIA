@@ -45,7 +45,7 @@ fun AnalyticsDrillDownSheet(
     fmt: (Double) -> String,
     onBack: () -> Unit,
     onSelectSubcategory: (String?) -> Unit,
-    onOpenMovement: (Boolean, Long) -> Unit,
+    onOpenMovement: (AnalyticsMovement) -> Unit,
     onDismiss: () -> Unit
 ) {
     val isMovementLevel = selectedSubcategory != null
@@ -213,7 +213,7 @@ internal fun MovementList(
     movements: List<AnalyticsMovement>,
     fmt: (Double) -> String,
     emptyText: String = "",
-    onOpenMovement: (Boolean, Long) -> Unit
+    onOpenMovement: (AnalyticsMovement) -> Unit
 ) {
     if (movements.isEmpty()) {
         Text(
@@ -237,7 +237,7 @@ internal fun MovementList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable { onOpenMovement(movement.isExpense, movement.id) }
+                    .clickable { onOpenMovement(movement) }
                     .padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

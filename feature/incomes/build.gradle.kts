@@ -25,6 +25,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.kotlinx.serialization.json)
     // Compose
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

@@ -27,7 +27,10 @@ data class CaptureUiState(
     val duplicates: List<DuplicateMatch> = emptyList(),
     val busy: Boolean = false,
     val message: String? = null,
-    val saved: DocumentIdentity? = null
+    val saved: DocumentIdentity? = null,
+    val walletChoices: List<Invoice> = emptyList(),
+    val bankIncomeChoices: List<Income> = emptyList(),
+    val enrichmentConflict: CaptureSave.Conflict? = null
 )
 
 @HiltViewModel
@@ -47,9 +50,58 @@ class DocumentCaptureViewModel @Inject constructor(
         viewModelScope.launch { store.indexExistingImages() }
     }
 
+    fun registerSeparateDocument() {
+        val selected = state.value.selected ?: return
+        val evidence = state.value.evidence ?: return
+        launchOperation { save(selected.uuid, evidence) }
+    }
+    fun attachWalletReceipt(wallet: Invoice, keepExisting: Boolean? = null) {
+        val selected = state.value.selected ?: return
+        val evidence = state.value.evidence ?: return
+        launchOperation {
+            when (val saved = store.attachReceipt(selected.uuid, evidence, wallet, keepExisting)) {
+                is CaptureSave.Saved -> {
+                    mutableState.update { it.copy(enrichmentConflict = null, selected = null, evidence = null, walletChoices = emptyList(), bankIncomeChoices = emptyList(),
+                        saved = saved.invoice?.documentIdentity(), message = context.getString(R.string.capture_saved)) }
+                    viewModelScope.launch {
+                        try { saved.invoice?.let { sheets.upsertExpense(it) } }
+                        catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { /* The durable sync intent recovers remote enqueue failures. */ }
+                    }
+                }
+                is CaptureSave.Conflict -> mutableState.update { it.copy(enrichmentConflict = saved, message = null) }
+                else -> mutableState.update { it.copy(message = context.getString(R.string.capture_storage_error)) }
+            }
+        }
+    }
+    fun attachBankIncome(income: Income, keepExisting: Boolean? = null) {
+        val selected = state.value.selected ?: return
+        val evidence = state.value.evidence ?: return
+        launchOperation {
+            when (val result = store.attachIncomeReceipt(selected.uuid, evidence, income, keepExisting)) {
+                is CaptureSave.Saved -> {
+                    mutableState.update { it.copy(enrichmentConflict = null, selected = null, evidence = null, bankIncomeChoices = emptyList(),
+                        saved = result.income?.documentIdentity(), message = context.getString(R.string.capture_saved)) }
+                    viewModelScope.launch {
+                        try { result.income?.let { sheets.upsertIncome(it) } }
+                        catch (cancelled: CancellationException) { throw cancelled }
+                        catch (_: Exception) { /* Durable sync intent will retry. */ }
+                    }
+                }
+                is CaptureSave.Conflict -> mutableState.update { it.copy(enrichmentConflict = result, message = null) }
+                else -> mutableState.update { it.copy(message = context.getString(R.string.capture_storage_error)) }
+            }
+        }
+    }
+    fun resolveEnrichment(keepExisting: Boolean) {
+        val conflict = state.value.enrichmentConflict ?: return
+        if (conflict.isIncome) state.value.bankIncomeChoices.firstOrNull { it.documentUuid == conflict.uuid }?.let { attachBankIncome(it, keepExisting) }
+        else state.value.walletChoices.firstOrNull { it.documentUuid == conflict.uuid }?.let { attachWalletReceipt(it, keepExisting) }
+    }
+
     fun processImage(uri: Uri) {
         if (state.value.busy) return
-        mutableState.update { it.copy(selected = null, evidence = null, issues = emptyList(), message = null, duplicates = emptyList(), saved = null) }
+        mutableState.update { it.copy(enrichmentConflict = null, selected = null, evidence = null, issues = emptyList(), message = null, duplicates = emptyList(), saved = null, walletChoices = emptyList(), bankIncomeChoices = emptyList()) }
         launchOperation {
             when (val start: CaptureStart = store.start(uri)) {
                 is CaptureStart.Duplicate -> mutableState.update { it.copy(
@@ -82,6 +134,7 @@ class DocumentCaptureViewModel @Inject constructor(
     }
 
     private fun launchOperation(block: suspend () -> Unit) {
+        if (state.value.busy) return
         mutableState.update { it.copy(busy = true) }
         operation = viewModelScope.launch {
             try { block() }
@@ -89,7 +142,12 @@ class DocumentCaptureViewModel @Inject constructor(
                 mutableState.update { it.copy(message = if (it.selected != null) context.getString(R.string.capture_cancelled) else it.message) }
                 throw cancelled
             }
-            catch (_: Exception) { mutableState.update { it.copy(message = context.getString(R.string.capture_storage_error)) } }
+            catch (error: Exception) { mutableState.update { it.copy(message = context.getString(when {
+                error.message?.contains("PDF_TOO_LARGE") == true -> R.string.pdf_too_large
+                error.message?.contains("PDF_PAGE_LIMIT") == true -> R.string.pdf_page_limit
+                error.message?.contains("PDF_INVALID") == true -> R.string.pdf_invalid
+                else -> R.string.capture_storage_error
+            })) } }
             finally { mutableState.update { it.copy(busy = false) } }
         }.also { job ->
             // Also release the UI if cancellation happens before the coroutine starts.
@@ -99,9 +157,9 @@ class DocumentCaptureViewModel @Inject constructor(
 
     private fun select(draft: DocumentDraftEntity) {
         val evidence: DocumentEvidence? = DocumentEvidenceCodec.decode(draft.evidenceJson)
-        mutableState.update { it.copy(selected = draft, evidence = evidence,
+        mutableState.update { it.copy(enrichmentConflict = null, selected = draft, evidence = evidence,
             issues = emptyList(),
-            duplicates = emptyList(), message = draft.error, saved = null) }
+            duplicates = emptyList(), message = draft.error, saved = null, walletChoices = emptyList(), bankIncomeChoices = emptyList()) }
     }
 
     private suspend fun read(draft: DocumentDraftEntity, profile: OcrProfile = OcrProfile.FAST) {
@@ -130,7 +188,7 @@ class DocumentCaptureViewModel @Inject constructor(
         val draft: DocumentDraftEntity = state.value.selected ?: return
         if (state.value.busy) return
         val rereadDuplicate: Boolean = state.value.duplicates.isNotEmpty()
-        mutableState.update { it.copy(busy = true, duplicates = emptyList(), message = null) }
+        mutableState.update { it.copy(duplicates = emptyList(), message = null) }
         launchOperation {
             val evidence: DocumentEvidence? = state.value.evidence
             if (!rereadDuplicate && evidence != null && DocumentExtraction.amount(evidence.document) != null) save(draft.uuid, evidence)
@@ -148,14 +206,26 @@ class DocumentCaptureViewModel @Inject constructor(
     }
 
     private suspend fun save(uuid: String, evidence: DocumentEvidence) {
+        val incomeMatches = store.possibleBankIncomes(evidence)
+        if (incomeMatches.isNotEmpty() && state.value.bankIncomeChoices.isEmpty()) {
+            mutableState.update { it.copy(bankIncomeChoices = incomeMatches) }
+            return
+        }
+        val matches = store.possibleWalletPayments(evidence)
+        if (matches.isNotEmpty() && state.value.walletChoices.isEmpty()) {
+            mutableState.update { it.copy(walletChoices = matches) }
+            return
+        }
+
         when (val result: CaptureSave = store.save(uuid, evidence)) {
+            is CaptureSave.Conflict -> mutableState.update { it.copy(enrichmentConflict = result, message = null) }
             is CaptureSave.Duplicate -> mutableState.update { it.copy(duplicates = result.matches) }
             CaptureSave.UnreadableAmount -> mutableState.update { it.copy(message = context.getString(R.string.capture_amount_unreadable)) }
-            CaptureSave.MissingDraft -> mutableState.update { it.copy(selected = null, evidence = null) }
+            CaptureSave.MissingDraft -> mutableState.update { it.copy(enrichmentConflict = null, selected = null, evidence = null) }
             is CaptureSave.Saved -> {
                 val identity: DocumentIdentity? = result.invoice?.documentIdentity() ?: result.income?.documentIdentity()
-                mutableState.update { it.copy(selected = null, evidence = null, duplicates = emptyList(), issues = emptyList(),
-                    saved = identity, message = context.getString(R.string.capture_saved)) }
+                mutableState.update { it.copy(enrichmentConflict = null, selected = null, evidence = null, duplicates = emptyList(), issues = emptyList(),
+                    walletChoices = emptyList(), bankIncomeChoices = emptyList(), saved = identity, message = context.getString(R.string.capture_saved)) }
                 // Local success remains success if remote enqueue fails. Startup reconciliation recovers it.
                 viewModelScope.launch { try {
                     result.invoice?.let { sheets.syncExpense(it, evidence.toInvoice(uuid, it.imagenUri!!).second) }
@@ -171,7 +241,7 @@ class DocumentCaptureViewModel @Inject constructor(
         if (!state.value.busy) clearSelection()
     }
     private fun clearSelection() {
-        mutableState.update { it.copy(selected = null, evidence = null, issues = emptyList(), duplicates = emptyList(), message = null, saved = null) }
+        mutableState.update { it.copy(enrichmentConflict = null, selected = null, evidence = null, issues = emptyList(), duplicates = emptyList(), message = null, saved = null, walletChoices = emptyList(), bankIncomeChoices = emptyList()) }
     }
     fun discard() {
         if (state.value.busy) return

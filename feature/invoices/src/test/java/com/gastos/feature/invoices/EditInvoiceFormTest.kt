@@ -10,6 +10,14 @@ import org.junit.Test
  * IRPF, neto) usado al guardar facturas.
  */
 class EditInvoiceFormTest {
+    @org.junit.Test fun manuallyAdjustedAmountKeepsPrintedBaseAndTax() {
+        val form = EditInvoiceForm(manualAmountAdjusted = true, total = "120", ivaPercent = "10", baseImponible = "100", cuotaIva = "10")
+        val breakdown = requireNotNull(form.recalcFiscal(java.util.Locale.US))
+        org.junit.Assert.assertEquals(120.0, breakdown.total, 0.0)
+        org.junit.Assert.assertEquals(100.0, breakdown.baseImponible!!, 0.0)
+        org.junit.Assert.assertEquals(10.0, breakdown.ivaAmount!!, 0.0)
+    }
+
     @Test fun `mixed rates remain nullable while manual row edits recalculate the tax`() {
         val locale = java.util.Locale.forLanguageTag("es-ES")
         val rows = listOf(com.gastos.common.TaxFormRow("IVA", "21", "100", "21"),

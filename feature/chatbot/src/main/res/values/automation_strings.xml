@@ -1,0 +1,8 @@
+<resources>
+    <string name="category_saved">Categoría guardada.</string>
+    <string name="rule_saved">Regla guardada para futuros registros.</string>
+    <string name="correction_failed">No se pudo aplicar el cambio. El movimiento puede haber cambiado; vuelve a seleccionarlo.</string>
+    <string name="attach_document">Adjuntar imagen o PDF</string>
+    <string name="choose_movement">¿Qué movimiento quieres corregir?</string>
+    <string name="undo_correction">Deshacer corrección</string>
+<string name="pdf_too_large">El PDF supera 10 MiB. Reduce su tamaño.</string><string name="pdf_page_limit">El PDF supera 20 páginas. Sepáralo antes de enviarlo.</string><string name="pdf_invalid">No se puede abrir este PDF. Comprueba que no esté dañado ni protegido por contraseña.</string><string name="wallet_receipt_question">Existe un pago de Wallet o del banco con este importe y moneda en fechas cercanas. ¿Quieres añadirle el recibo y conservar un solo gasto?</string><string name="wallet_separate_document">Registrar como un gasto distinto</string><string name="use_category_for_future">Usar esta categoría para futuros movimientos del mismo comercio</string><string name="automation_invalid_date">La fecha indicada no existe. Corrígela antes de guardar.</string><string name="automation_movement_missing">No encuentro ese movimiento. Indica el comercio o selecciona uno concreto.</string><string name="automation_invalid_fields">Revisa los campos y la categoría. Un cambio de moneda con desglose necesita una revisión manual.</string></resources>

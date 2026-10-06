@@ -6,6 +6,17 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface IncomeDao {
+    @Query("SELECT * FROM incomes WHERE documentUuid = :uuid LIMIT 1")
+    suspend fun getByUuid(uuid: String): IncomeEntity?
+
+    @Query("SELECT * FROM incomes WHERE moneda = :currency AND monto = :amount AND fecha BETWEEN :start AND :end ORDER BY fecha DESC")
+    suspend fun bankCandidates(currency: String, amount: Double, start: Long, end: Long): List<IncomeEntity>
+
+    @Query("""SELECT id, documentUuid, concepto AS description, fecha AS date, monto AS amount,
+        moneda AS currency, categoria AS category, subcategoria AS subcategory, NULL AS documentNumber,
+        notas AS notes, fuente AS issuer, evidenceJson FROM incomes ORDER BY fecha DESC, documentUuid ASC""")
+    fun observeListEntries(): Flow<List<com.gastos.data.local.entity.MovementListProjection>>
+
     @Query("SELECT * FROM incomes WHERE documentKey = :key OR sourceSha256 = :hash OR documentKey IS NULL")
     suspend fun documentCandidates(key: String?, hash: String?): List<IncomeEntity>
 

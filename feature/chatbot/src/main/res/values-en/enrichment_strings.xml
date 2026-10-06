@@ -1,0 +1,5 @@
+<resources>
+    <string name="capture_enrichment_conflict">The document differs from details you corrected. Choose which values to keep.</string>
+    <string name="capture_keep_changes">Keep my changes</string>
+    <string name="capture_use_document">Use document details</string>
+</resources>
