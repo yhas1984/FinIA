@@ -95,7 +95,7 @@ class CommandOperationDatabaseTest {
             db.execSQL("INSERT INTO chat_messages (role,visibleText,includeInContext,createdAt) VALUES ('document','Historic receipt',0,1)")
             db.version = 14
         }
-        val database = Room.databaseBuilder(context,AppDatabase::class.java,name).addMigrations(MIGRATION_14_15).build()
+        val database = Room.databaseBuilder(context,AppDatabase::class.java,name).addMigrations(MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17).build()
         try {
             assertEquals("Historic receipt",database.chatMessageDao().getAllMessages().single().visibleText)
             val store = CommandOperationStore(context,database)

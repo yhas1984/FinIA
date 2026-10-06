@@ -33,6 +33,13 @@ class CommandOperationStore @Inject constructor(
         operation
     }
 
+    suspend fun completeLocal(uuid: String, message: String) = database.withTransaction {
+        val operation = requireNotNull(database.commandOperationDao().get(uuid))
+        if (operation.status == "SAVED") return@withTransaction
+        database.chatMessageDao().insertAndTrim(ChatMessageEntity(role = "model", visibleText = message, includeInContext = false, operationUuid = uuid))
+        database.commandOperationDao().update(operation.copy(status = "SAVED", resultKind = "LOCAL", resultText = message))
+    }
+
     suspend fun finish(uuid: String) {
         database.withTransaction {
             val operation: CommandOperationEntity = database.commandOperationDao().get(uuid) ?: return@withTransaction
@@ -49,14 +56,14 @@ class CommandOperationStore @Inject constructor(
         val savedIncome: Income?
         if (invoice != null) {
             require(invoice.tipo == InvoiceType.GASTO && invoice.total.isFinite() && invoice.total > 0)
-            val record: Invoice = invoice.copy(documentUuid = uuid)
+            val record: Invoice = CategoryCatalog(database).assign(invoice.copy(documentUuid = uuid, origin = "TEXT"), !Regex("(?i)categor[ií]a|category").containsMatchIn(operation.text))
             DocumentGuard(database).check(record.documentIdentity())
             val id: Long = database.invoiceDao().insertInvoice(record.toEntity())
             database.productDao().insertProducts(products.map { it.copy(invoiceId = id).toEntity() })
             savedInvoice = record.copy(id = id)
             savedIncome = null
         } else {
-            val record: Income = requireNotNull(income).copy(documentUuid = uuid)
+            val record: Income = CategoryCatalog(database).assign(requireNotNull(income).copy(documentUuid = uuid, origin = "TEXT"), !Regex("(?i)categor[ií]a|category").containsMatchIn(operation.text))
             require(record.monto.isFinite() && record.monto > 0)
             DocumentGuard(database).check(record.documentIdentity())
             val id: Long = database.incomeDao().insertIncomeEntity(record.toEntity())
@@ -64,6 +71,7 @@ class CommandOperationStore @Inject constructor(
             savedInvoice = null
         }
         val identity: DocumentIdentity = savedInvoice?.documentIdentity() ?: requireNotNull(savedIncome).documentIdentity()
+        FinancialMutationStore(context, database).enqueue(identity.uuid)
         val message: ChatMessageEntity = createDocumentChatMessage(context, identity).copy(operationUuid = uuid)
         val id: Long = database.chatMessageDao().insert(message)
         database.chatMessageDao().trimToLast(200)

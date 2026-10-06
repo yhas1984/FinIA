@@ -11,9 +11,13 @@ internal fun sheetsFailureCode(error: Exception): String {
 
 internal fun sheetsErrorMessage(context: Context, code: String?): String? = code?.let {
     context.getString(when {
+        it == "SHEETS_RECOVERY_PAUSED" -> R.string.sheets_recovery_pause
+        it == "SHEETS_RECOVERY_CHANGED" -> R.string.sheets_recovery_changed
+        it.startsWith("SHEETS_RECOVERY_") -> R.string.sheets_recovery_unavailable
+        it == "SHEETS_APPEARANCE_MEMORY" -> R.string.sheets_error_appearance_memory
         it.startsWith("SHEETS_OTHER_DEVICE") -> R.string.sheets_error_other_device
-        it.startsWith("SHEETS_NEWER_SCHEMA") || it.startsWith("SHEETS_UNKNOWN_SCHEMA") -> R.string.sheets_error_version
-        it.startsWith("SHEETS_LEGACY_") || it.startsWith("SHEETS_AMBIGUOUS") || it.startsWith("SHEETS_DUPLICATE") -> R.string.sheets_error_identity
+        it.startsWith("SHEETS_NEWER_SCHEMA") || it.startsWith("SHEETS_UNKNOWN_SCHEMA") || it.startsWith("SHEETS_APPEARANCE_NEWER") || it.startsWith("SHEETS_APPEARANCE_UNKNOWN") -> R.string.sheets_error_version
+        it.startsWith("SHEETS_LEGACY_") || it.startsWith("SHEETS_AMBIGUOUS") || it.startsWith("SHEETS_APPEARANCE_AMBIGUOUS") || it.startsWith("SHEETS_APPEARANCE_HEADERS") || it.startsWith("SHEETS_DUPLICATE") -> R.string.sheets_error_identity
         it.startsWith("SHEETS_BACKUP") -> R.string.sheets_error_safety_copy
         it == "SHEETS_CREATION_PENDING" -> R.string.sheets_error_creation_pending
         it == "SHEETS_LINK_UNAVAILABLE" -> R.string.sheets_error_link_unavailable

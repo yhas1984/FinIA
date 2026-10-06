@@ -10,4 +10,5 @@ data class DriveImageMetadata(
     val error: String? = null
 )
 
+@kotlinx.serialization.Serializable
 enum class DocumentKind { EXPENSE, INCOME }

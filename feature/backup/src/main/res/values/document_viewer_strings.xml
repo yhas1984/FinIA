@@ -1,0 +1,9 @@
+<resources>
+    <string name="document_previous_page">Página anterior</string>
+    <string name="document_next_page">Página siguiente</string>
+    <string name="document_page_count">Página %1$d de %2$d</string>
+    <string name="document_page">Documento, página %1$d</string>
+    <string name="document_zoom_in">Acercar documento</string>
+    <string name="document_zoom_out">Alejar documento</string>
+    <string name="document_zoom_reset">%1$d %% · Restablecer</string>
+</resources>

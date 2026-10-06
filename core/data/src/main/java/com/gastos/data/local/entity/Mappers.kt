@@ -3,6 +3,8 @@ package com.gastos.data.local.entity
 import com.gastos.domain.model.*
 
 fun InvoiceEntity.toDomain(): Invoice = Invoice(
+    categoryId = categoryId, subcategoryId = subcategoryId, sourceMimeType = sourceMimeType, sourceName = sourceName,
+    origin = origin, manualAmountAdjusted = manualAmountAdjusted, financialRevision = financialRevision,
     taxes = DocumentTaxCodec.decode(taxesJson),
     evidence = DocumentEvidenceCodec.decode(evidenceJson),
     documentUuid = documentUuid,
@@ -36,6 +38,8 @@ fun InvoiceEntity.toDomain(): Invoice = Invoice(
 )
 
 fun Invoice.toEntity(): InvoiceEntity = InvoiceEntity(
+    categoryId = categoryId, subcategoryId = subcategoryId, sourceMimeType = sourceMimeType, sourceName = sourceName,
+    origin = origin, manualAmountAdjusted = manualAmountAdjusted, financialRevision = financialRevision,
     taxesJson = DocumentTaxCodec.encode(taxes),
     evidenceJson = evidence?.let(DocumentEvidenceCodec::encode),
     documentKey = documentIdentity().key,
@@ -99,6 +103,8 @@ fun Product.toEntity(): ProductEntity = ProductEntity(
 )
 
 fun IncomeEntity.toDomain(): Income = Income(
+    categoryId = categoryId, subcategoryId = subcategoryId, sourceMimeType = sourceMimeType, sourceName = sourceName,
+    origin = origin, manualAmountAdjusted = manualAmountAdjusted, financialRevision = financialRevision,
     taxes = DocumentTaxCodec.decode(taxesJson),
     evidence = DocumentEvidenceCodec.decode(evidenceJson),
     documentUuid = documentUuid,
@@ -127,6 +133,8 @@ fun IncomeEntity.toDomain(): Income = Income(
 )
 
 fun Income.toEntity(): IncomeEntity = IncomeEntity(
+    categoryId = categoryId, subcategoryId = subcategoryId, sourceMimeType = sourceMimeType, sourceName = sourceName,
+    origin = origin, manualAmountAdjusted = manualAmountAdjusted, financialRevision = financialRevision,
     taxesJson = DocumentTaxCodec.encode(taxes),
     evidenceJson = evidence?.let(DocumentEvidenceCodec::encode),
     documentKey = documentIdentity().key,

@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Before
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -237,4 +238,115 @@ class EditInvoiceViewModelTest {
         assertTrue(fiscal.ivaPercent == 4.0 && fiscal.baseImponible == 100.0 && fiscal.ivaAmount == 4.0)
     }
 
+    @Test fun `draft survives recreation without replacing identity or original tax data`() = runTest(dispatcher) {
+        val state = androidx.lifecycle.SavedStateHandle()
+        val repo = mockk<com.gastos.repository.InvoiceRepository>()
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+        val products = mockk<com.gastos.repository.ProductRepository>(relaxed = true)
+        val original = Invoice(id = 8, documentUuid = "stable-expense", fecha = 1, proveedor = "Original", tipo = InvoiceType.GASTO, total = 110.0, ivaPercent = 10.0, driveFileId = "remote", financialRevision = 4)
+        every { repo.getAllInvoices() } returns flowOf(listOf(original))
+        coEvery { repo.getInvoiceById(8) } returns original
+        coEvery { repo.updateInvoice(any()) } returns Unit
+        val first = EditInvoiceViewModel(mockContext(), repo, products, sync, savedStateHandle = state)
+        first.loadInvoice(8, java.util.Locale.US)
+        advanceUntilIdle()
+        org.junit.Assert.assertFalse(first.hasChanges)
+        first.updateProveedor("Changed")
+        advanceUntilIdle()
+        val restored = androidx.lifecycle.SavedStateHandle(state.keys().associateWith { state.get<Any?>(it) })
+        val second = EditInvoiceViewModel(mockContext(), repo, products, sync, savedStateHandle = restored)
+        second.loadInvoice(8, java.util.Locale.US)
+        advanceUntilIdle()
+        org.junit.Assert.assertEquals("Changed", second.form.value.proveedor)
+        org.junit.Assert.assertTrue(second.hasChanges)
+        second.saveInvoice(java.util.Locale.US)
+        advanceUntilIdle()
+        coVerify(exactly = 1) { repo.updateInvoice(match { it.documentUuid == "stable-expense" && it.ivaPercent == 10.0 && it.driveFileId == "remote" && it.financialRevision == 4L && it.proveedor == "Changed" }) }
+    }
+
+
+    @Test fun `new form waits for saved preferences once and restored draft takes precedence`() = runTest(dispatcher) {
+        val context = mockContext()
+        val repo = mockk<com.gastos.repository.InvoiceRepository>(relaxed=true)
+        every { repo.getAllInvoices() } returns flowOf(emptyList())
+        val products = mockk<com.gastos.repository.ProductRepository>(relaxed=true)
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed=true)
+        val preferences = mockk<com.gastos.repository.ManualEntryDefaultsProvider>()
+        coEvery { preferences.manualEntryDefaults() } returns com.gastos.repository.ManualEntryDefaults("USD","US")
+        val state = androidx.lifecycle.SavedStateHandle()
+        val model = EditInvoiceViewModel(context, repo, products, sync, savedStateHandle=state, entryDefaults=preferences)
+        assertTrue(!model.uiState.value.defaultsReady)
+        model.saveInvoice()
+        coVerify(exactly=0) { repo.insertInvoice(any()) }
+        model.prepareDefaults(); advanceUntilIdle()
+        model.prepareDefaults(); advanceUntilIdle()
+        assertEquals("USD",model.form.value.moneda)
+        assertEquals("US",model.form.value.paisCodigo)
+        assertTrue(!model.hasChanges)
+        model.updateMoneda("GBP")
+        val recreated = EditInvoiceViewModel(context, repo, products, sync, savedStateHandle=state, entryDefaults=preferences)
+        recreated.prepareDefaults(); advanceUntilIdle()
+        assertEquals("GBP",recreated.form.value.moneda)
+        coVerify(exactly=1) { preferences.manualEntryDefaults() }
+    }
+    @Test fun `validation exposes field errors only after save and preserves all values`() = runTest(dispatcher) {
+        val context = mockContext()
+        val repo = mockk<com.gastos.repository.InvoiceRepository>(relaxed=true)
+        every { repo.getAllInvoices() } returns flowOf(emptyList())
+        val products = mockk<com.gastos.repository.ProductRepository>(relaxed=true)
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed=true)
+        val model = EditInvoiceViewModel(context, repo, products, sync)
+        assertTrue(model.uiState.value.fieldErrors.isEmpty())
+        model.updateTotal("12,50")
+        model.updateIvaPercent("150")
+        model.saveInvoice(java.util.Locale("es","ES")); advanceUntilIdle()
+        assertEquals(setOf(com.gastos.common.ManualField.CONCEPT,com.gastos.common.ManualField.VAT),model.uiState.value.fieldErrors.keys)
+        assertEquals("12,50",model.form.value.total)
+        assertEquals("150",model.form.value.ivaPercent)
+        coVerify(exactly=0) { repo.insertInvoice(any()) }
+    }
+
+    @Test fun `double save waits for local persistence and storage failure retains the draft`() = runTest(dispatcher) {
+        val context = mockContext()
+        val repo = mockk<com.gastos.repository.InvoiceRepository>(relaxed=true)
+        every { repo.getAllInvoices() } returns flowOf(emptyList())
+        val products = mockk<com.gastos.repository.ProductRepository>(relaxed=true)
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed=true)
+        val commit = kotlinx.coroutines.CompletableDeferred<Long>()
+        coEvery { repo.insertInvoice(any()) } coAnswers { commit.await() }
+        val model = EditInvoiceViewModel(context,repo,products,sync)
+        model.updateProveedor("Never committed")
+        model.updateTotal("12.50")
+        model.saveInvoice(java.util.Locale.US)
+        model.saveInvoice(java.util.Locale.US)
+        assertTrue(model.uiState.value.isSaving)
+        coVerify(exactly=1) { repo.insertInvoice(any()) }
+        commit.completeExceptionally(java.io.IOException("synthetic disk failure"))
+        advanceUntilIdle()
+        assertTrue(model.uiState.value.saveState is com.gastos.common.SaveState.Error)
+        assertTrue(model.uiState.value.fieldErrors.isEmpty())
+        assertEquals("Never committed",model.form.value.proveedor)
+        assertEquals("12.50",model.form.value.total)
+        coVerify(exactly=1) { repo.insertInvoice(any()) }
+    }
+
+    @Test fun `fields remain frozen while local persistence is suspended`() = runTest(dispatcher) {
+        val stored = kotlinx.coroutines.CompletableDeferred<Long>()
+        val repo = mockk<com.gastos.repository.InvoiceRepository> {
+            every { getAllInvoices() } returns flowOf(emptyList())
+            coEvery { insertInvoice(any()) } coAnswers { stored.await() }
+        }
+        val products = mockk<com.gastos.repository.ProductRepository>(relaxed = true)
+        val vm = EditInvoiceViewModel(mockContext(), repo, products, mockk(relaxed = true))
+        vm.updateProveedor("Initial"); vm.updateTotal("20")
+        vm.saveInvoice(java.util.Locale.US)
+        assertTrue(vm.uiState.value.isSaving)
+        vm.updateProveedor("Lost edit"); vm.updateTotal("999"); vm.selectCategory("Changed", true)
+        vm.addTax(java.util.Locale.US); vm.updateTaxes(emptyList())
+        assertEquals("Initial", vm.form.value.proveedor)
+        assertEquals("20", vm.form.value.total)
+        assertTrue(vm.form.value.taxes.isEmpty())
+        stored.complete(7L); advanceUntilIdle()
+        coVerify(exactly = 1) { repo.insertInvoice(match { it.proveedor == "Initial" && it.total == 20.0 }) }
+    }
 }

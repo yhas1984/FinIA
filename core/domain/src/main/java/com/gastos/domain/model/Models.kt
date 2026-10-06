@@ -1,8 +1,17 @@
 package com.gastos.domain.model
 
+@kotlinx.serialization.Serializable
 enum class InvoiceType { GASTO, INGRESO }
 
+@kotlinx.serialization.Serializable
 data class Invoice(
+    val categoryId: String? = null,
+    val subcategoryId: String? = null,
+    val sourceMimeType: String? = null,
+    val sourceName: String? = null,
+    val origin: String = "MANUAL",
+    val manualAmountAdjusted: Boolean = false,
+    val financialRevision: Long = 0,
     val evidence: DocumentEvidence? = null,
     val documentUuid: String = java.util.UUID.randomUUID().toString(),
     val driveAccountId: String? = null,
@@ -36,6 +45,8 @@ data class Invoice(
 ) {
     /** Convierte una factura tipo INGRESO a un Income para persistirlo en la tabla correcta. */
     fun toIncome(): Income = Income(
+        categoryId = categoryId, subcategoryId = subcategoryId, sourceMimeType = sourceMimeType,
+        sourceName = sourceName, origin = origin, manualAmountAdjusted = manualAmountAdjusted, financialRevision = financialRevision,
         taxes = taxes,
         evidence = (evidence ?: DocumentEvidence(ScannedDocument())).copy(document =
             (evidence?.document ?: ScannedDocument()).copy(kind = "factura_emitida", country = paisCodigo,
@@ -66,6 +77,7 @@ data class Invoice(
     )
 }
 
+@kotlinx.serialization.Serializable
 data class Product(
     val id: Long = 0,
     val invoiceId: Long,
@@ -83,7 +95,15 @@ data class Product(
     val totalIncludingTax: Double? get() = if (pricesIncludeTax) subtotal else ivaAmount?.let { subtotal + it }
 }
 
+@kotlinx.serialization.Serializable
 data class Income(
+    val categoryId: String? = null,
+    val subcategoryId: String? = null,
+    val sourceMimeType: String? = null,
+    val sourceName: String? = null,
+    val origin: String = "MANUAL",
+    val manualAmountAdjusted: Boolean = false,
+    val financialRevision: Long = 0,
     val evidence: DocumentEvidence? = null,
     val documentUuid: String = java.util.UUID.randomUUID().toString(),
     val driveAccountId: String? = null,

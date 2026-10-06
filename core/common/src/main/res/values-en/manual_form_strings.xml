@@ -1,0 +1,15 @@
+<resources>
+    <string name="manual_edit_movement">Edit %1$s</string>
+    <string name="manual_save_expense">Save expense</string>
+    <string name="manual_save_income">Save income</string>
+    <string name="manual_saving">Saving…</string>
+    <string name="manual_multiple_taxes">Multiple taxes</string>
+    <string name="manual_unspecified">Unspecified</string>
+    <string name="manual_country">Tax country</string>
+    <string name="manual_general_income">General income</string>
+    <string name="manual_income_kind">Income type</string>
+    <string name="manual_loading_preferences">Loading preferences…</string>
+    <string name="manual_retry_preferences">Retry</string>
+    <string name="manual_preferences_failed">Preferences could not be loaded. Please retry.</string>
+    <string name="manual_loading_document">Loading document…</string>
+</resources>

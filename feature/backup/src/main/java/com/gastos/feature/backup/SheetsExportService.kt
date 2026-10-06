@@ -61,6 +61,9 @@ class SheetsExportService @Inject constructor(
     private val sheetsLinkStore: SheetsLinkStore,
     private val operationCoordinator: SheetsOperationCoordinator
 ) {
+    private val _appearance = kotlinx.coroutines.flow.MutableStateFlow(SheetsAppearanceState())
+    val appearance: kotlinx.coroutines.flow.StateFlow<SheetsAppearanceState> = _appearance
+
     companion object {
         // drive.file también autoriza la API de Sheets para archivos creados por FinAI.
         private val DRIVE_FILE_SCOPE by lazy { Scope(DriveScopes.DRIVE_FILE) }
@@ -137,6 +140,7 @@ class SheetsExportService @Inject constructor(
             markAsFinAiSpreadsheet(drive, id, locale)
             sheetsLinkStore.clearFingerprints(SheetsLinkStore.getAccountPreferenceKey(account.id, account.email), id)
             if (reusable?.adoptedLegacyId == true) sheetsLinkStore.clearLegacySpreadsheetId()
+            applyAppearanceSafely(account, id, sheets, drive, locale)
             "https://docs.google.com/spreadsheets/d/$id/edit" to id
         }
     }
@@ -148,21 +152,71 @@ class SheetsExportService @Inject constructor(
     }
 
     internal suspend fun syncDocument(account: GoogleSignInAccount, id: String, invoices: List<Invoice>, incomes: List<Income>,
-        products: List<Product>, deleteUuid: String? = null) = syncDocuments(account, id, invoices, incomes, products, setOfNotNull(deleteUuid))
+        products: List<Product>, deletion: SheetsDocumentKey? = null) = syncDocuments(account, id, invoices, incomes, products, setOfNotNull(deletion))
 
     internal suspend fun syncDocuments(account: GoogleSignInAccount, id: String, invoices: List<Invoice>, incomes: List<Income>,
-        products: List<Product>, deleteUuids: Set<String> = emptySet()) = operationCoordinator.mutex.withLock {
+        products: List<Product>, deletions: Set<SheetsDocumentKey> = emptySet()) = operationCoordinator.mutex.withLock {
         withContext(Dispatchers.IO) {
             check(premiumStatus.isPremium.value) { "PREMIUM_REQUIRED" }
             check(sheetsLinkStore.getSpreadsheetId(account) == id && getLastSignedInAccount()?.let {
                 SheetsLinkStore.getAccountPreferenceKey(it.id, it.email) == SheetsLinkStore.getAccountPreferenceKey(account.id, account.email)
             } == true) { "WRONG_ACCOUNT" }
+            // A worker may have queued before a recovery acquired this same mutex.
+            check(!sheetsLinkStore.isRecoveryPaused(SheetsLinkStore.getAccountPreferenceKey(account.id, account.email), id)) {
+                "SHEETS_RECOVERY_PAUSED"
+            }
             val (sheets, drive) = services(account)
             val properties = SheetsWorkbookAccess.read(drive, id).appProperties.orEmpty()
             check(properties[FINAI_SCHEMA_VERSION_PROPERTY]?.toIntOrNull() == SheetsSchema.SCHEMA_VERSION) { "SHEETS_SCHEMA_REQUIRED" }
             verifyWriter(drive, id)
             SheetsWorkbookEngine(sheets, id, conversion(SheetsSchema.localeFromCode(properties[FINAI_SCHEMA_LOCALE_PROPERTY]))) { verifyWriter(drive, id) }
-                .write(invoices, incomes, products, deleteUuids = deleteUuids)
+                .write(invoices, incomes, products, deletions = deletions)
+            applyAppearanceSafely(account, id, sheets, drive, SheetsSchema.localeFromCode(properties[FINAI_SCHEMA_LOCALE_PROPERTY]))
+        }
+    }
+
+    /** Independently retry appearance; a formatting failure never changes financial acknowledgements. */
+    suspend fun ensureAppearance(account: GoogleSignInAccount, id: String, reset: Boolean = false) = operationCoordinator.mutex.withLock {
+        withContext(Dispatchers.IO) {
+            try {
+                val (sheets, drive) = services(account)
+                val properties = SheetsWorkbookAccess.read(drive, id).appProperties.orEmpty()
+                val version = properties[FINAI_SCHEMA_VERSION_PROPERTY]?.toIntOrNull()
+                check(version == SheetsSchema.SCHEMA_VERSION) { "SHEETS_UNKNOWN_SCHEMA" }
+                val locale = SheetsSchema.localeFromCode(properties[FINAI_SCHEMA_LOCALE_PROPERTY])
+                applyAppearanceSafely(account, id, sheets, drive, locale, reset)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                _appearance.value = SheetsAppearanceState(SheetsLinkStore.getAccountPreferenceKey(account.id, account.email), id, error = sheetsFailureCode(failure))
+            }
+        }
+    }
+
+    private suspend fun applyAppearanceSafely(account: GoogleSignInAccount, id: String, sheets: Sheets, drive: Drive,
+        locale: SheetsSchema.LocaleCode, reset: Boolean = false) {
+        val key = SheetsLinkStore.getAccountPreferenceKey(account.id, account.email)
+        _appearance.value = SheetsAppearanceState(key, id, applying = true)
+        try {
+            check(premiumStatus.isPremium.value) { "PREMIUM_REQUIRED" }
+            fun verifyDestination() {
+                val current = getLastSignedInAccount()
+                check(current != null && key == SheetsLinkStore.getAccountPreferenceKey(current.id, current.email) &&
+                    sheetsLinkStore.getSpreadsheetId(account) == id) { "WRONG_ACCOUNT" }
+                verifyWriter(drive, id)
+            }
+            verifyDestination()
+            SheetsAppearanceUpdater(sheets, id, { source ->
+                try { SheetsRecoverySnapshot.save(java.io.File(context.noBackupFilesDir, "sheets-recovery"), key, source) }
+                catch (error: java.io.IOException) { throw IllegalStateException("SHEETS_BACKUP_UNVERIFIED", error) }
+            }, { verifyDestination() }).apply(locale, reset)
+            _appearance.value = SheetsAppearanceState(key, id)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            _appearance.value = SheetsAppearanceState(key, id)
+            throw cancelled
+        } catch (failure: Exception) {
+            _appearance.value = SheetsAppearanceState(key, id, error = sheetsFailureCode(failure))
+        } catch (_: OutOfMemoryError) {
+            _appearance.value = SheetsAppearanceState(key, id, error = "SHEETS_APPEARANCE_MEMORY")
         }
     }
 
@@ -187,11 +241,85 @@ class SheetsExportService @Inject constructor(
     }
 
     private fun createVerifiedCopy(sheets: Sheets, account: GoogleSignInAccount, id: String) {
-        val source = sheets.spreadsheets().get(id).setIncludeGridData(true).execute()
+        val source = sheets.spreadsheets().get(id).setIncludeGridData(true).setFields(SheetsRecoverySnapshot.FIELDS).execute()
         try {
             SheetsRecoverySnapshot.save(java.io.File(context.noBackupFilesDir, "sheets-recovery"),
                 SheetsLinkStore.getAccountPreferenceKey(account.id, account.email), source)
         } catch (error: java.io.IOException) { throw IllegalStateException("SHEETS_BACKUP_UNVERIFIED", error) }
+    }
+
+    suspend fun recoverySnapshots(): List<SheetsRecoveryInfo> = withContext(Dispatchers.IO) {
+        val account = getLastSignedInAccount() ?: error("AUTH_REQUIRED")
+        val book = sheetsLinkStore.getSpreadsheetId(account).takeIf(String::isNotBlank) ?: error("AUTH_OR_LINK_REQUIRED")
+        SheetsRecoverySnapshot.list(java.io.File(context.noBackupFilesDir, "sheets-recovery"),
+            SheetsLinkStore.getAccountPreferenceKey(account.id, account.email), book)
+            .map { SheetsRecoveryInfo(it.name, it.lastModified()) }
+    }
+
+    suspend fun previewRecovery(snapshot: SheetsRecoveryInfo): SheetsRecoveryPreview = operationCoordinator.mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val account = getLastSignedInAccount() ?: error("AUTH_REQUIRED")
+            val key = SheetsLinkStore.getAccountPreferenceKey(account.id, account.email)
+            val book = sheetsLinkStore.getSpreadsheetId(account).takeIf(String::isNotBlank) ?: error("AUTH_OR_LINK_REQUIRED")
+            val (sheets, drive) = services(account)
+            val locale = recoveryLocale(drive, book)
+            val file = SheetsRecoverySnapshot.list(java.io.File(context.noBackupFilesDir, "sheets-recovery"), key, book)
+                .singleOrNull { it.name == snapshot.fileName } ?: error("SHEETS_RECOVERY_UNAVAILABLE")
+            val current = runInterruptible { sheets.spreadsheets().get(book).setIncludeGridData(true).setFields(SheetsRecoverySnapshot.FIELDS).execute() }
+            val plan = SheetsRecoveryPlan.build(SheetsRecoverySnapshot.read(file), current, locale)
+            SheetsRecoveryPreview(key, book, snapshot, SheetsRecoveryPlan.signature(current), plan.restoredRows, plan.removedRows)
+        }
+    }
+
+    suspend fun restoreRecovery(preview: SheetsRecoveryPreview) = operationCoordinator.mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val account = getLastSignedInAccount() ?: error("AUTH_REQUIRED")
+            val key = SheetsLinkStore.getAccountPreferenceKey(account.id, account.email)
+            check(key == preview.accountKey && sheetsLinkStore.getSpreadsheetId(account) == preview.workbookId) { "WRONG_ACCOUNT" }
+            val (sheets, drive) = services(account)
+            val locale = recoveryLocale(drive, preview.workbookId)
+            val directory = java.io.File(context.noBackupFilesDir, "sheets-recovery")
+            val file = SheetsRecoverySnapshot.list(directory, key, preview.workbookId)
+                .singleOrNull { it.name == preview.snapshot.fileName } ?: error("SHEETS_RECOVERY_UNAVAILABLE")
+            val saved = SheetsRecoverySnapshot.read(file)
+            val current = runInterruptible { sheets.spreadsheets().get(preview.workbookId).setIncludeGridData(true).setFields(SheetsRecoverySnapshot.FIELDS).execute() }
+            check(SheetsRecoveryPlan.signature(current) == preview.currentSignature) { "SHEETS_RECOVERY_CHANGED" }
+            val plan = SheetsRecoveryPlan.build(saved, current, locale)
+            SheetsRecoverySnapshot.save(directory, key, current, protectFileName = file.name)
+            verifyWriter(drive, preview.workbookId)
+            check(getLastSignedInAccount()?.let { SheetsLinkStore.getAccountPreferenceKey(it.id, it.email) } == key) { "WRONG_ACCOUNT" }
+            // Persist the pause before the request. A lost response cannot trigger a background overwrite.
+            sheetsLinkStore.setRecoveryPaused(key, preview.workbookId, true)
+            sheetsLinkStore.clearFingerprints(key, preview.workbookId)
+            val token = java.util.UUID.randomUUID().toString()
+            val marker = com.google.api.services.sheets.v4.model.DeveloperMetadata().setMetadataKey("finaiRecoveryCommit")
+                .setMetadataValue(token).setVisibility("DOCUMENT")
+                .setLocation(com.google.api.services.sheets.v4.model.DeveloperMetadataLocation().setSpreadsheet(true))
+            val mark = if (current.developerMetadata.orEmpty().any { it.metadataKey == "finaiRecoveryCommit" })
+                Request().setUpdateDeveloperMetadata(com.google.api.services.sheets.v4.model.UpdateDeveloperMetadataRequest()
+                    .setDataFilters(listOf(com.google.api.services.sheets.v4.model.DataFilter().setDeveloperMetadataLookup(
+                        com.google.api.services.sheets.v4.model.DeveloperMetadataLookup().setMetadataKey("finaiRecoveryCommit"))))
+                    .setDeveloperMetadata(marker).setFields("metadataValue"))
+            else Request().setCreateDeveloperMetadata(com.google.api.services.sheets.v4.model.CreateDeveloperMetadataRequest().setDeveloperMetadata(marker))
+            try { runInterruptible { sheets.spreadsheets().batchUpdate(preview.workbookId,
+                BatchUpdateSpreadsheetRequest().setRequests(plan.requests + mark)).execute() } }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                val applied = try { runInterruptible { sheets.spreadsheets().get(preview.workbookId).setIncludeGridData(false).execute() }
+                    .developerMetadata.orEmpty().any { it.metadataKey == "finaiRecoveryCommit" && it.metadataValue == token } }
+                catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (_: Exception) { false }
+                if (!applied) throw failure
+            }
+        }
+    }
+
+    private fun recoveryLocale(drive: Drive, book: String): SheetsSchema.LocaleCode {
+        check(premiumStatus.isPremium.value) { "PREMIUM_REQUIRED" }
+        val properties = SheetsWorkbookAccess.read(drive, book).appProperties.orEmpty()
+        check(properties[FINAI_SCHEMA_VERSION_PROPERTY]?.toIntOrNull() == SheetsSchema.SCHEMA_VERSION) { "SHEETS_RECOVERY_INCOMPATIBLE" }
+        verifyWriter(drive, book)
+        return SheetsSchema.localeFromCode(properties[FINAI_SCHEMA_LOCALE_PROPERTY])
     }
 
     private fun services(account: GoogleSignInAccount): Pair<Sheets, Drive> {

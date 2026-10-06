@@ -13,15 +13,10 @@ internal class SheetsWorkbookEngine(private val sheets: Sheets, private val id: 
     private val spanish: Boolean = conversion.locale == SheetsSchema.LocaleCode.ES
     private val taxTitle: String = if (spanish) "Impuestos" else "Taxes"
     private val personalTitle: String = if (spanish) "Análisis personal" else "Personal analysis"
-    private val definitions: List<ManagedSheet> = listOf(
-        ManagedSheet(descriptor.recibidasTitle, descriptor.recibidasHeaders, 14, setOf(1), setOf(18), setOf(5,6,7,8,9,10,16)),
-        ManagedSheet(descriptor.ingresosTitle, descriptor.ingresosHeaders, 10, setOf(1), setOf(15), setOf(2,3,4,5,11,12,13)),
-        ManagedSheet(descriptor.productosTitle, descriptor.productosHeaders, 8, setOf(17), setOf(13), setOf(1,2,3,4,5,9,10,11)),
-        ManagedSheet(taxTitle, if (spanish) listOf("UUID", "Documento UUID", "Tipo", "Ámbito", "Impuesto", "Porcentaje", "Base original", "Cuota original", "Moneda", "Tratamiento", "Efecto", "Mes", "Año")
-            else listOf("UUID", "Document UUID", "Kind", "Scope", "Tax", "Rate", "Original base", "Original amount", "Currency", "Treatment", "Effect", "Month", "Year"), 0, numberColumns = setOf(5,6,7)))
+    private val definitions = managedSheetDefinitions(conversion.locale)
 
     suspend fun write(invoices: List<Invoice>, incomes: List<Income>, products: List<Product>, full: Boolean = false,
-        deleteUuid: String? = null, initializeFilters: Boolean = false, deleteUuids: Set<String> = emptySet(), initializeWorkbook: Boolean = false) {
+        initializeFilters: Boolean = false, deletions: Set<SheetsDocumentKey> = emptySet(), initializeWorkbook: Boolean = false) {
         val metadata: Spreadsheet = runInterruptible { sheets.spreadsheets().get(id).setIncludeGridData(false).execute() }
         val requests: MutableList<Request> = mutableListOf()
         if (initializeWorkbook && metadata.sheets.size == 1 && metadata.sheets.single().properties.title != descriptor.recibidasTitle) {
@@ -60,7 +55,14 @@ internal class SheetsWorkbookEngine(private val sheets: Sheets, private val id: 
         val productPlan: SheetsWorkbookPlan = plans[2]
         val taxPlan: SheetsWorkbookPlan = plans[3]
         val allIncomes: List<Income> = mergeIncomes(invoices, incomes)
-        val changedUuids: Set<String> = invoices.map { it.documentUuid }.toSet() + allIncomes.map { it.documentUuid } + listOfNotNull(deleteUuid) + deleteUuids
+        val changedExpenses = invoices.filter { it.tipo == InvoiceType.GASTO }.map { it.documentUuid }.toSet() +
+            deletions.filter { it.target == RemoteSyncTarget.EXPENSE_SHEETS }.map { it.uuid }
+        val changedIncomes = allIncomes.map { it.documentUuid }.toSet() +
+            deletions.filter { it.target == RemoteSyncTarget.INCOME_SHEETS }.map { it.uuid }
+        fun presentParents(plan: SheetsWorkbookPlan): Set<String> = plan.snapshot.rows.drop(1)
+            .mapNotNull { it.getOrNull(plan.columns[plan.definition.keyIndex])?.toString()?.takeIf(String::isNotBlank) }.toSet()
+        val remoteExpenses = presentParents(expensePlan)
+        val remoteIncomes = presentParents(incomePlan)
         val originalInvoices: Map<Long, Invoice> = invoices.associateBy { it.id }
         invoices.filter { it.tipo == InvoiceType.GASTO }.forEach { invoice ->
             expensePlan.upsert(ManagedRecord(SheetsSchema.expenseRow(invoice, conversion), invoice.id,
@@ -87,7 +89,20 @@ internal class SheetsWorkbookEngine(private val sheets: Sheets, private val id: 
         for (plan: SheetsWorkbookPlan in plans) {
             val parentColumn: Int = when (plan) { productPlan -> 7; taxPlan -> 1; else -> plan.definition.keyIndex }
             plan.clearWhere { row -> row[parentColumn].toString().let { key ->
-                key.isNotBlank() && (key in changedUuids || full && runCatching { java.util.UUID.fromString(key) }.isSuccess)
+                val changed = when (plan) {
+                    expensePlan -> key in changedExpenses
+                    incomePlan -> key in changedIncomes
+                    taxPlan -> when (row[2].toString()) {
+                        "EXPENSE" -> key in changedExpenses
+                        "INCOME" -> key in changedIncomes
+                        else -> false
+                    }
+                    // Legacy product rows have no movement kind. Preserve ambiguous shared parents.
+                    else -> (key in changedExpenses && key !in remoteIncomes && key !in changedIncomes) ||
+                        (key in changedIncomes && key !in remoteExpenses && key !in changedExpenses) ||
+                        (key in changedExpenses && key in changedIncomes)
+                }
+                key.isNotBlank() && (changed || full && runCatching { java.util.UUID.fromString(key) }.isSuccess)
             } }
             // An old row that cannot be matched must be reviewed, never associated only by a recycled local ID.
             if (full) check(!plan.hasUnmatchedLegacyRows()) { "SHEETS_LEGACY_IDENTITY_REVIEW" }
@@ -104,12 +119,31 @@ internal class SheetsWorkbookEngine(private val sheets: Sheets, private val id: 
         }
         requests += summary(byTitle.getValue(descriptor.resumenTitle).sheetId, expensePlan, incomePlan,
             initializeFilters || metadata.sheets.none { it.properties.title == descriptor.resumenTitle }, metadata.properties?.locale)
+        val commitToken = java.util.UUID.randomUUID().toString()
+        val commitKey = "finaiFinancialCommit"
+        if (metadata.developerMetadata.orEmpty().any { it.metadataKey == commitKey }) {
+            requests += Request().setUpdateDeveloperMetadata(UpdateDeveloperMetadataRequest()
+                .setDataFilters(listOf(DataFilter().setDeveloperMetadataLookup(DeveloperMetadataLookup().setMetadataKey(commitKey))))
+                .setDeveloperMetadata(DeveloperMetadata().setMetadataValue(commitToken)).setFields("metadataValue"))
+        } else {
+            requests += Request().setCreateDeveloperMetadata(CreateDeveloperMetadataRequest().setDeveloperMetadata(
+                DeveloperMetadata().setMetadataKey(commitKey).setMetadataValue(commitToken).setVisibility("DOCUMENT")
+                    .setLocation(DeveloperMetadataLocation().setSpreadsheet(true))))
+        }
         beforeCommit()
-        runInterruptible { sheets.spreadsheets().batchUpdate(id, BatchUpdateSpreadsheetRequest().setRequests(requests)).execute() }
+        try { runInterruptible { sheets.spreadsheets().batchUpdate(id, BatchUpdateSpreadsheetRequest().setRequests(requests)).execute() } }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            val applied = try { runInterruptible { sheets.spreadsheets().get(id).setIncludeGridData(false).execute() }
+                .developerMetadata.orEmpty().any { it.metadataKey == commitKey && it.metadataValue == commitToken } }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { false }
+            if (!applied) throw failure
+        }
     }
 
     private fun taxes(plan: SheetsWorkbookPlan, uuid: String, kind: String, scope: String, taxes: List<DocumentTax>, currency: String, date: Long) {
-        taxes.forEachIndexed { index, tax -> plan.upsert(ManagedRecord(listOf("$uuid:$scope:tax:$index", uuid, kind, scope,
+        taxes.forEachIndexed { index, tax -> plan.upsert(ManagedRecord(listOf("$uuid:$kind:$scope:tax:$index", uuid, kind, scope,
             tax.name ?: "", tax.rate ?: "", tax.base ?: "", tax.amount ?: "", currency, tax.treatment.name, tax.effect.name,
             SheetsSchema.month(date), SheetsSchema.year(date)))) }
     }

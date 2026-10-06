@@ -64,14 +64,14 @@ fun currencySymbol(code: String): String = when (code.uppercase()) {
  * Usa NumberFormat con el símbolo correcto para la moneda,
  * con fallback a "XX,XX COD" si la moneda no es válida en el locale.
  */
-fun formatMoney(amount: Double, currencyCode: String): String {
+fun formatMoney(amount: Double, currencyCode: String, locale: Locale = Locale.forLanguageTag("es-ES")): String {
     return try {
-        val fmt = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("es-ES"))
+        val fmt = NumberFormat.getCurrencyInstance(locale)
         fmt.currency = Currency.getInstance(currencyCode)
         fmt.format(amount)
     } catch (_: Exception) {
         // La moneda no es reconocida por Java Currency → fallback manual
         val symbol = currencySymbol(currencyCode)
-        String.format(Locale.US, "%s%,.2f", symbol, amount)
+        String.format(locale, "%s%,.2f", symbol, amount)
     }
 }

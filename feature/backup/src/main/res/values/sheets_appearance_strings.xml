@@ -1,0 +1,7 @@
+<resources>
+    <string name="sheets_appearance_failed">El diseño no se pudo actualizar: %1$s</string>
+    <string name="sheets_reset_appearance">Restablecer diseño de FinAI</string>
+    <string name="sheets_applying_appearance">Actualizando el diseño del libro…</string>
+    <string name="sheets_retry_appearance">Reintentar diseño</string>
+    <string name="sheets_error_appearance_memory">No hay memoria suficiente para aplicar el diseño a este libro. Cierra otras aplicaciones y reintenta.</string>
+</resources>

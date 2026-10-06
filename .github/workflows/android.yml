@@ -6,6 +6,7 @@ on:
       - main
       - feat/**
       - fix/**
+      - codex/**
   pull_request:
 
 jobs:
@@ -25,10 +26,48 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest
+        run: ./gradlew testDebugUnitTest --max-workers=2 -Dorg.gradle.parallel=false
 
       - name: Run lint
-        run: ./gradlew :app:lintDebug
+        run: ./gradlew :app:lintDebug --max-workers=2 -Dorg.gradle.parallel=false
 
       - name: Assemble debug
-        run: ./gradlew :app:assembleDebug
+        run: ./gradlew :app:assembleDebug --max-workers=2 -Dorg.gradle.parallel=false
+
+      - name: Preserve validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-reports
+          path: |
+            **/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+
+  recovery-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run isolated storage and recovery regressions
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: ./gradlew :app:connectedDebugAndroidTest --max-workers=2 -Dorg.gradle.parallel=false -Pandroid.testInstrumentationRunnerArguments.largeBackup=true -Pandroid.testInstrumentationRunnerArguments.class=com.gastos.di.BankImportStorageTest,com.gastos.di.WalletCaptureRecoveryTest,com.gastos.di.MovementListProjectionTest,com.gastos.di.OrganizationStorageTest,com.gastos.di.CommandOperationDatabaseTest,com.gastos.di.RemoteSyncOutboxMigrationTest,com.gastos.di.TaxMigrationTest,com.gastos.di.BankPerformanceTest,com.gastos.di.DocumentCaptureDatabaseTest,com.gastos.di.AutomationIntegrationTest,com.gastos.di.DocumentViewerUiTest,com.gastos.di.BankImportUiTest,com.gastos.di.FinancialReportTest,com.gastos.di.DeviceLargeBackupTest,com.gastos.di.EssentialUiTest,com.gastos.di.ManualCompactUiTest
+      - name: Preserve instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-regressions
+          path: app/build/reports/androidTests/

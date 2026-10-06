@@ -22,6 +22,7 @@ class CloudBackupWorker @AssistedInject constructor(
     private val preferences: CloudBackupPreferences
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
+        if (sheetsExportService.isSignedIn()) preferences.selectAccount(cloudBackupService.accountKey())
         if (!preferences.status().enabled) return Result.success()
         if (!premiumStatus.isPremium.value) return Result.success()
         if (!archiveService.isPasswordConfigured()) return Result.success()
@@ -29,9 +30,11 @@ class CloudBackupWorker @AssistedInject constructor(
             preferences.recordError(appContext.getString(R.string.reconnect_google_backup_auto))
             return Result.success()
         }
+        val operationAccount = cloudBackupService.accountKey()
         return try {
-            cloudBackupService.createBackup()
-            preferences.recordSuccess()
+            val backup = cloudBackupService.createBackup()
+            preferences.recordSuccess(backup.createdAt, backup.accountKey)
+            if (backup.maintenancePending) preferences.recordError(appContext.getString(R.string.cloud_maintenance_pending), backup.accountKey)
             Result.success()
         } catch (error: CancellationException) {
             throw error
@@ -49,7 +52,7 @@ class CloudBackupWorker @AssistedInject constructor(
             if (classified.category != GoogleApiErrorCategory.CANCELLATION) {
                 SafeLog.e(TAG, "Backup automático falló (${classified.category})", error)
             }
-            preferences.recordError(classified.message)
+            preferences.recordError(classified.message, operationAccount)
             if (classified.shouldRetry && runAttemptCount < MAX_RETRY_ATTEMPTS) Result.retry() else Result.success()
         }
     }

@@ -3,6 +3,8 @@ package com.gastos.feature.backup
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.gastos.common.design.EssentialSection
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -60,15 +62,14 @@ class ImageSyncViewModel @Inject constructor(
 @Composable
 fun ImageSyncStatusPanel(viewModel: ImageSyncViewModel = hiltViewModel()) {
     val rows by viewModel.rows.collectAsStateWithLifecycle()
-    var details by remember { mutableStateOf(false) }
-    var visibleCount by remember { mutableIntStateOf(20) }
+    var details by rememberSaveable { mutableStateOf(false) }
+    var visibleCount by rememberSaveable { mutableIntStateOf(20) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(R.string.image_sync_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.image_sync_counts,
                 rows.count { it.status == ImageSyncDisplayStatus.SYNCED }, rows.count { it.status == ImageSyncDisplayStatus.PENDING },
                 rows.count { it.status == ImageSyncDisplayStatus.FAILED }, rows.count { it.status == ImageSyncDisplayStatus.MISSING }))
-            Text(stringResource(R.string.image_sync_data_independent), style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { details = !details }) { Text(stringResource(R.string.image_sync_details)) }
             if (rows.any { it.status == ImageSyncDisplayStatus.PENDING || it.status == ImageSyncDisplayStatus.FAILED }) {
                 OutlinedButton(onClick = { viewModel.retry() }) { Text(stringResource(R.string.image_sync_retry_all)) }
@@ -82,6 +83,9 @@ fun ImageSyncStatusPanel(viewModel: ImageSyncViewModel = hiltViewModel()) {
                         TextButton(onClick = { viewModel.retry(row) }) { Text(stringResource(R.string.image_retry)) }
                 }
                 if (unresolved.size > visibleCount) TextButton(onClick = { visibleCount += 20 }) { Text(stringResource(R.string.image_sync_details)) }
+            }
+            EssentialSection(stringResource(com.gastos.common.R.string.essential_how_it_works)) {
+                Text(stringResource(R.string.image_sync_data_independent), style = MaterialTheme.typography.bodySmall)
             }
         }
     }

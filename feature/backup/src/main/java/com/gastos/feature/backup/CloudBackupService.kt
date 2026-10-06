@@ -3,6 +3,7 @@ package com.gastos.feature.backup
 import android.content.Context
 import com.gastos.repository.PremiumStatusProvider
 import com.gastos.extension.SafeLog
+import com.google.api.client.googleapis.json.GoogleJsonResponseException
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.http.FileContent
 import com.google.api.client.http.javanet.NetHttpTransport
@@ -37,31 +38,63 @@ class CloudBackupService @Inject constructor(
             require(archiveService.isPasswordConfigured()) {
                 context.getString(R.string.configure_recovery_password_before_auto_backup)
             }
-            val drive = driveService()
-            listBackups(drive).firstOrNull()?.takeIf {
-                System.currentTimeMillis() - it.createdAt < MIN_BACKUP_INTERVAL_MS
-            }?.let { return@withLock it }
-            val temporary = File(context.cacheDir, "cloud_backup_${System.nanoTime()}.$BACKUP_FILE_EXTENSION")
-            try {
-                val preview = archiveService.createArchive(temporary, BackupMode.DATA_ONLY)
-                val name = "finai_backup_${preview.createdAt}.$BACKUP_FILE_EXTENSION"
-                val metadata = DriveFile()
-                    .setName(name)
-                    .setParents(Collections.singletonList(APP_DATA_FOLDER))
-                    .setMimeType(BACKUP_MIME_TYPE)
-                    .setAppProperties(preview.toProperties())
-                val uploaded = runInterruptible {
-                    drive.files()
-                        .create(metadata, FileContent(BACKUP_MIME_TYPE, temporary))
-                        .setFields(FILE_FIELDS)
-                        .execute()
-                }
-                pruneOldBackups(drive)
-                uploaded.toCloudBackupInfo()
-            } finally {
-                temporary.delete()
+            val accountKey = accountKey()
+            val drive = driveService(accountKey)
+            val directory = File(context.noBackupFilesDir, "cloud-upload").apply { check(isDirectory || mkdirs()) }
+            val journal = CloudBackupUploadJournal(directory)
+            var pending = journal.read(accountKey)
+            val recovered = pending != null
+            if (pending == null) {
+                val source = File(directory, "cloud_${java.util.UUID.randomUUID()}.finai")
+                try {
+                    archiveService.createArchive(source, BackupMode.DATA_ONLY)
+                    val reservedId = runInterruptible { drive.files().generateIds().setCount(1).setSpace("appDataFolder").execute().ids.single() }
+                    pending = PendingCloudUpload(reservedId, source.name, cloudFileChecksum(source))
+                    journal.write(accountKey, requireNotNull(pending))
+                } catch (error: Exception) { source.delete(); throw error }
             }
+            val upload = requireNotNull(pending)
+            val source = journal.source(upload)
+            var remote = getOrNull(drive, upload.fileId)
+            if (remote == null) {
+                check(source.isFile && cloudFileChecksum(source) == upload.md5) { "CLOUD_UPLOAD_SOURCE_UNAVAILABLE" }
+                val preview = source.inputStream().use(archiveService::inspect)
+                val metadata = DriveFile().setId(upload.fileId)
+                    .setName("finai_backup_${preview.createdAt}.$BACKUP_FILE_EXTENSION")
+                    .setParents(Collections.singletonList(APP_DATA_FOLDER)).setMimeType(BACKUP_MIME_TYPE)
+                    .setAppProperties(preview.toProperties())
+                try {
+                    remote = runInterruptible { drive.files().create(metadata, FileContent(BACKUP_MIME_TYPE, source)).setFields(FILE_FIELDS).execute() }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (failure: Exception) {
+                    // A lost acknowledgement must resolve the reserved ID before any repeat.
+                    remote = try { getOrNull(drive, upload.fileId) } catch (_: Exception) { null }
+                    if (remote == null) throw failure
+                }
+            }
+            val confirmed = requireNotNull(remote)
+            check(confirmed.md5Checksum == upload.md5 && confirmed.appProperties?.get(PROPERTY_KIND) == PROPERTY_VALUE) { "CLOUD_UPLOAD_IDENTITY_MISMATCH" }
+            val info = confirmed.toCloudBackupInfo().copy(accountKey = accountKey, recoveredUpload = recovered)
+            journal.clear(accountKey)
+            source.delete()
+            var maintenanceWarning = false
+            try { pruneOldBackups(drive) }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) {
+                maintenanceWarning = true
+                SafeLog.w(TAG, "Backup saved; retention maintenance is pending", failure)
+            }
+            info.copy(maintenancePending = maintenanceWarning)
         }
+    }
+
+    private suspend fun getOrNull(drive: Drive, id: String): DriveFile? = try {
+        runInterruptible { drive.files().get(id).setFields(FILE_FIELDS).execute() }
+    } catch (error: GoogleJsonResponseException) { if (error.statusCode == 404) null else throw error }
+
+    fun accountKey(): String {
+        val account = sheetsExportService.getLastSignedInAccount() ?: error("AUTH_REQUIRED")
+        return SheetsLinkStore.getAccountPreferenceKey(account.id, account.email)
     }
 
     suspend fun listBackups(): List<CloudBackupInfo> = withContext(Dispatchers.IO) {
@@ -112,28 +145,33 @@ class CloudBackupService @Inject constructor(
     }
 
     private suspend fun listBackups(drive: Drive): List<CloudBackupInfo> = runInterruptible {
-        drive.files().list()
-            .setSpaces(APP_DATA_FOLDER)
-            .setQ("trashed=false and appProperties has { key='$PROPERTY_KIND' and value='$PROPERTY_VALUE' }")
-            .setOrderBy("createdTime desc")
-            .setPageSize(100)
-            .setFields("files($FILE_FIELDS)")
-            .execute()
-            .files
-            .orEmpty()
-            .mapNotNull { runCatching { it.toCloudBackupInfo() }.getOrNull() }
+        val backups = mutableListOf<CloudBackupInfo>()
+        var page: String? = null
+        do {
+            val result = drive.files().list().setSpaces(APP_DATA_FOLDER)
+                .setQ("trashed=false and appProperties has { key='$PROPERTY_KIND' and value='$PROPERTY_VALUE' }")
+                .setOrderBy("createdTime desc").setPageSize(100).setPageToken(page)
+                .setFields("nextPageToken,files($FILE_FIELDS)").execute()
+            backups += result.files.orEmpty().mapNotNull { runCatching { it.toCloudBackupInfo() }.getOrNull() }
+            page = result.nextPageToken
+        } while (!page.isNullOrBlank())
+        backups
     }
 
     private suspend fun pruneOldBackups(drive: Drive) {
         listBackups(drive).drop(MAX_CLOUD_BACKUPS).forEach { backup ->
-            runCatching { runInterruptible { drive.files().delete(backup.fileId).execute() } }
-                .onFailure { SafeLog.w(TAG, "No se pudo retirar un backup antiguo", it) }
+            runInterruptible { drive.files().delete(backup.fileId).execute() }
         }
     }
 
-    private fun driveService(): Drive {
+    private fun driveService(): Drive = driveService(null)
+
+    private fun driveService(expectedAccountKey: String?): Drive {
         val account = sheetsExportService.getLastSignedInAccount()
             ?: throw IllegalStateException(context.getString(R.string.connect_google_first))
+        check(expectedAccountKey == null || SheetsLinkStore.getAccountPreferenceKey(account.id, account.email) == expectedAccountKey) {
+            "WRONG_ACCOUNT"
+        }
         require(sheetsExportService.isSignedIn()) {
             context.getString(R.string.reconnect_google_permission_backup)
         }
@@ -192,10 +230,9 @@ class CloudBackupService @Inject constructor(
         const val PROPERTY_KIND = "finaiBackup"
         const val PROPERTY_VALUE = "encrypted-v1"
         const val MAX_CLOUD_BACKUPS = 5
-        const val MIN_BACKUP_INTERVAL_MS = 2 * 60 * 1000L
         const val STALE_RESTORE_FILE_AGE_MS = 60 * 60 * 1000L
         const val CLOUD_RESTORE_FILE_PREFIX = "cloud_restore_"
-        const val FILE_FIELDS = "id,name,createdTime,size,appProperties"
+        const val FILE_FIELDS = "id,name,createdTime,size,md5Checksum,appProperties"
         const val TAG = "CloudBackupService"
     }
 }

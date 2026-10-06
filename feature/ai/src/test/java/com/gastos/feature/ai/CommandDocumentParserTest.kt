@@ -5,6 +5,118 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class CommandDocumentParserTest {
+    @Test fun `two coffees sharing one total do not reuse that total as unit price`() {
+        val response: JSONObject = JSONObject("""{"descripcion":"Cafés","total":2.60,"productos":[
+            {"descripcion":"Café","cantidad":2,"precio_unitario":2.60,"subtotal":2.60}]}""")
+        val (invoice, products) = CommandDocumentParser.expense(response, "EUR", "agrega gasto 2 cafés por 2,60€ ambos")
+        assertEquals(2.60, invoice.total, 0.0)
+        assertEquals(2.0, products.single().cantidad, 0.0)
+        assertEquals(1.30, products.single().precioUnitario, 0.0)
+        assertEquals(2.60, products.single().subtotal, 0.0)
+        assertNull(products.single().ivaPercent)
+    }
+    @Test fun `all reported Spanish messages preserve the shared amount even when the model multiplies it`() {
+        val messages: List<String> = listOf("agrega gasto 2 café por 2,60€",
+            "agrega gasto por 2 cafés en 2,60€ ambos", "agrega gasto 2 cafés por 2,60€ ambos")
+        for (message: String in messages) {
+            for (generatedTotal: Double in listOf(2.60, 5.20)) {
+                val response: JSONObject = coffeeResponse().put("total", generatedTotal)
+                val (invoice, products) = CommandDocumentParser.expense(response, "EUR", message)
+                assertEquals(message, 2.60, invoice.total, 0.0)
+                assertEquals(message, 1.30, products.single().precioUnitario, 0.0)
+                assertEquals(message, invoice.total, products.single().subtotal, 0.0)
+                assertNull(invoice.ivaPercent)
+                assertNull(products.single().ivaPercent)
+            }
+        }
+    }
+    @Test fun `explicit unit price preserves the quantity and yields the full paid amount`() {
+        val messages: List<String> = listOf("agrega gasto 2 cafés a 2,60€ cada uno",
+            "agrega gasto 2 cafés por 2,60€ la unidad", "agrega gasto 2 cafés a 2,60€",
+            "agrega gasto 2 cafés por 2,60€ por café", "agrega gasto 2 cafés por 2,60€/ud",
+            "agrega gasto 2 cafés por 2,60€ c/u", "agrega gasto 2 cafés por 2,60€ cada  uno")
+        for (message: String in messages) {
+            val (invoice, products) = CommandDocumentParser.expense(coffeeResponse(), "EUR", message)
+            assertEquals(message, 5.20, invoice.total, 0.0)
+            assertEquals(message, 2.60, products.single().precioUnitario, 0.0)
+            assertEquals(message, 5.20, products.single().subtotal, 0.0)
+        }
+    }
+    @Test fun `English total and each wording works with prefix and suffix currencies`() {
+        for ((message, currency, expected) in listOf(Triple("Add 2 coffees for EUR 2.60 both", "EUR", 2.60),
+            Triple("Add 2 coffees for $2.60 both", "USD", 2.60),
+            Triple("Add 2 coffees at £2.60 each", "GBP", 5.20),
+            Triple("Add 2 coffees for 2.60 CAD each", "CAD", 5.20))) {
+            val response: JSONObject = coffeeResponse().apply { getJSONArray("productos").getJSONObject(0).put("descripcion", "Coffee") }
+            val (invoice, products) = CommandDocumentParser.expense(response, currency, message)
+            assertEquals(message, expected, invoice.total, 0.0)
+            assertEquals(message, currency, invoice.moneda)
+            assertEquals(message, expected, products.single().cantidad * products.single().precioUnitario, 0.000001)
+        }
+    }
+    @Test fun `derived repeating unit price never changes the original total`() {
+        val response: JSONObject = coffeeResponse().apply { getJSONArray("productos").getJSONObject(0).put("cantidad", 3) }
+        val (invoice, products) = CommandDocumentParser.expense(response, "EUR", "agrega gasto 3 cafés por 2,60€ en total")
+        assertEquals(2.60, invoice.total, 0.0)
+        assertEquals(invoice.total, products.single().cantidad * products.single().precioUnitario, 0.000001)
+    }
+    @Test fun `missing unit price can be derived only from explicit quantity and total`() {
+        val response: JSONObject = coffeeResponse().apply { getJSONArray("productos").getJSONObject(0).put("precio_unitario", JSONObject.NULL) }
+        val (invoice, products) = CommandDocumentParser.expense(response, "EUR", "agrega gasto 2 cafés por 2,60€ ambos")
+        assertEquals(2.60, invoice.total, 0.0)
+        assertEquals(1.30, products.single().precioUnitario, 0.0)
+        assertThrows(InvalidCommandProductsException::class.java) { CommandDocumentParser.expense(response, "EUR") }
+    }
+    @Test fun `unrelated values unknown quantities and contradictory prices are not silently repaired`() {
+        val badPrice: JSONObject = coffeeResponse().apply { getJSONArray("productos").getJSONObject(0).put("precio_unitario", 9.99) }
+        assertThrows(InvalidCommandProductsException::class.java) { CommandDocumentParser.expense(badPrice, "EUR", "agrega gasto 2 cafés por 2,60€ ambos") }
+        val badTotal: JSONObject = coffeeResponse().put("total", 20)
+        assertThrows(InvalidCommandProductsException::class.java) { CommandDocumentParser.expense(badTotal, "EUR", "agrega gasto 2 cafés por 2,60€ ambos") }
+        for (message: String in listOf("gasto 2,60€ en cafés", "gasto 2 cafés y una tostada por 2,60€",
+            "gasto 2 cafés por 2,60€ cada uno ambos", "gasto 2 cafés por 2,60€ y propina 1€")) {
+            assertThrows(message, InvalidCommandProductsException::class.java) { CommandDocumentParser.expense(coffeeResponse(), "EUR", message) }
+        }
+        val wrongQuantity: JSONObject = coffeeResponse().apply { getJSONArray("productos").getJSONObject(0).put("cantidad", 3) }
+        assertThrows(InvalidCommandProductsException::class.java) { CommandDocumentParser.expense(wrongQuantity, "EUR", "gasto 2 cafés por 2,60€ ambos") }
+    }
+    @Test fun `grouped monetary input and two explicit prices are not guessed by the repair`() {
+        for (message: String in listOf("2 cafés por 1,234 EUR ambos", "2 cafés por EUR 1.234,56 ambos",
+            "2 cafés por 2,60€ total 5,20€")) {
+            assertNull(CommandProductPricing.resolve(message, "EUR", "Café", 2.0))
+        }
+    }
+    @Test fun `discounts and unqualified prices are left to the existing financial interpretation`() {
+        val response: JSONObject = coffeeResponse().put("total", 1.30).apply {
+            getJSONArray("productos").getJSONObject(0).put("precio_unitario", 0.65).put("subtotal", 1.30)
+        }
+        val (invoice, products) = CommandDocumentParser.expense(response, "EUR", "agrega gasto 2 cafés por 2,60€ con descuento 50%")
+        assertEquals(1.30, invoice.total, 0.0)
+        assertEquals(0.65, products.single().precioUnitario, 0.0)
+        assertNull(CommandProductPricing.resolve("2 cafés de 2,60€", "EUR", "Café", 2.0))
+        assertNull(CommandProductPricing.resolve("2 cafés 2,60€", "EUR", "Café", 2.0))
+    }
+    @Test fun `known percentage is preserved but monetary tax breakdown is never recalculated`() {
+        val response: JSONObject = coffeeResponse().put("tipo_iva", 10).apply { getJSONArray("productos").getJSONObject(0).put("iva_percent", 10) }
+        val (invoice, products) = CommandDocumentParser.expense(response, "EUR", "agrega gasto 2 cafés por 2,60€ ambos con IVA 10%")
+        assertEquals(10.0, invoice.ivaPercent!!, 0.0)
+        assertEquals(10.0, products.single().ivaPercent!!, 0.0)
+        response.put("base_imponible", 2).put("cuota_iva", 0.6)
+        assertThrows(InvalidCommandProductsException::class.java) { CommandDocumentParser.expense(response, "EUR", "agrega gasto 2 cafés por 2,60€ ambos") }
+    }
+    @Test fun `multiple products with valid prices retain all their individual amounts`() {
+        val response: JSONObject = coffeeResponse().put("total", 4.60).apply {
+            getJSONArray("productos").getJSONObject(0).put("precio_unitario", 1.30)
+            getJSONArray("productos").put(JSONObject("""{"descripcion":"Toast","cantidad":1,"precio_unitario":2,"subtotal":2}"""))
+        }
+        val (invoice, products) = CommandDocumentParser.expense(response, "EUR", "agrega gasto 2 cafés y una tostada por 4,60€")
+        assertEquals(2, products.size)
+        assertEquals(4.60, invoice.total, 0.0)
+        assertEquals(1.30, products.first().precioUnitario, 0.0)
+        assertEquals(2.0, products.last().subtotal, 0.0)
+    }
+
+    private fun coffeeResponse(): JSONObject = JSONObject("""{"descripcion":"Cafés","total":2.60,"productos":[
+        {"descripcion":"Café","cantidad":2,"precio_unitario":2.60,"subtotal":2.60}]}""")
     @Test fun `missing or null categories stay absent for both command types`() {
         for (value: Any in listOf(JSONObject.NULL, "null", " NULL ", "")) {
             val json: JSONObject = JSONObject().put("descripcion", "Example").put("monto", 20)

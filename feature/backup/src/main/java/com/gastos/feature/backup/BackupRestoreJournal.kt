@@ -26,7 +26,10 @@ internal data class RestoreJournalRemoteFile(
 @Serializable
 internal data class RestoreJournalSheetRow(
     val target: String,
-    val recordId: Long
+    val recordId: Long,
+    val documentUuid: String = "",
+    val accountId: String? = null,
+    val spreadsheetId: String? = null
 )
 
 @Serializable

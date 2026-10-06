@@ -27,7 +27,20 @@ class RemoteSyncWorker @AssistedInject constructor(
         if (remoteSyncState.shouldDefer()) return Result.retry()
         val now = System.currentTimeMillis()
         val pending = outbox.pending().filter { (it.status == RemoteSyncStatus.PENDING && it.nextAttemptAt <= now) || it.status == RemoteSyncStatus.WAITING_AUTH || it.status == RemoteSyncStatus.PREPARED }
-        for (item in pending) {
+        val sheets = pending.filter { !it.target.isDrive && it.status != RemoteSyncStatus.PREPARED }
+        val batched: Set<String> = try { sheetsSyncManager.processBatch(sheets) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            val code = sheetsFailureCode(failure)
+            val classified = GoogleApiErrorClassifier.classify(failure,
+                GoogleApiErrorContext("sync", "OFFLINE", "SERVER_UNAVAILABLE", "PERMISSION_OR_QUOTA", "SYNC_FAILED"))
+            val deferred = code in setOf("SHEETS_RECOVERY_PAUSED", "SHEETS_OTHER_DEVICE") || classified.category in setOf(
+                GoogleApiErrorCategory.NETWORK, GoogleApiErrorCategory.AUTH_RECOVERABLE, GoogleApiErrorCategory.AUTH_PERMANENT, GoogleApiErrorCategory.PLAY_SERVICES)
+            sheets.forEach { outbox.failed(it, code, consumeAttempt = !deferred,
+                permanent = !deferred && (code.startsWith("SHEETS_") || !classified.shouldRetry)) }
+            sheets.mapTo(mutableSetOf()) { it.operationId }
+        }
+        for (item in pending.filter { it.operationId !in batched }) {
             try {
                 when (processor.process(item)) {
                     RemoteSyncOutcome.SUCCESS -> Unit
@@ -39,7 +52,7 @@ class RemoteSyncWorker @AssistedInject constructor(
             } catch (error: Exception) {
                 val sheetCode: String? = error.message?.substringBefore(':')?.takeIf { it.startsWith("SHEETS_") }
                 if (sheetCode != null) {
-                    val waiting = sheetCode == "SHEETS_OTHER_DEVICE"
+                    val waiting = sheetCode in setOf("SHEETS_OTHER_DEVICE", "SHEETS_RECOVERY_PAUSED")
                     outbox.failed(item, sheetCode, consumeAttempt = !waiting, permanent = !waiting)
                     continue
                 }

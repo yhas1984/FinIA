@@ -12,6 +12,67 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SheetsSyncSafetyTest {
+    @Test fun `expense and income sharing a UUID have independent acknowledgements and updates`() = runTest {
+        val f = Fixture()
+        val expense = Invoice(id=1,fecha=1,proveedor="Expense",tipo=InvoiceType.GASTO,total=1.0)
+        val income = Income(id=1,documentUuid=expense.documentUuid,fecha=1,concepto="Income",monto=2.0)
+        var data = BackupDataset(listOf(expense),emptyList(),listOf(income),emptyList(),emptyList())
+        coEvery { f.snapshots.financialSnapshot() } answers { data }
+        coEvery { f.outbox.pending() } returns emptyList()
+        val acknowledged = mutableMapOf<String,String?>()
+        every { f.links.fingerprint(any(),any(),any()) } answers { acknowledged[thirdArg()] }
+        every { f.links.recordFingerprint(any(),any(),any(),any()) } answers { acknowledged[thirdArg()] = arg(3) }
+        f.manager.syncChanges()
+        assertEquals(setOf("EXPENSE:${expense.documentUuid}","INCOME:${expense.documentUuid}"),acknowledged.keys)
+        data = data.copy(invoices=listOf(expense.copy(total=3.0)))
+        f.manager.syncChanges()
+        coVerify(exactly=1) { f.export.syncDocuments(f.account,"book",listOf(expense.copy(total=3.0)),emptyList(),emptyList(),emptySet()) }
+    }
+    @Test fun `one thousand and ten thousand documents use bounded delta batches and no second financial write`() = runTest {
+        for (size in listOf(1_000,10_000)) {
+            val f = Fixture()
+            val invoices = (1..size).map { Invoice(id=it.toLong(),fecha=1,proveedor="Synthetic $it",tipo=InvoiceType.GASTO,total=1.0) }
+            val products = invoices.map { Product(id=it.id,invoiceId=it.id,descripcion="Synthetic item",precioUnitario=1.0,ivaPercent=null) }
+            val data = BackupDataset(invoices,products,emptyList(),emptyList(),emptyList())
+            coEvery { f.snapshots.financialSnapshot() } returns data
+            coEvery { f.outbox.pending() } returns emptyList()
+            val acknowledged = mutableMapOf<String,String?>()
+            every { f.links.fingerprint(any(),any(),any()) } answers { acknowledged[thirdArg()] }
+            every { f.links.recordFingerprint(any(),any(),any(),any()) } answers { acknowledged[thirdArg()] = arg(3) }
+            var batches = 0
+            var sent = 0
+            coEvery { f.export.syncDocuments(any(),any(),any(),any(),any(),any()) } coAnswers {
+                val documents = arg<List<Invoice>>(2)
+                assertTrue(documents.size in 1..50)
+                assertEquals(documents.map { it.id }.toSet(), arg<List<Product>>(4).map { it.invoiceId }.toSet())
+                batches++
+                sent += documents.size
+            }
+            val start = System.nanoTime()
+            f.manager.syncChanges()
+            f.manager.syncChanges()
+            assertEquals(size,sent)
+            assertEquals((size+49)/50,batches)
+            println("Sheets delta synthetic: documents=$size batches=$batches elapsedMs=${(System.nanoTime()-start)/1_000_000}")
+        }
+    }
+    @Test fun `unchanged manual sync skips financial writes and later edit sends only its document`() = runTest {
+        val f = Fixture()
+        val first = Invoice(id=1,fecha=1,proveedor="A",tipo=InvoiceType.GASTO,total=1.0)
+        val second = first.copy(id=2,documentUuid="second-uuid",proveedor="B")
+        var data = BackupDataset(listOf(first,second),emptyList(),emptyList(),emptyList(),emptyList())
+        coEvery { f.snapshots.financialSnapshot() } answers { data }
+        coEvery { f.outbox.pending() } returns emptyList()
+        val acknowledged = mutableMapOf<String,String?>()
+        every { f.links.fingerprint(any(),any(),any()) } answers { acknowledged[thirdArg()] }
+        every { f.links.recordFingerprint(any(),any(),any(),any()) } answers { acknowledged[thirdArg()] = arg(3) }
+        f.manager.syncChanges()
+        f.manager.syncChanges()
+        coVerify(exactly=1) { f.export.syncDocuments(any(),any(),any(),any(),any(),any()) }
+        data = data.copy(invoices=listOf(first.copy(total=5.0),second))
+        f.manager.syncChanges()
+        coVerify(exactly=1) { f.export.syncDocuments(f.account,"book",listOf(first.copy(total=5.0)),emptyList(),emptyList(),emptySet()) }
+    }
     @Test fun `one tap commits the entire snapshot and only deletes from the linked destination`() = runTest {
         val f = Fixture()
         val expense = Invoice(id=1, fecha=1, proveedor="Synthetic", tipo=InvoiceType.GASTO, total=12.1)
@@ -23,7 +84,7 @@ class SheetsSyncSafetyTest {
         val otherBook = f.item.copy(targetKey="other", spreadsheetId="other-book")
         coEvery { f.outbox.pending() } returnsMany listOf(listOf(f.item,otherBook),listOf(otherBook))
         assertEquals(0, f.manager.syncChanges())
-        coVerify(exactly=1) { f.export.syncDocuments(f.account,"book",data.invoices,data.incomes,data.products,setOf("old-uuid")) }
+        coVerify(exactly=1) { f.export.syncDocuments(f.account,"book",data.invoices,data.incomes,data.products,setOf(SheetsDocumentKey(RemoteSyncTarget.EXPENSE_SHEETS,"old-uuid"))) }
         coVerify { f.outbox.delete(f.item) }
         coVerify(exactly=0) { f.outbox.delete(otherBook) }
         coVerify(exactly=0) { f.export.exportToSheets(any(),any(),any(),any(),any()) }
@@ -60,7 +121,7 @@ class SheetsSyncSafetyTest {
         val export = mockk<SheetsExportService>(relaxed=true) {
             every { getLastSignedInAccount() } returns account
             every { isSignedIn() } returns true
-            coEvery { schemaVersion(any(),any()) } returns 9
+            coEvery { schemaVersion(any(),any()) } returns SheetsSchema.SCHEMA_VERSION
         }
         val invoices = mockk<InvoiceRepository>(relaxed=true)
         val incomes = mockk<IncomeRepository>(relaxed=true)
@@ -71,7 +132,11 @@ class SheetsSyncSafetyTest {
                 firstArg<RemoteSyncOutboxEntity>().copy(accountId=secondArg(),spreadsheetId=thirdArg(),documentUuid=arg(3))
             }
         }
-        val links = mockk<SheetsLinkStore>(relaxed=true) { every { getSpreadsheetId(any()) } returns "book" }
+        val links = mockk<SheetsLinkStore>(relaxed=true) { every { getSpreadsheetId(any()) } returns "book" }.also { store ->
+            every { store.recordFingerprints(any(),any(),any()) } answers {
+                thirdArg<Map<String,String?>>().forEach { (uuid, fingerprint) -> store.recordFingerprint(firstArg(), secondArg(), uuid, fingerprint) }
+            }
+        }
         val currency = mockk<CurrencyPreference> { every { defaultCurrency } returns MutableStateFlow("EUR") }
         val rates = mockk<ExchangeRateProvider> {
             every { rates } returns MutableStateFlow(mapOf("EUR" to 0.9, "USD" to 1.0))
@@ -103,7 +168,7 @@ class SheetsSyncSafetyTest {
         val prepared = f.item.copy(status=RemoteSyncStatus.PREPARED)
         assertTrue(f.manager.process(prepared))
         coVerify { f.outbox.confirmPrepared(prepared) }
-        coVerify { f.export.syncDocument(f.account,"book",emptyList(),emptyList(),emptyList(),"old-uuid") }
+        coVerify { f.export.syncDocument(f.account,"book",emptyList(),emptyList(),emptyList(),SheetsDocumentKey(RemoteSyncTarget.EXPENSE_SHEETS,"old-uuid")) }
     }
     @Test fun `prepared deletion with a surviving local record is discarded`() = runTest {
         val f = Fixture()
@@ -122,7 +187,7 @@ class SheetsSyncSafetyTest {
     @Test fun `newer schema fails safely without reexporting`() = runTest {
         val f = Fixture()
         coEvery { f.invoices.getInvoiceById(1) } returns null
-        coEvery { f.export.schemaVersion(any(),any()) } returns 10
+        coEvery { f.export.schemaVersion(any(),any()) } returns SheetsSchema.SCHEMA_VERSION + 1
         assertTrue(runCatching { f.manager.process(f.item) }.isFailure)
         coVerify(exactly=0) { f.export.exportToSheets(any(),any(),any(),any(),any()) }
         coVerify(exactly=0) { f.export.syncDocument(any(),any(),any(),any(),any(),any()) }

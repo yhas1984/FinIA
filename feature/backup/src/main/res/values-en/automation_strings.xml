@@ -1,0 +1,8 @@
+<resources><string name="view_document_source">View document</string><string name="report_filters">Report filters</string>
+<string name="report_all_records">All</string>
+<string name="report_start">From (YYYY-MM-DD, optional)</string>
+<string name="report_end">To (YYYY-MM-DD, optional)</string>
+<string name="report_type">Type</string>
+<string name="report_invalid_period">Check the dates and period order.</string>
+<string name="report_manual_adjustment">Manually adjusted amount; original breakdown retained.</string>
+</resources>

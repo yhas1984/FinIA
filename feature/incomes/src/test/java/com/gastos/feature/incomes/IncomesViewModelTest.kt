@@ -1,6 +1,7 @@
 package com.gastos.feature.incomes
 
 import android.content.Context
+import com.gastos.domain.model.listEntry
 import app.cash.turbine.test
 import com.gastos.domain.model.Income
 import com.gastos.feature.backup.SheetsSyncManager
@@ -38,6 +39,7 @@ class IncomesViewModelTest {
     ): IncomesViewModel {
         val repo = mockk<IncomeRepository>()
         every { repo.getAllIncomes() } returns flowOf(incomes)
+        every { repo.observeListEntries() } returns flowOf(incomes.map { it.listEntry() })
         val exchange = mockk<ExchangeRateProvider>()
         every { exchange.rates } returns MutableStateFlow(rates)
         every { exchange.lastUpdated } returns MutableStateFlow<Long?>(null)
@@ -154,6 +156,29 @@ class IncomesViewModelTest {
             assertEquals(true, state.hasAnyIncomes)
             assertEquals(false, state.isLoading)
             assertEquals(true, state.availableCategories.contains("Honorarios"))
+            cancelAndConsumeRemainingEvents()
+        }
+    }
+
+    @Test fun `search pages all matching transactions while total includes offscreen rows`() = runTest(UnconfinedTestDispatcher()) {
+        val rows = (1L..125L).map { income(it, 1.0, "EUR").copy(concepto = "Café Example $it", notas = "Trabajo", documentUuid = "row-$it") }
+        val vm = newViewModel(rows)
+        vm.uiState.test {
+            var state = awaitItem()
+            while (state.isLoading) state = awaitItem()
+            assertEquals(50, state.incomes.size)
+            assertEquals(125, state.matchingCount)
+            assertEquals(125.0, state.totalIngresosConvertido!!, .001)
+            vm.search("CAFE trabajo")
+            do { state = awaitItem() } while (state.query != "CAFE trabajo" || state.matchingCount != 125)
+            vm.loadMore()
+            do { state = awaitItem() } while (state.incomes.size != 100)
+            assertEquals(125.0, state.totalIngresosConvertido!!, .001)
+            vm.search("does not exist")
+            do { state = awaitItem() } while (state.query != "does not exist" || state.matchingCount != 0)
+            assertEquals(0.0, state.totalIngresosConvertido!!, .001)
+            vm.clearFilters()
+            do { state = awaitItem() } while (state.matchingCount != 125 || state.incomes.size != 50)
             cancelAndConsumeRemainingEvents()
         }
     }

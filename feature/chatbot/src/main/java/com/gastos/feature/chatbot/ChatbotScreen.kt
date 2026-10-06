@@ -20,6 +20,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.gastos.common.design.EssentialHeader
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,14 +43,19 @@ sealed class ChatMessage {
     data class User(val text: String, override val timestamp: Long = java.lang.System.currentTimeMillis()) : ChatMessage()
     data class AI(val text: String, override val timestamp: Long = java.lang.System.currentTimeMillis()) : ChatMessage()
     data class System(val text: String, override val timestamp: Long = java.lang.System.currentTimeMillis()) : ChatMessage()
-    data class Document(val id: Long, val text: String, override val timestamp: Long) : ChatMessage()
+    data class Document(val id: Long, val text: String, override val timestamp: Long, val uuid: String? = null, val kind: String? = null) : ChatMessage()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatbotScreen(
+    importedUri: Uri? = null,
+    onImportConsumed: () -> Unit = {},
     onNavigateBack: () -> Unit = {},
     onOpenDocument: (com.gastos.domain.model.DocumentIdentity) -> Unit = {},
+    onOpenReceipt: (String, String?) -> Unit = { _, _ -> },
+    onManualEntry: (Boolean) -> Unit = {},
+    onNavigateToBank: () -> Unit = {},
     captureModel: DocumentCaptureViewModel = hiltViewModel(),
     viewModel: ChatbotViewModel = hiltViewModel()
 ) {
@@ -61,22 +68,24 @@ fun ChatbotScreen(
     val showTyping: Boolean = uiState.isProcessing && (lastMessage !is ChatMessage.AI || lastMessage.text.isEmpty())
     val showRetry: Boolean = uiState.canRetryIncomplete && !uiState.isProcessing
     val listState = rememberLazyListState()
-    var textInput by remember { mutableStateOf("") }
+    var textInput by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val voiceAvailable = remember {
         android.speech.SpeechRecognizer.isRecognitionAvailable(context)
     }
 
+    LaunchedEffect(importedUri, captureState.busy) { if (!captureState.busy) importedUri?.let { captureModel.processImage(it); onImportConsumed() } }
     // Image picker launcher (galería)
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let { captureModel.processImage(it) }
     }
 
     // Estado para la URI de la foto tomada con cámara
-    var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var showScanMenu by remember { mutableStateOf(false) }
+    var capturedImageUriText by rememberSaveable { mutableStateOf<String?>(null) }
+    val capturedImageUri = capturedImageUriText?.let(Uri::parse)
+    var showScanMenu by rememberSaveable { mutableStateOf(false) }
     var showClearDialog by remember { mutableStateOf(false) }
 
     // Launcher para tomar una foto con la cámara
@@ -94,7 +103,7 @@ fun ChatbotScreen(
     ) { isGranted ->
         if (isGranted) {
             launchCamera(context) { uri ->
-                capturedImageUri = uri
+                capturedImageUriText = uri.toString()
                 cameraLauncher.launch(uri)
             }
         }
@@ -121,54 +130,23 @@ fun ChatbotScreen(
             .fillMaxSize()
             .imePadding(),
         topBar = {
-            TopAppBar(
-                title = { 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.SmartToy,
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(stringResource(R.string.chatbot_app_title), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(
-                                text = stringResource(R.string.chatbot_online_status),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.chatbot_cd_back))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = viewModel::refreshExchangeRates) { Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh_exchange_rates)) }
-                    IconButton(onClick = { showClearDialog = true }) {
-                        Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.chatbot_cd_clear_chat))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            )
+            EssentialHeader(stringResource(R.string.chatbot_app_title), onNavigateBack) {
+                IconButton(onClick = viewModel::refreshExchangeRates) { Icon(Icons.Default.Refresh, stringResource(R.string.refresh_exchange_rates)) }
+                IconButton(onClick = { showClearDialog = true }) { Icon(Icons.Default.DeleteSweep, stringResource(R.string.chatbot_cd_clear_chat)) }
+            }
         },
         bottomBar = {
             Surface(
-                tonalElevation = 8.dp,
+                tonalElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.testTag("chat_composer").navigationBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp)) {
-                    // Quick action buttons
-                    Row(
+                Column(modifier = Modifier.testTag("chat_composer").navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    // Quick actions wrap when accessibility text needs more room.
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        OutlinedButton(
+                        TextButton(
                             onClick = {
                                 if (uiState.isListening) {
                                     viewModel.stopVoiceInput()
@@ -183,7 +161,7 @@ fun ChatbotScreen(
                                     }
                                 }
                             },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.heightIn(min = 48.dp),
                             enabled = voiceAvailable && !uiState.isProcessing,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                         ) {
@@ -199,9 +177,9 @@ fun ChatbotScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(if (uiState.isListening) stringResource(R.string.chatbot_stop_voice) else stringResource(R.string.chatbot_voice), style = MaterialTheme.typography.labelMedium)
                         }
-                        OutlinedButton(
+                        TextButton(
                             onClick = { showScanMenu = true },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.heightIn(min = 48.dp),
                             enabled = !uiState.isProcessing && !captureState.busy,
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                         ) {
@@ -220,7 +198,7 @@ fun ChatbotScreen(
                                     when (PackageManager.PERMISSION_GRANTED) {
                                         ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) -> {
                                             launchCamera(context) { uri ->
-                                                capturedImageUri = uri
+                                                capturedImageUriText = uri.toString()
                                                 cameraLauncher.launch(uri)
                                             }
                                         }
@@ -231,12 +209,16 @@ fun ChatbotScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.chatbot_menu_attach_image)) },
+                                text = { Text(stringResource(R.string.attach_document)) },
                                 onClick = {
                                     showScanMenu = false
-                                    imagePickerLauncher.launch("image/*")
+                                    imagePickerLauncher.launch(arrayOf("image/*", "application/pdf"))
                                 }
                             )
+                            HorizontalDivider()
+                            DropdownMenuItem(text = { Text(stringResource(com.gastos.common.R.string.bank_statements_title)) }, onClick = { showScanMenu = false; onNavigateToBank() })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.manual_expense)) }, onClick = { showScanMenu = false; onManualEntry(false) })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.manual_income)) }, onClick = { showScanMenu = false; onManualEntry(true) })
                         }
                     }
 
@@ -250,7 +232,8 @@ fun ChatbotScreen(
                             onValueChange = { textInput = it },
                             modifier = Modifier.weight(1f),
                             placeholder = { Text(stringResource(R.string.chatbot_input_placeholder)) },
-                            singleLine = true,
+                            minLines = 1,
+                            maxLines = 4,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                             keyboardActions = androidx.compose.foundation.text.KeyboardActions(
                                 onSend = {
@@ -260,11 +243,12 @@ fun ChatbotScreen(
                                     }
                                 }
                             ),
-                            shape = RoundedCornerShape(24.dp),
+                            shape = com.gastos.common.design.EssentialLayout.fieldShape,
+                            colors = com.gastos.common.design.essentialFieldColors(),
                             enabled = !uiState.isProcessing
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        FloatingActionButton(
+                        FilledIconButton(
                             onClick = {
                                 if (textInput.isNotBlank() && !uiState.isProcessing) {
                                     viewModel.sendMessage(textInput)
@@ -272,10 +256,7 @@ fun ChatbotScreen(
                                 }
                             },
                             modifier = Modifier.size(48.dp),
-                            containerColor = if (textInput.isNotBlank() && !uiState.isProcessing)
-                                MaterialTheme.colorScheme.primary 
-                            else 
-                                MaterialTheme.colorScheme.surfaceVariant
+                            enabled = textInput.isNotBlank() && !uiState.isProcessing
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Send,
@@ -353,7 +334,7 @@ fun ChatbotScreen(
                             is ChatMessage.User -> UserMessageBubble(message.text)
                             is ChatMessage.AI -> AIMessageBubble(message.text)
                             is ChatMessage.System -> SystemMessageBubble(message.text)
-                            is ChatMessage.Document -> DocumentMessageBubble(message.text)
+                            is ChatMessage.Document -> DocumentMessageBubble(message.text, message.uuid?.let { uuid -> { onOpenReceipt(uuid, message.kind) } })
                         }
                     }
 
@@ -367,6 +348,17 @@ fun ChatbotScreen(
                             AIMessageBubble(stringResource(R.string.chatbot_typing_indicator))
                         }
                     }
+                    uiState.correction?.let { pending -> item {
+                        Column {
+                            Text(stringResource(R.string.choose_movement))
+                            pending.choices.forEach { choice -> TextButton(onClick = { viewModel.chooseCorrection(choice.identity.uuid) }, enabled = !uiState.isProcessing) {
+                                Text("${choice.identity.issuer} · ${choice.identity.date} · ${choice.identity.amount} ${choice.identity.currency}")
+                            } }
+                            TextButton(onClick = viewModel::dismissCorrection) { Text(stringResource(R.string.capture_close)) }
+                        }
+                    } }
+                    if (uiState.suggestedRule != null) item { TextButton(onClick = viewModel::saveSuggestedRule, enabled = !uiState.isProcessing) { Text(stringResource(R.string.use_category_for_future)) } }
+                    if (uiState.undoMutationId != null) item { TextButton(onClick = viewModel::undoCorrection, enabled = !uiState.isProcessing) { Text(stringResource(R.string.undo_correction)) } }
                     if (hasCaptureContent) {
                         item(key = "capture_event") {
                             Column(Modifier.fillMaxWidth().testTag("chat_capture_event")) {
@@ -395,21 +387,22 @@ fun ChatbotScreen(
 }
 
 @Composable
-private fun DocumentMessageBubble(text: String) {
+private fun DocumentMessageBubble(text: String, onOpen: (() -> Unit)? = null) {
     Surface(
         modifier = Modifier.fillMaxWidth().testTag("chat_document_receipt"),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
-        Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Default.CheckCircle, contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(text.substringBefore('\n'), style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary)
-                Text(text.substringAfter('\n', ""), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface)
+                Text(text.substringAfter('\n', "").lineSequence().take(if (onOpen == null) Int.MAX_VALUE else 3).joinToString("\n"), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface)
+                onOpen?.let { TextButton(onClick = it, contentPadding = PaddingValues(horizontal = 0.dp)) { Text(stringResource(R.string.open_transaction)) } }
             }
         }
     }

@@ -9,6 +9,13 @@ import com.gastos.domain.model.InvoiceType
 
 @Entity(tableName = "invoices", indices = [Index(value = ["documentUuid"], unique = true), Index("documentKey"), Index("sourceSha256")])
 data class InvoiceEntity(
+    val categoryId: String? = null,
+    val subcategoryId: String? = null,
+    val sourceMimeType: String? = null,
+    val sourceName: String? = null,
+    @ColumnInfo(defaultValue = "'MANUAL'") val origin: String = "MANUAL",
+    @ColumnInfo(defaultValue = "0") val manualAmountAdjusted: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val financialRevision: Long = 0,
     @ColumnInfo(defaultValue = "'[]'") val taxesJson: String = "[]",
     val evidenceJson: String? = null,
     val documentKey: String? = null,
@@ -71,6 +78,13 @@ data class ProductEntity(
 
 @Entity(tableName = "incomes", indices = [Index(value = ["documentUuid"], unique = true), Index("documentKey"), Index("sourceSha256")])
 data class IncomeEntity(
+    val categoryId: String? = null,
+    val subcategoryId: String? = null,
+    val sourceMimeType: String? = null,
+    val sourceName: String? = null,
+    @ColumnInfo(defaultValue = "'MANUAL'") val origin: String = "MANUAL",
+    @ColumnInfo(defaultValue = "0") val manualAmountAdjusted: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val financialRevision: Long = 0,
     @ColumnInfo(defaultValue = "'[]'") val taxesJson: String = "[]",
     val evidenceJson: String? = null,
     val documentKey: String? = null,

@@ -7,6 +7,23 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface InvoiceDao {
+    @Query("""SELECT documentUuid AS uuid, 'INVOICE' AS source, tipo = 'GASTO' AS expense,
+        total AS amount, moneda AS currency, fecha AS date, proveedor AS description, numeroFactura AS number,
+        (imagenUri IS NOT NULL OR driveFileId IS NOT NULL) AS hasDocument, financialRevision AS revision FROM invoices""")
+    suspend fun bankIndex(): List<com.gastos.domain.model.BankMovement>
+
+    @Query("SELECT * FROM invoices WHERE documentUuid = :uuid LIMIT 1")
+    suspend fun getByUuid(uuid: String): InvoiceEntity?
+
+    @Query("SELECT * FROM invoices WHERE tipo = :type AND moneda = :currency AND total = :amount AND fecha BETWEEN :start AND :end ORDER BY fecha DESC")
+    suspend fun bankCandidates(type: InvoiceType, currency: String, amount: Double, start: Long, end: Long): List<InvoiceEntity>
+
+    @Query("""SELECT id, documentUuid, proveedor AS description, fecha AS date, total AS amount,
+        moneda AS currency, categoria AS category, subcategoria AS subcategory, numeroFactura AS documentNumber,
+        notas AS notes, NULL AS issuer, NULL AS evidenceJson FROM invoices WHERE tipo = :type
+        ORDER BY fecha DESC, documentUuid ASC""")
+    fun observeListEntries(type: InvoiceType): Flow<List<com.gastos.data.local.entity.MovementListProjection>>
+
     @Query("SELECT * FROM invoices WHERE documentKey = :key OR sourceSha256 = :hash OR documentKey IS NULL")
     suspend fun documentCandidates(key: String?, hash: String?): List<InvoiceEntity>
 

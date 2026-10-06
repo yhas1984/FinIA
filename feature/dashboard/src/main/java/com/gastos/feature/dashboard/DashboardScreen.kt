@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import com.gastos.common.design.EssentialHeader
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,15 +44,21 @@ import com.gastos.feature.dashboard.R
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
+    limitsModel: MonthlyLimitsViewModel = hiltViewModel(),
     defaultCurrency: String = "EUR",
     onNavigateToChat: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onNavigateToBackup: () -> Unit = {},
-    onOpenMovement: (isExpense: Boolean, id: Long) -> Unit = { _, _ -> }
+    onOpenMovement: (isExpense: Boolean, id: Long) -> Unit = { _, _ -> },
+    onOpenReference: ((com.gastos.domain.model.MovementReference) -> Unit)? = null,
+    customizationOnly: Boolean = false,
+    onNavigateBack: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val fmt = { amt: Double -> com.gastos.domain.model.formatMoney(amt, defaultCurrency) }
+    LaunchedEffect(customizationOnly) { if (customizationOnly) viewModel.setEditMode(true) }
+    val hasLimits by limitsModel.hasLimits.collectAsStateWithLifecycle(false)
     val appLocale = LocalLocale.current.platformLocale
+    val fmt = { amt: Double -> com.gastos.domain.model.formatMoney(amt, defaultCurrency, appLocale) }
     val selectedMonthLabel = remember(uiState.selectedMonth, appLocale) {
         Calendar.getInstance(appLocale).apply {
             clear()
@@ -69,8 +76,8 @@ fun DashboardScreen(
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val visibleWidgets = remember(uiState.widgetOrder, uiState.hiddenWidgets) {
-        uiState.widgetOrder.filter { it !in uiState.hiddenWidgets }
+    val visibleWidgets = remember(uiState.widgetOrder, uiState.hiddenWidgets, hasLimits, uiState.isEditMode) {
+        uiState.widgetOrder.filter { it !in uiState.hiddenWidgets && (it != DashboardWidget.MONTHLY_LIMITS.id || hasLimits || uiState.isEditMode) }
     }
 
     val hiddenWidgetsList = remember(uiState.hiddenWidgets) {
@@ -111,22 +118,28 @@ fun DashboardScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = { EssentialHeader(stringResource(if (customizationOnly) com.gastos.common.R.string.essential_personalize else R.string.dashboard_header),
+            if (customizationOnly) onNavigateBack else null) {
+                if (!customizationOnly) {
+                    IconButton(onClick = onNavigateToSettings) { Icon(Icons.Default.Settings, stringResource(R.string.settings)) }
+                }
+            } }
     ) { innerPadding ->
         LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             stickyHeader {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.background)
-                        .padding(top = 12.dp, bottom = 4.dp)
+                        .padding(top = 8.dp)
                 ) {
                     MonthSelectorRow(
                         label = selectedMonthLabel,
@@ -138,9 +151,14 @@ fun DashboardScreen(
                 }
             }
 
-            item {
-                val excluded = uiState.conversions.values.flatMap { it.excluded }.distinctBy { it.id }
-                if (excluded.isNotEmpty()) {
+            if (!customizationOnly && !uiState.isLoading && uiState.totalFacturas == 0 && uiState.totalIngresosCount == 0) item {
+                Text(stringResource(R.string.dashboard_first_steps), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+            }
+
+            val excluded = uiState.conversions.values.flatMap { it.excluded }.distinctBy { it.id }
+            if (excluded.isNotEmpty()) {
+                item {
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(16.dp)) {
                             Text(stringResource(R.string.total_partial), style = MaterialTheme.typography.titleMedium)
@@ -155,60 +173,10 @@ fun DashboardScreen(
                 }
             }
 
-            item {
-                Spacer(modifier = Modifier.height(32.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.dashboard_header),
-                        style = MaterialTheme.typography.headlineLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        IconButton(onClick = onNavigateToBackup) {
-                            Icon(
-                                Icons.Filled.CloudUpload,
-                                contentDescription = stringResource(R.string.backup),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton(onClick = onNavigateToSettings) {
-                            Icon(
-                                Icons.Filled.Settings,
-                                contentDescription = stringResource(R.string.settings),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton(
-                            onClick = { viewModel.setEditMode(!uiState.isEditMode) }
-                        ) {
-                            Icon(
-                                Icons.Filled.Tune,
-                                contentDescription = if (uiState.isEditMode) {
-                                    stringResource(R.string.finish_customization)
-                                } else {
-                                    stringResource(R.string.customize_dashboard)
-                                },
-                                tint = if (uiState.isEditMode) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-
             if (uiState.isEditMode) {
                 item {
                     EditModeToolbar(
-                        onDone = { viewModel.setEditMode(false) },
+                        onDone = { viewModel.setEditMode(false); if (customizationOnly) onNavigateBack() },
                         onReset = viewModel::resetLayout
                     )
                 }
@@ -336,7 +304,11 @@ fun DashboardScreen(
                 }
             },
             onSelectSubcategory = viewModel::selectSubcategory,
-            onOpenMovement = onOpenMovement,
+            onOpenMovement = { movement ->
+                val reference = movement.reference
+                if (reference != null && onOpenReference != null) onOpenReference(reference)
+                else onOpenMovement(movement.isExpense, movement.id)
+            },
             onDismiss = viewModel::resetDrillDown
         )
     }
@@ -350,7 +322,11 @@ fun DashboardScreen(
             movements = uiState.dayMovements,
             balance = uiState.selectedDayBalance,
             fmt = fmt,
-            onOpenMovement = onOpenMovement,
+            onOpenMovement = { movement ->
+                val reference = movement.reference
+                if (reference != null && onOpenReference != null) onOpenReference(reference)
+                else onOpenMovement(movement.isExpense, movement.id)
+            },
             onDismiss = viewModel::clearSelectedDay
         )
     }
@@ -373,14 +349,14 @@ private fun DashboardWidgetContent(
     onNextMonth: () -> Unit
 ) {
     when (widgetId) {
-        DashboardWidget.BALANCE.id -> BalanceWidget(uiState = uiState, fmt = fmt, monthLabel = monthLabel)
+        DashboardWidget.MONTHLY_LIMITS.id -> MonthlyLimitsWidget(uiState.selectedMonth.toString())
+        DashboardWidget.BALANCE.id -> BalanceWidget(uiState = uiState, fmt = fmt)
         DashboardWidget.CASHFLOW.id -> CashflowCard(
             totalGastos = conversionText(uiState.conversions["totalGastosMes"], uiState.totalGastosMes, fmt),
             totalIngresos = conversionText(uiState.conversions["totalIngresosMes"], uiState.totalIngresosMes, fmt)
         )
         DashboardWidget.ANALYTICS.id -> InteractiveAnalyticsCard(
             type = uiState.analyticsType,
-            monthLabel = monthLabel,
             total = conversionText(uiState.conversions["analyticsTotal"], uiState.analyticsTotal, fmt),
             slices = uiState.analyticsSlices,
                 emptyMessage = if (uiState.conversions["analyticsTotal"]?.isUnavailable == true) stringResource(R.string.total_unavailable) else if (uiState.analyticsType == AnalyticsType.GASTOS) {
@@ -421,20 +397,19 @@ private fun DashboardWidgetContent(
 @Composable
 private fun BalanceWidget(
     uiState: DashboardUiState,
-    fmt: (Double) -> String,
-    monthLabel: String
+    fmt: (Double) -> String
 ) {
-    Column {
+    Column(Modifier.fillMaxWidth().padding(16.dp)) {
         Text(
-            text = stringResource(R.string.balance_for_month, monthLabel),
+            text = stringResource(R.string.month_balance),
             style = MaterialTheme.typography.labelMedium.copy(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         )
-        AutoSizeMonetaryText(
+        Text(
             text = conversionText(uiState.conversions["balanceMes"], uiState.balanceMes, fmt),
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = FontWeight.SemiBold,
                 color = if (uiState.balanceMes >= 0)
                     MaterialTheme.colorScheme.secondary
                 else
@@ -443,7 +418,6 @@ private fun BalanceWidget(
             modifier = Modifier
                 .padding(top = 8.dp)
                 .fillMaxWidth(),
-            minFontSize = 20.sp,
             textAlign = TextAlign.Start
         )
     }
@@ -616,7 +590,7 @@ fun CashflowCard(totalGastos: String, totalIngresos: String) {
             .clip(RoundedCornerShape(24.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
     ) {
-        Column(modifier = Modifier.padding(24.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -745,11 +719,11 @@ fun GlassCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface)
     ) {
         Column(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.padding(16.dp),
             content = content
         )
     }

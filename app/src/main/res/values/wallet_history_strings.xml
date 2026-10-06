@@ -1,0 +1,19 @@
+<resources>
+    <string name="wallet_legacy_payment">Pago de Wallet</string>
+    <string name="wallet_show_more">Mostrar más pagos</string>
+    <string name="wallet_open_expense">Abrir gasto</string>
+    <string name="wallet_undo_unavailable">Este pago se ha editado, tiene un documento o está vinculado al banco. Revísalo desde su detalle antes de eliminarlo.</string>
+    <string name="wallet_retry_disabled">Activa la captura y el permiso de notificaciones para reintentar.</string>
+    <string name="wallet_retry">Reintentar registro</string>
+    <string name="wallet_ignore">Ignorar este aviso</string>
+    <string name="wallet_amount_unknown">Importe original no disponible</string>
+    <string name="wallet_ignored">Ignorado. No afecta al balance.</string>
+    <string name="wallet_paused">Registro pausado. No afecta al balance.</string>
+    <string name="wallet_failed_manual">No se ha podido guardar. Reintenta cuando lo necesites.</string>
+    <string name="wallet_failed_retrying">Error al guardar. El aviso se conserva para reintentar.</string>
+    <string name="wallet_waiting">Esperando registro local.</string>
+    <string name="wallet_undone">Pago deshecho</string>
+    <string name="wallet_movement_removed">El gasto se ha eliminado.</string>
+    <string name="wallet_registered">Gasto registrado</string>
+    <string name="wallet_payment_detail">Datos del aviso de pago: comercio, importe, moneda y fecha. No incluyen impuestos ni el texto original de la notificación.</string>
+</resources>

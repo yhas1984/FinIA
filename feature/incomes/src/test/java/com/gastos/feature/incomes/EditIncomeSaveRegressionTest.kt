@@ -84,4 +84,20 @@ class EditIncomeSaveRegressionTest {
         vm.updateConcepto("Edited"); vm.saveIncome(es); advanceUntilIdle()
         coVerify { repo.updateIncome(match { it.documentUuid==original.documentUuid && it.driveFileId=="file" && it.ivaPercent==10.0 }) }
     }
+
+    @Test fun `all setters ignore edits while local save is pending`() = runTest(dispatcher) {
+        val stored = kotlinx.coroutines.CompletableDeferred<Long>()
+        coEvery { repo.insertIncome(any()) } coAnswers { stored.await() }
+        val vm = EditIncomeViewModel(context, repo, sync)
+        vm.updateConcepto("Initial"); vm.updateMonto("20")
+        vm.saveIncome(es); runCurrent()
+        assertTrue(vm.uiState.value.isSaving)
+        vm.updateConcepto("Lost edit"); vm.updateMonto("999"); vm.updateDocumentField("kind", "nomina")
+        vm.selectCategory("Changed", true); vm.addTax(es)
+        assertEquals("Initial", vm.form.value.concepto)
+        assertEquals("20", vm.form.value.monto)
+        assertTrue(vm.form.value.taxes.isEmpty())
+        stored.complete(7L); advanceUntilIdle()
+        coVerify(exactly = 1) { repo.insertIncome(match { it.concepto == "Initial" && it.monto == 20.0 }) }
+    }
 }

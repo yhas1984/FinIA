@@ -387,7 +387,10 @@ data class ChatbotUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isProcessing: Boolean = false,
     val canRetryIncomplete: Boolean = false,
-    val isListening: Boolean = false
+    val isListening: Boolean = false,
+    val correction: PendingCorrection? = null,
+    val undoMutationId: String? = null,
+    val suggestedRule: com.gastos.domain.model.CategoryRule? = null
 )
 
 @HiltViewModel
@@ -408,7 +411,9 @@ class ChatbotViewModel @Inject constructor(
     private val saveIncomeUseCase: SaveIncomeUseCase,
     private val exchangeRateProvider: ExchangeRateProvider,
     private val currencyPreference: CurrencyPreference,
-    private val commandOperations: com.gastos.storage.CommandOperationStore
+    private val commandOperations: com.gastos.storage.CommandOperationStore,
+    private val automation: AutomationCommands? = null,
+    private val bankImports: com.gastos.storage.BankImportStore? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatbotUiState(isProcessing = true))
@@ -468,6 +473,8 @@ class ChatbotViewModel @Inject constructor(
                 incompletePrompt = pending.text
                 _uiState.update { it.copy(canRetryIncomplete = true) }
             }
+            val undoId = automation?.latestUndoId()
+            _uiState.update { it.copy(undoMutationId = undoId) }
             hasRestoredMessages = true
         }
         aiService.replaceChatHistory(messages.filterNot {
@@ -479,7 +486,7 @@ class ChatbotViewModel @Inject constructor(
     private fun com.gastos.domain.model.ChatMessageRecord.toUiMessage(): ChatMessage? = when (role) {
         "user" -> ChatMessage.User(visibleText, createdAt)
         "model", "model_incomplete" -> ChatMessage.AI(visibleModelText(visibleText), createdAt)
-        "document" -> ChatMessage.Document(id, visibleText, createdAt)
+        "document" -> ChatMessage.Document(id, visibleText, createdAt, documentUuid, documentKind)
         else -> ChatMessage.System(visibleText, createdAt)
     }
 
@@ -505,6 +512,50 @@ class ChatbotViewModel @Inject constructor(
             chatMessageRepository.replaceLastIncomplete(message)
             replacingIncomplete = false
         } else chatMessageRepository.addMessage(message)
+    }
+
+    fun chooseCorrection(uuid: String) {
+        val pending = _uiState.value.correction ?: return
+        if (_uiState.value.isProcessing) return
+        _uiState.update { it.copy(isProcessing = true) }
+        viewModelScope.launch {
+            try {
+                val outcome = requireNotNull(automation).apply(pending, uuid)
+                _uiState.update { it.copy(correction = null, undoMutationId = outcome.mutationId, suggestedRule = outcome.suggestedRule,
+                    messages = it.messages + ChatMessage.AI(outcome.message.orEmpty())) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(context.getString(R.string.correction_failed))) } }
+            finally { _uiState.update { it.copy(isProcessing = false) } }
+        }
+    }
+    fun dismissCorrection() { _uiState.update { it.copy(correction = null) } }
+    fun saveSuggestedRule() {
+        val rule = _uiState.value.suggestedRule ?: return
+        if (_uiState.value.isProcessing) return
+        _uiState.update { it.copy(isProcessing = true) }
+        viewModelScope.launch {
+            try {
+                requireNotNull(automation).saveRule(rule)
+                val text = context.getString(R.string.rule_saved)
+                persistMessage("model", text, includeInContext = false)
+                _uiState.update { it.copy(suggestedRule = null, messages = it.messages + ChatMessage.AI(text)) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(context.getString(R.string.correction_failed))) } }
+            finally { _uiState.update { it.copy(isProcessing = false) } }
+        }
+    }
+    fun undoCorrection() {
+        val mutationId = _uiState.value.undoMutationId ?: return
+        if (_uiState.value.isProcessing) return
+        _uiState.update { it.copy(isProcessing = true) }
+        viewModelScope.launch {
+            try {
+                val message = requireNotNull(automation).undo(mutationId)
+                _uiState.update { it.copy(undoMutationId = null, suggestedRule = null, messages = it.messages + ChatMessage.AI(message)) }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(context.getString(R.string.correction_failed))) } }
+            finally { _uiState.update { it.copy(isProcessing = false) } }
+        }
     }
 
     fun retryIncompleteResponse() {
@@ -539,6 +590,27 @@ class ChatbotViewModel @Inject constructor(
         } else it.messages + ChatMessage.User(text),
             isProcessing = true, canRetryIncomplete = false) }
 
+        val bankQuery = com.gastos.domain.model.BankQuery.detect(text)
+        if (bankQuery != null && bankImports != null) {
+            viewModelScope.launch {
+                try {
+                    val uuid = requireNotNull(activeOperationUuid)
+                    commandOperations.begin(uuid, text)
+                    val selected = bankQuery.select(bankImports.transactions(), bankImports.movements())
+                    val answer = buildString {
+                        append(context.getString(R.string.bank_query_count, selected.size))
+                        selected.take(20).forEach { row -> append("\n• ${row.description} · ${row.amount} ${row.currency} · ${java.text.DateFormat.getDateInstance().format(java.util.Date(row.date))}") }
+                        append("\n\n" + context.getString(R.string.bank_query_hint))
+                    }
+                    commandOperations.completeLocal(uuid, answer)
+                    _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(answer)) }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(context.getString(R.string.bank_query_failed))) } }
+                finally { _uiState.update { it.copy(isProcessing = false) } }
+            }
+            return
+        }
+
         // Sin API key: mensaje guía en lugar de llamar al servicio.
         if (!aiService.isConfigured()) {
             _uiState.update {
@@ -555,6 +627,10 @@ class ChatbotViewModel @Inject constructor(
             val collected = StringBuilder()
             try {
                 val operation = commandOperations.begin(requireNotNull(activeOperationUuid), text)
+                if (operation.status == "SAVED" && operation.resultKind in setOf("LOCAL", "UPDATE")) {
+                    _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(operation.resultText.orEmpty()), isProcessing = false) }
+                    return@launch
+                }
                 if (operation.status == "SAVED") {
                     val saved = commandOperations.commit(operation.uuid, null, null, emptyList())
                     displayCommandReceipt(saved.receipt, streaming = false)
@@ -593,7 +669,13 @@ class ChatbotViewModel @Inject constructor(
                 throw cancelled
             } catch (e: Exception) {
                 SafeLog.w(TAG, "Message processing interrupted")
-                val message = context.getString(R.string.chatbot_processing_error, e.message ?: "")
+                val message = context.getString(R.string.chatbot_processing_error, when (e.message) {
+                    "DATE_INVALID" -> context.getString(R.string.automation_invalid_date)
+                    "MOVEMENT_MISSING" -> context.getString(R.string.automation_movement_missing)
+                    "MOVEMENT_CHANGED", "UNDO_MISSING", "UNDO_EXPIRED" -> context.getString(R.string.correction_failed)
+                    "PATCH_INVALID", "AMOUNT_INVALID", "CURRENCY_INVALID", "CURRENCY_BREAKDOWN", "CATEGORY_PARENT_INVALID", "RULE_INVALID", "CATEGORY_NAME_INVALID" -> context.getString(R.string.automation_invalid_fields)
+                    else -> e.message.orEmpty()
+                })
                 if (responseMode == ChatResponseMode.PREMIUM_STREAM) {
                     val partial = ChatResponsePresentation.visiblePartial(collected.toString())
                     val visible = partial?.let { it + "\n\n" + context.getString(R.string.chatbot_response_incomplete) } ?: message
@@ -697,6 +779,12 @@ class ChatbotViewModel @Inject constructor(
             }
         }
 
+        result.automationCommand?.let { raw ->
+            val outcome = requireNotNull(automation).execute(requireNotNull(activeOperationUuid), raw)
+            _uiState.update { it.copy(correction = outcome.pending, undoMutationId = outcome.mutationId, suggestedRule = outcome.suggestedRule, isProcessing = false) }
+            if (outcome.message != null) showResult(outcome.message, shouldPersist = false)
+            return
+        }
         validateAction(result)?.let { message ->
             showResult(context.getString(R.string.chatbot_validation_error_prefix, message), shouldPersist = false)
             return

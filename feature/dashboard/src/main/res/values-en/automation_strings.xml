@@ -1,0 +1,7 @@
+<resources>
+<string name="monthly_limits">Monthly limits</string>
+<string name="no_monthly_limits">Set your category limits in Settings.</string>
+<string name="limit_partial">Partial total: %1$d transactions lack an exchange rate.</string>
+<string name="limit_remaining">Remaining: %1$s</string>
+<string name="limit_exceeded">Exceeded by %1$s</string>
+</resources>

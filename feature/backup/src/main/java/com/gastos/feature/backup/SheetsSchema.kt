@@ -13,7 +13,7 @@ import java.util.Date
 import java.util.Locale
 
 internal object SheetsSchema {
-    const val SCHEMA_VERSION = 9
+    const val SCHEMA_VERSION = 10
     const val RENDER_REVISION = 1 // Refresh remote formulas after locale-aware rendering changes.
     const val SCHEMA_LOCALE_ES = "es"
     const val SCHEMA_LOCALE_EN = "en"
@@ -49,9 +49,9 @@ internal object SheetsSchema {
         ingresosTitle = "Ingresos",
         productosTitle = "Productos",
         resumenTitle = "Resumen",
-        recibidasHeaders = listOf("Nº Factura", "Fecha", "NIF País", "NIF Emisor", "Emisor (Razón Social)", "Base Imponible", "Impuesto %", "Cuota de impuestos", "Recargo Eq.", "IRPF %", "Total del documento", "Moneda", "Categoría", "Notas", "UUID", "Foto Drive", "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)") + periodHeaders(LocaleCode.ES),
+        recibidasHeaders = listOf("Nº Factura", "Fecha", "NIF País", "NIF Emisor", "Emisor (Razón Social)", "Base Imponible", "Impuesto %", "Cuota de impuestos", "Recargo Eq.", "IRPF %", "Total del documento", "Moneda", "Categoría", "Notas", "UUID", "Foto Drive", "Total Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)") + periodHeaders(LocaleCode.ES) + automationHeaders(LocaleCode.ES),
         productosHeaders = listOf("Descripción", "Cantidad", "Precio Unitario", "Subtotal", "Impuesto %", "Total (IVA incluido)", "Factura (Proveedor)", "Document UUID", "Product UUID", "Precio Unitario Original", "Subtotal Original", "Total Original (IVA incluido)", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)") + listOf("Fecha") + periodHeaders(LocaleCode.ES),
-        ingresosHeaders = listOf("Concepto", "Fecha", "Importe", "Devengado", "Líquido", "IRPF %", "Moneda", "Fuente", "Categoría", "Notas", "UUID", "Importe Original", "Devengado Original", "Líquido Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)") + periodHeaders(LocaleCode.ES) + listOf("Foto Drive"),
+        ingresosHeaders = listOf("Concepto", "Fecha", "Importe", "Devengado", "Líquido", "IRPF %", "Moneda", "Fuente", "Categoría", "Notas", "UUID", "Importe Original", "Devengado Original", "Líquido Original", "Moneda Original", "Tasa Aplicada", "Fecha Tasa", "Estado Conversión", "Desglose de impuestos (JSON, moneda original)") + periodHeaders(LocaleCode.ES) + listOf("Foto Drive") + automationHeaders(LocaleCode.ES),
         summaryTitle = "Resumen Financiero", summaryUpdatedLabel = "Fecha actualización", summaryCurrencyLabel = "Moneda informe", summaryExpensesLabel = "Total Gastos", summaryIncomeLabel = "Total Ingresos", summaryBalanceLabel = "Balance", summaryPendingLabel = "Conversiones pendientes", conversionOkLabel = "OK", conversionLocalLabel = "Moneda local", conversionPendingLabel = "Tasa pendiente"
     )
     val en = Descriptor(
@@ -60,9 +60,9 @@ internal object SheetsSchema {
         ingresosTitle = "Income",
         productosTitle = "Products",
         resumenTitle = "Summary",
-        recibidasHeaders = listOf("Invoice No.", "Date", "Country VAT ID", "Issuer VAT ID", "Issuer (Legal Name)", "Tax Base", "Tax %", "Tax Amount", "Surcharge", "Withholding %", "Document total", "Currency", "Category", "Notes", "UUID", "Drive Photo", "Original Total", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)") + periodHeaders(LocaleCode.EN),
+        recibidasHeaders = listOf("Invoice No.", "Date", "Country VAT ID", "Issuer VAT ID", "Issuer (Legal Name)", "Tax Base", "Tax %", "Tax Amount", "Surcharge", "Withholding %", "Document total", "Currency", "Category", "Notes", "UUID", "Drive Photo", "Original Total", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)") + periodHeaders(LocaleCode.EN) + automationHeaders(LocaleCode.EN),
         productosHeaders = listOf("Description", "Quantity", "Unit Price", "Subtotal", "Tax %", "Total (VAT included)", "Invoice (Supplier)", "Document UUID", "Product UUID", "Original Unit Price", "Original Subtotal", "Original Total (VAT included)", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)") + listOf("Date") + periodHeaders(LocaleCode.EN),
-        ingresosHeaders = listOf("Concept", "Date", "Amount", "Accrued", "Net", "Withholding %", "Currency", "Source", "Category", "Notes", "UUID", "Original Amount", "Original Accrued", "Original Net", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)") + periodHeaders(LocaleCode.EN) + listOf("Drive Photo"),
+        ingresosHeaders = listOf("Concept", "Date", "Amount", "Accrued", "Net", "Withholding %", "Currency", "Source", "Category", "Notes", "UUID", "Original Amount", "Original Accrued", "Original Net", "Original Currency", "Applied Rate", "Rate Date", "Conversion Status", "Tax breakdown (JSON, original currency)") + periodHeaders(LocaleCode.EN) + listOf("Drive Photo") + automationHeaders(LocaleCode.EN),
         summaryTitle = "Financial Summary", summaryUpdatedLabel = "Updated", summaryCurrencyLabel = "Report currency", summaryExpensesLabel = "Total expenses", summaryIncomeLabel = "Total income", summaryBalanceLabel = "Balance", summaryPendingLabel = "Pending conversions", conversionOkLabel = CONVERSION_OK, conversionLocalLabel = "local currency", conversionPendingLabel = "pending rate"
     )
 
@@ -76,11 +76,15 @@ internal object SheetsSchema {
     val ingresosHeaders: List<Any> get() = es.ingresosHeaders
 
     const val RECIBIDAS_KEY_COLUMN = "O"
-    const val RECIBIDAS_LAST_COLUMN = "X"
+    const val RECIBIDAS_LAST_COLUMN = "AD"
     const val INGRESOS_KEY_COLUMN = "K"
-    const val INGRESOS_LAST_COLUMN = "V"
+    const val INGRESOS_LAST_COLUMN = "AB"
     const val PRODUCTOS_PARENT_COLUMN = "H"
     const val PRODUCTOS_LAST_COLUMN = "T"
+
+    private fun automationHeaders(locale: LocaleCode): List<String> = if (locale == LocaleCode.ES)
+        listOf("Categoría separada", "Subcategoría", "Origen", "Importe ajustado manualmente", "Category UUID", "Subcategory UUID")
+        else listOf("Separate Category", "Subcategory", "Origin", "Manually adjusted amount", "Category UUID", "Subcategory UUID")
 
     fun descriptor(locale: LocaleCode): Descriptor = if (locale == LocaleCode.EN) en else es
 
@@ -236,7 +240,7 @@ internal object SheetsSchema {
             total.rateTimestampLabel,
             total.status,
             DocumentTaxCodec.encode(invoice.taxes),
-            month(invoice.fecha), year(invoice.fecha)
+            month(invoice.fecha), year(invoice.fecha), invoice.categoria.orEmpty(), invoice.subcategoria.orEmpty(), invoice.origin, invoice.manualAmountAdjusted, invoice.categoryId.orEmpty(), invoice.subcategoryId.orEmpty()
         )
     }
 
@@ -266,7 +270,7 @@ internal object SheetsSchema {
             amount.rateTimestampLabel,
             amount.status,
             DocumentTaxCodec.encode(income.taxes),
-            month(income.fecha), year(income.fecha), income.driveWebViewLink ?: ""
+            month(income.fecha), year(income.fecha), income.driveWebViewLink ?: "", income.categoria.orEmpty(), income.subcategoria.orEmpty(), income.origin, income.manualAmountAdjusted, income.categoryId.orEmpty(), income.subcategoryId.orEmpty()
         )
     }
 

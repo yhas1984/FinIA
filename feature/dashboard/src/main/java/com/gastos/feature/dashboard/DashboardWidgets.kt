@@ -49,7 +49,8 @@ enum class DashboardWidget(
     WEEKLY_CHART("weekly_chart", 5, R.string.last_7_days),
     WEEKLY_TOTALS("weekly_totals", 6, R.string.this_week),
     TODAY("today", 7, R.string.today),
-    CONVERSION("conversion", 8, R.string.conversion_currency);
+    CONVERSION("conversion", 8, R.string.conversion_currency),
+    MONTHLY_LIMITS("monthly_limits", 9, R.string.monthly_limits);
 
     companion object {
         /** Orden por defecto del producto. */

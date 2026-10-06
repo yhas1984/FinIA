@@ -46,7 +46,10 @@ class BackupArchiveService @Inject constructor(
     private val keyStore: BackupKeyStore,
     private val restoreJournal: BackupRestoreJournal,
     private val remoteSyncOutbox: RemoteSyncOutboxRepository,
-    private val imageCache: DriveImageCache
+    private val imageCache: DriveImageCache,
+    private val walletCapture: com.gastos.storage.WalletPaymentStore? = null,
+    private val sheetsLinkStore: SheetsLinkStore? = null,
+    private val sheetsOperations: SheetsOperationCoordinator? = null
 ) {
     private val json = Json {
         encodeDefaults = true
@@ -72,7 +75,14 @@ class BackupArchiveService @Inject constructor(
             ?.forEach(File::delete)
     }
 
-    suspend fun recoverInterruptedRestore() = imageStorage.mutationMutex.withLock { recoverInterruptedRestoreLocked() }
+    suspend fun recoverInterruptedRestore() = withSheetsPaused {
+        imageStorage.mutationMutex.withLock { recoverInterruptedRestoreLocked() }
+    }
+
+    private suspend fun <T> withSheetsPaused(block: suspend () -> T): T {
+        val operations = sheetsOperations ?: return block()
+        return operations.syncMutex.withLock { operations.localDeletionMutex.withLock { operations.mutex.withLock { block() } } }
+    }
 
     private suspend fun recoverInterruptedRestoreLocked() = withContext(Dispatchers.IO) {
         val journal = restoreJournal.read()
@@ -85,6 +95,7 @@ class BackupArchiveService @Inject constructor(
             }
             return@withContext
         }
+        walletCapture?.setEnabled(false)
         val phase = runCatching { RestoreJournalPhase.valueOf(journal.phase) }.getOrNull() ?: run {
             restoreJournal.clear()
             return@withContext
@@ -147,9 +158,10 @@ class BackupArchiveService @Inject constructor(
             var payload = dataset.toDto(createdAt, settings, imageStorage, mode)
             val imageSources = linkedMapOf<String, suspend () -> File>()
             if (mode == BackupMode.COMPLETE) {
-                fun include(uuid: String, kind: String, local: String?, remote: String?, account: String?, hash: String?): String? {
+                fun include(uuid: String, kind: String, local: String?, remote: String?, account: String?, hash: String?, mime: String?): String? {
                     if (local == null && remote == null) return null
-                    val name = "${kind}_${uuid}.jpg"
+                    val extension = if (mime == "application/pdf") "pdf" else "jpg"
+                    val name = "${kind}_${uuid}.$extension"
                     require(isSafeImageFileName(name))
                     require(name !in imageSources) { "Duplicate document identity in backup" }
                     imageSources[name] = { imageCache.resolve(local, remote, account, hash) }
@@ -159,12 +171,12 @@ class BackupArchiveService @Inject constructor(
                     invoices = payload.invoices.map { dto ->
                         val record = dataset.invoices.first { it.documentUuid == dto.documentUuid }
                         require(!dto.hadImage || record.imagenUri != null || record.driveFileId != null) { context.getString(R.string.backup_image_unrecoverable) }
-                        dto.copy(imageFileName = include(record.documentUuid, "expense", record.imagenUri, record.driveFileId, record.driveAccountId, record.driveContentHash))
+                        dto.copy(imageFileName = include(record.documentUuid, "expense", record.imagenUri, record.driveFileId, record.driveAccountId, record.driveContentHash, record.sourceMimeType))
                     },
                     incomes = payload.incomes.map { dto ->
                         val record = dataset.incomes.first { it.documentUuid == dto.documentUuid }
                         require(!dto.hadImage || record.imagenUri != null || record.driveFileId != null) { context.getString(R.string.backup_image_unrecoverable) }
-                        dto.copy(imageFileName = include(record.documentUuid, "income", record.imagenUri, record.driveFileId, record.driveAccountId, record.driveContentHash))
+                        dto.copy(imageFileName = include(record.documentUuid, "income", record.imagenUri, record.driveFileId, record.driveAccountId, record.driveContentHash, record.sourceMimeType))
                     })
                 require(imageSources.size < MAX_ENTRIES) { context.getString(R.string.backup_image_count_limit) }
             }
@@ -224,17 +236,27 @@ class BackupArchiveService @Inject constructor(
         input: InputStream,
         password: CharArray,
         beginCommit: () -> Boolean = { true }
+    ): BackupRestoreResult = restoreWithSheetsPreview(input, password, beginCommit) { false }
+
+    suspend fun restoreWithSheetsPreview(
+        input: InputStream,
+        password: CharArray,
+        beginCommit: () -> Boolean = { true },
+        approveSheets: suspend (RestoreSheetsImpact) -> Boolean = { false }
     ): BackupRestoreResult =
         withContext(Dispatchers.IO) {
-            archiveMutex.withLock {
-                imageStorage.mutationMutex.withLock { restoreLocked(input, password, beginCommit) }
+            withSheetsPaused {
+                archiveMutex.withLock {
+                    imageStorage.mutationMutex.withLock { restoreLocked(input, password, beginCommit, approveSheets) }
+                }
             }
         }
 
     private suspend fun restoreLocked(
         input: InputStream,
         password: CharArray,
-        beginCommit: () -> Boolean
+        beginCommit: () -> Boolean,
+        approveSheets: suspend (RestoreSheetsImpact) -> Boolean
     ): BackupRestoreResult {
         val buffered = if (input is BufferedInputStream) input else BufferedInputStream(input)
         val parsedHeader = readHeader(buffered)
@@ -260,11 +282,18 @@ class BackupArchiveService @Inject constructor(
             )
             val missingImages = restored.payload.imageFileNames - restored.images.keys
             require(header.mode == BackupMode.DATA_ONLY || missingImages.isEmpty()) { "El backup no contiene todas las imágenes declaradas." }
-            check(beginCommit()) { "Restauración cancelada." }
             val previousSettings = settingsProvider.snapshotSettings()
             val previousDataset = dataRepository.snapshot()
             val restoreId = UUID.randomUUID().toString()
-            val sheetRowsToDelete = sheetRowsToDelete(previousDataset, restored.payload)
+            val capturedDestination = sheetsLinkStore?.lastDestination()
+            val proposedRows = restoreSheetRemovals(previousDataset, restored.payload.toDataset(emptyMap()), capturedDestination)
+            val sheetRowsToDelete = if (proposedRows.isNotEmpty() && approveSheets(RestoreSheetsImpact(
+                requireNotNull(proposedRows.first().accountId), requireNotNull(proposedRows.first().spreadsheetId),
+                proposedRows.count { it.target == RemoteSyncTarget.EXPENSE_SHEETS.name },
+                proposedRows.count { it.target == RemoteSyncTarget.INCOME_SHEETS.name }))) proposedRows else emptyList()
+            check(sheetsLinkStore?.lastDestination() == capturedDestination) { "SHEETS_RECOVERY_CHANGED" }
+            check(beginCommit()) { "Restauración cancelada." }
+            walletCapture?.setEnabled(false)
             val remoteFilesToDelete = emptyList<RestoreJournalRemoteFile>()
             val imagesChanged = header.mode == BackupMode.COMPLETE
             if (imagesChanged) requireRestoreSpace(restored.images.values.sumOf(File::length))
@@ -346,6 +375,7 @@ class BackupArchiveService @Inject constructor(
                 remoteFilesToDelete = remoteFilesToDelete,
                 imagesChanged = imagesChanged
             )
+            walletCapture?.setEnabled(false)
             settingsProvider.restoreSettings(restored.payload.settings.toDomain())
             restoreJournal.write(
                 phase = RestoreJournalPhase.SETTINGS_RESTORED,
@@ -399,33 +429,17 @@ class BackupArchiveService @Inject constructor(
             driveDeletes = emptyList()
         )
         if (imagesChanged) imageStorage.finalizeRestoreStage()
+        walletCapture?.setEnabled(false)
         if (!restoreId.isNullOrBlank()) dataRepository.clearRestoreMarker(restoreId)
         restoreJournal.clear()
-    }
-
-    private fun sheetRowsToDelete(
-        previous: com.gastos.repository.BackupDataset,
-        restored: BackupPayloadDto
-    ): List<RestoreJournalSheetRow> {
-        val restoredExpenseIds = restored.invoices
-            .filter { it.tipo == com.gastos.domain.model.InvoiceType.GASTO.name }
-            .mapTo(mutableSetOf()) { it.id }
-        val restoredIncomeIds = restored.incomes.mapTo(mutableSetOf()) { it.id }
-        return buildList {
-            previous.invoices
-                .filter { it.tipo == com.gastos.domain.model.InvoiceType.GASTO && it.id !in restoredExpenseIds }
-                .forEach { add(RestoreJournalSheetRow(RemoteSyncTarget.EXPENSE_SHEETS.name, it.id)) }
-            previous.incomes
-                .filter { it.id !in restoredIncomeIds }
-                .forEach { add(RestoreJournalSheetRow(RemoteSyncTarget.INCOME_SHEETS.name, it.id)) }
-        }
     }
 
     private fun RestoreJournalRemoteFile.toRemoteSyncDelete(): RemoteSyncDriveDelete =
         RemoteSyncDriveDelete(recordId = recordId, remoteFileId = remoteFileId)
 
     private fun RestoreJournalSheetRow.toRemoteSyncDelete(): RemoteSyncSheetDelete =
-        RemoteSyncSheetDelete(target = RemoteSyncTarget.valueOf(target), recordId = recordId)
+        RemoteSyncSheetDelete(target = RemoteSyncTarget.valueOf(target), recordId = recordId,
+            documentUuid = documentUuid, accountId = accountId, spreadsheetId = spreadsheetId)
 
     private suspend fun readEncryptedPayload(
         input: InputStream,
@@ -494,6 +508,7 @@ class BackupArchiveService @Inject constructor(
             }
         }
         val decoded = requireNotNull(payload) { "El backup no contiene datos restaurables." }
+        com.gastos.domain.model.AutomationValidation.validate(decoded.automation)
         require(decoded.formatVersion == header.formatVersion) { "Versión de backup incompatible." }
         require(header.mode != BackupMode.DATA_ONLY || (images.isEmpty() && decoded.imageFileNames.isEmpty())) { "La copia de datos contiene imágenes inesperadas." }
         require(images.size == header.imageCount) { "El número de imágenes del backup no coincide." }

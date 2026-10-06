@@ -21,11 +21,12 @@ class BackupViewModelReliabilityTest {
             val preferences = mockk<CloudBackupPreferences>(relaxed=true)
             every { preferences.status() } answers { status.value }
             every { preferences.statusFlow } returns status
-            every { preferences.recordSuccess(any()) } answers { status.value = CloudBackupStatus(false,123L,null) }
+            every { preferences.recordSuccess(any(), any()) } answers { status.value = CloudBackupStatus(false,123L,null) }
             val cloud = mockk<CloudBackupService>()
             coEvery { cloud.createBackup() } returns CloudBackupInfo("file","copy",123,20,BackupPreview(123,"test",15,1,0,0,0))
             coEvery { cloud.listBackups() } throws java.io.IOException("synthetic list failure")
             val export = mockk<SheetsExportService>(relaxed=true)
+            every { export.appearance } returns MutableStateFlow(SheetsAppearanceState())
             every { export.getLastSignedInAccount() } returns null
             val sync = mockk<SheetsSyncManager>(relaxed=true)
             every { sync.operations } returns MutableStateFlow(emptyList())
@@ -39,14 +40,15 @@ class BackupViewModelReliabilityTest {
             assertEquals(123L,model.uiState.value.cloudBackupStatus.lastSuccessAt)
             assertNotNull(model.uiState.value.cloudListError)
             assertNull(model.uiState.value.error)
-            verify(exactly=0) { preferences.recordError(any()) }
+            verify(exactly=0) { preferences.recordError(any(), any()) }
         } finally { Dispatchers.resetMain() }
     }
     @Test fun `linked workbook opens immediately and a double tap waits for one remote sync`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
-            val account = mockk<com.google.android.gms.auth.api.signin.GoogleSignInAccount>(relaxed=true)
+            val account = mockk<com.google.android.gms.auth.api.signin.GoogleSignInAccount>(relaxed=true) { every { id } returns "test-account" }
             val export = mockk<SheetsExportService>(relaxed=true) {
+                every { appearance } returns MutableStateFlow(SheetsAppearanceState())
                 every { getLastSignedInAccount() } returns account
                 every { isSignedIn() } returns true
             }
@@ -56,7 +58,7 @@ class BackupViewModelReliabilityTest {
                 every { getStoredId(account) } returns "existing-book"
             }
             val status = CloudBackupStatus(false,null,null)
-            val prefs = mockk<CloudBackupPreferences> {
+            val prefs = mockk<CloudBackupPreferences>(relaxed=true) {
                 every { status() } returns status
                 every { statusFlow } returns MutableStateFlow(status)
             }

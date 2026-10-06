@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -178,4 +179,96 @@ class EditIncomeViewModelTest {
             advanceUntilIdle()
             coVerify(exactly = 0) { repo.insertIncome(any()) }
         }
+    @Test fun `draft survives recreation without replacing identity or original tax data`() = runTest(dispatcher) {
+        val state = androidx.lifecycle.SavedStateHandle()
+        val repo = mockk<com.gastos.repository.IncomeRepository>()
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+        val original = Income(id = -8, documentUuid = "stable-legacy", fecha = 1, concepto = "Original", monto = 100.0, ivaPercent = null, driveFileId = "remote", financialRevision = 4)
+        every { repo.getAllIncomes() } returns flowOf(listOf(original))
+        coEvery { repo.getIncomeById(-8) } returns original
+        coEvery { repo.updateIncome(any()) } returns Unit
+        val first = EditIncomeViewModel(mockContext(), repo, sync, savedStateHandle = state)
+        first.loadIncome(-8, java.util.Locale.US)
+        advanceUntilIdle()
+        org.junit.Assert.assertFalse(first.hasChanges)
+        first.updateConcepto("Changed")
+        advanceUntilIdle()
+        val restored = androidx.lifecycle.SavedStateHandle(state.keys().associateWith { state.get<Any?>(it) })
+        val second = EditIncomeViewModel(mockContext(), repo, sync, savedStateHandle = restored)
+        second.loadIncome(-8, java.util.Locale.US)
+        advanceUntilIdle()
+        org.junit.Assert.assertEquals("Changed", second.form.value.concepto)
+        org.junit.Assert.assertTrue(second.hasChanges)
+        org.junit.Assert.assertEquals("", second.form.value.totalDevengado)
+        org.junit.Assert.assertEquals("", second.form.value.totalNeto)
+        second.saveIncome(java.util.Locale.US)
+        advanceUntilIdle()
+        coVerify(exactly = 1) { repo.updateIncome(match { it.documentUuid == "stable-legacy" && it.id == -8L && it.ivaPercent == null && it.driveFileId == "remote" && it.financialRevision == 4L && it.concepto == "Changed" }) }
+    }
+
+
+    @Test fun `new form waits for saved preferences once and restored draft takes precedence`() = runTest(dispatcher) {
+        val context = mockContext()
+        val repo = mockk<com.gastos.repository.IncomeRepository>(relaxed=true)
+        every { repo.getAllIncomes() } returns flowOf(emptyList())
+
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed=true)
+        val preferences = mockk<com.gastos.repository.ManualEntryDefaultsProvider>()
+        coEvery { preferences.manualEntryDefaults() } returns com.gastos.repository.ManualEntryDefaults("USD","US")
+        val state = androidx.lifecycle.SavedStateHandle()
+        val model = EditIncomeViewModel(context, repo, sync, savedStateHandle=state, entryDefaults=preferences)
+        assertTrue(!model.uiState.value.defaultsReady)
+        model.saveIncome()
+        coVerify(exactly=0) { repo.insertIncome(any()) }
+        model.prepareDefaults(); advanceUntilIdle()
+        model.prepareDefaults(); advanceUntilIdle()
+        assertEquals("USD",model.form.value.moneda)
+        assertEquals("US",model.form.value.paisCodigo)
+        assertTrue(!model.hasChanges)
+        model.updateMoneda("GBP")
+        val recreated = EditIncomeViewModel(context, repo, sync, savedStateHandle=state, entryDefaults=preferences)
+        recreated.prepareDefaults(); advanceUntilIdle()
+        assertEquals("GBP",recreated.form.value.moneda)
+        coVerify(exactly=1) { preferences.manualEntryDefaults() }
+    }
+    @Test fun `validation exposes field errors only after save and preserves all values`() = runTest(dispatcher) {
+        val context = mockContext()
+        val repo = mockk<com.gastos.repository.IncomeRepository>(relaxed=true)
+        every { repo.getAllIncomes() } returns flowOf(emptyList())
+
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed=true)
+        val model = EditIncomeViewModel(context, repo, sync)
+        assertTrue(model.uiState.value.fieldErrors.isEmpty())
+        model.updateMonto("12,50")
+        model.updateIvaPercent("150")
+        model.saveIncome(java.util.Locale("es","ES")); advanceUntilIdle()
+        assertEquals(setOf(com.gastos.common.ManualField.CONCEPT,com.gastos.common.ManualField.VAT),model.uiState.value.fieldErrors.keys)
+        assertEquals("12,50",model.form.value.monto)
+        assertEquals("150",model.form.value.ivaPercent)
+        coVerify(exactly=0) { repo.insertIncome(any()) }
+    }
+
+    @Test fun `double save waits for local persistence and storage failure retains the draft`() = runTest(dispatcher) {
+        val context = mockContext()
+        val repo = mockk<com.gastos.repository.IncomeRepository>(relaxed=true)
+        every { repo.getAllIncomes() } returns flowOf(emptyList())
+
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed=true)
+        val commit = kotlinx.coroutines.CompletableDeferred<Long>()
+        coEvery { repo.insertIncome(any()) } coAnswers { commit.await() }
+        val model = EditIncomeViewModel(context,repo,sync)
+        model.updateConcepto("Never committed")
+        model.updateMonto("12.50")
+        model.saveIncome(java.util.Locale.US)
+        model.saveIncome(java.util.Locale.US)
+        assertTrue(model.uiState.value.isSaving)
+        coVerify(exactly=1) { repo.insertIncome(any()) }
+        commit.completeExceptionally(java.io.IOException("synthetic disk failure"))
+        advanceUntilIdle()
+        assertTrue(model.uiState.value.saveState is com.gastos.common.SaveState.Error)
+        assertTrue(model.uiState.value.fieldErrors.isEmpty())
+        assertEquals("Never committed",model.form.value.concepto)
+        assertEquals("12.50",model.form.value.monto)
+        coVerify(exactly=1) { repo.insertIncome(any()) }
+    }
 }

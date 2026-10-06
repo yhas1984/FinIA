@@ -37,7 +37,7 @@ fun MonthSelectorRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(999.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-            .padding(horizontal = 4.dp, vertical = 4.dp),
+            .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onPrevious) {
@@ -52,7 +52,8 @@ fun MonthSelectorRow(
                 .weight(1f)
                 .clip(RoundedCornerShape(999.dp))
                 .clickable(onClick = onPick)
-                .padding(vertical = 10.dp),
+                .heightIn(min = 48.dp)
+                .padding(vertical = 8.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {

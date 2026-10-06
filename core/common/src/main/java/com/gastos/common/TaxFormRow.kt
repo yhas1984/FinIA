@@ -16,7 +16,7 @@ data class TaxFormRow(
     val amount: String = "",
     val treatment: TaxTreatment = TaxTreatment.TAXABLE,
     val effect: TaxEffect = TaxEffect.CHARGE
-) {
+) : java.io.Serializable {
     fun parse(locale: Locale, currency: String): DocumentTax? {
         val values: List<Pair<String, Double?>> = listOf(rate, base, amount).map { it to LocalizedNumbers.parse(it, locale) }
         if (values.any { (text, value) -> text.isNotBlank() && (value == null || value < 0) }) return null

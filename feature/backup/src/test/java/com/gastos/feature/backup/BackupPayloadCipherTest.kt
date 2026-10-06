@@ -7,6 +7,17 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
 class BackupPayloadCipherTest {
+    @Test fun `all streaming formats from v2 to v4 keep authenticated header compatibility`() {
+        val key = ByteArray(BackupCrypto.KEY_SIZE_BYTES) { 42 }
+        val payload = "synthetic financial data".toByteArray()
+        for (version in 2..4) {
+            val header = createHeader(version)
+            val associated = "version=$version;mode=DATA_ONLY".toByteArray()
+            val encrypted = encrypt(payload, header, associated, key)
+            assertArrayEquals(payload, decrypt(encrypted, header, associated, key))
+            assertThrows(Exception::class.java) { decrypt(encrypted, header, "version=$version;mode=COMPLETE".toByteArray(), key) }
+        }
+    }
     @Test
     fun `v2 round trip supports payloads larger than multiple segments`() {
         val dataKey: ByteArray = ByteArray(BackupCrypto.KEY_SIZE_BYTES) { index -> index.toByte() }

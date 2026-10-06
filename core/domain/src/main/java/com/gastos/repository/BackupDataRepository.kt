@@ -12,7 +12,8 @@ data class BackupDataset(
     val incomes: List<Income>,
     val fiscalConfigs: List<CountryFiscalConfig>,
     val chatMessages: List<ChatMessageRecord>,
-    val commandOperations: List<com.gastos.domain.model.CommandOperation> = emptyList()
+    val commandOperations: List<com.gastos.domain.model.CommandOperation> = emptyList(),
+    val automation: com.gastos.domain.model.AutomationData = com.gastos.domain.model.AutomationData()
 )
 
 data class RestorableSettings(

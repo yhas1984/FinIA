@@ -1,0 +1,12 @@
+<resources>
+    <string name="movements_search">Search transactions</string>
+    <string name="movements_search_hint">Merchant, description, number or notes</string>
+    <string name="movements_search_close">Clear and close search</string>
+    <string name="movements_result_count">%1$d of %2$d transactions · Total includes all results</string>
+    <string name="movements_load_more">Show more</string>
+    <string name="movements_no_results">No results for these filters</string>
+    <plurals name="movements_count">
+        <item quantity="one">%d transaction</item>
+        <item quantity="other">%d transactions</item>
+    </plurals>
+</resources>

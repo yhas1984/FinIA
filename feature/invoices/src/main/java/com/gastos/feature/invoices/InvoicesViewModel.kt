@@ -1,12 +1,17 @@
 package com.gastos.feature.invoices
 
+import com.gastos.domain.model.MovementListEntry
+import com.gastos.domain.model.MovementListFilter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.map
 import com.gastos.domain.model.ConversionSummary
-import com.gastos.domain.model.moneyRecord
 import com.gastos.domain.model.summarize
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
-import androidx.annotation.StringRes
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.gastos.domain.model.Invoice
 import com.gastos.domain.model.InvoiceType
@@ -26,17 +31,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class InvoicesUiState(
+    val periodStart: Long? = null,
+    val periodEnd: Long? = null,
     val conversion: ConversionSummary? = null,
-    val invoices: List<Invoice> = emptyList(),
+    val invoices: List<MovementListEntry> = emptyList(),
+    val query: String = "",
+    val matchingCount: Int = 0,
+    val hasMore: Boolean = false,
     val hasAnyInvoices: Boolean = false,
     val selectedType: InvoiceType? = null,
     val selectedCategoryFilter: String? = null,
@@ -64,15 +71,21 @@ class InvoicesViewModel @Inject constructor(
     private val currencyPreference: CurrencyPreference,
     private val invoiceDriveService: InvoiceDriveService,
     private val invoiceImageStorage: InvoiceImageStorage,
-    private val premiumStatus: PremiumStatusProvider
+    private val premiumStatus: PremiumStatusProvider,
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle()
 ) : ViewModel() {
 
-    private val selectedType = MutableStateFlow<InvoiceType?>(null)
-    private val selectedCategoryFilter = MutableStateFlow<String?>(null)
-    private val selectedSubcategoryFilter = MutableStateFlow<String?>(null)
+    private val selectedCategoryFilter = savedStateHandle.getStateFlow<String?>("category", null)
+    private val selectedSubcategoryFilter = savedStateHandle.getStateFlow<String?>("subcategory", null)
 
     private val _uiState = MutableStateFlow(InvoicesUiState())
     val uiState: StateFlow<InvoicesUiState> = _uiState.asStateFlow()
+
+    private val query = savedStateHandle.getStateFlow("query", "")
+    private val visibleLimit = savedStateHandle.getStateFlow("visibleLimit", MovementListFilter.PAGE_SIZE)
+
+    private val periodStart = savedStateHandle.getStateFlow<Long?>("periodStart", null)
+    private val periodEnd = savedStateHandle.getStateFlow<Long?>("periodEnd", null)
 
     init {
         observeInvoices()
@@ -83,116 +96,87 @@ class InvoicesViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Una sola cadena reactiva que cubre:
-     *   • filtro por tipo (cambios en [selectedType])
-     *   • tasas de cambio
-     *   • moneda por defecto del usuario
-     * Antes cada cambio de filtro abría un `collect` nuevo sin cancelar el
-     * anterior; ahora `flatMapLatest` garantiza que solo hay un collector
-     * activo a la vez.
-     */
     private fun observeInvoices() {
         viewModelScope.launch {
-            selectedType
-                .flatMapLatest { type ->
-                    if (type == null) invoiceRepository.getAllInvoices()
-                    else invoiceRepository.getInvoicesByType(type)
+            val filters = combine(query, selectedCategoryFilter, selectedSubcategoryFilter, periodStart, periodEnd) { search, category, subcategory, start, end ->
+                MovementListFilter(search, category, subcategory, start, end)
+            }.conflate()
+            invoiceRepository.observeListEntries()
+                .map { it.sortedWith(compareByDescending<MovementListEntry> { row -> row.date }.thenBy { row -> row.documentUuid }) }
+                .combine(filters) { rows, filter ->
+                    val filtered = rows.filter(filter::includes)
+                    val categories = TransactionCategories.availableCategories(TransactionCategories.defaultExpenseCategories, rows.map { it.category })
+                    val subcategories = if (filter.category == null || filter.category == UNCATEGORIZED_FILTER) emptyList() else
+                        TransactionCategories.availableSubcategories(TransactionCategories.suggestedSubcategories(filter.category, isIncome = false),
+                            rows.filter { TransactionCategories.matchesCategory(it.category, filter.category) }.map { it.subcategory })
+                    InvoicesListData(filtered, filter, categories, subcategories, rows.isNotEmpty())
                 }
-                .combine(selectedCategoryFilter) { invoices, categoryFilter ->
-                    invoices to categoryFilter
+                .combine(currencyPreference.defaultCurrency) { data, target -> data to target }
+                .combine(exchangeRateProvider.rates) { (data, target), _ ->
+                    Triple(data, target, exchangeRateProvider.summarize(data.rows.filter { !it.isIncome }.map { it.moneyRecord() }, target))
                 }
-                .combine(selectedSubcategoryFilter) { (invoices, categoryFilter), subcategoryFilter ->
-                    Triple(invoices, categoryFilter, subcategoryFilter)
+                .combine(visibleLimit) { (data, target, conversion), limit ->
+                    InvoicesUiState(invoices = data.rows.take(limit), query = data.filter.query, matchingCount = data.rows.size,
+                        hasMore = data.rows.size > limit, periodStart = data.filter.start, periodEnd = data.filter.end,
+                        hasAnyInvoices = data.hasAny, selectedCategoryFilter = data.filter.category,
+                        selectedSubcategoryFilter = data.filter.subcategory, availableCategories = data.categories,
+                        availableSubcategories = data.subcategories, totalGastosConvertido = conversion.amount,
+                        conversion = conversion, defaultCurrency = target, isLoading = false)
                 }
-                .combine(currencyPreference.defaultCurrency) { (allInvoices, categoryFilter, subcategoryFilter), target ->
-                    (allInvoices to categoryFilter) to (subcategoryFilter to target)
-                }
-                .combine(exchangeRateProvider.rates) { (outer, inner), _ ->
-                    val (allInvoices, categoryFilter) = outer
-                    val (subcategoryFilter, target) = inner
-                    val visibleInvoices = filterInvoicesByCategory(
-                        allInvoices,
-                        categoryFilter,
-                        subcategoryFilter
-                    )
-                    val availableCategories = TransactionCategories.availableCategories(
-                        defaults = TransactionCategories.defaultExpenseCategories,
-                        existing = allInvoices.map { it.categoria }
-                    )
-                    val availableSubcategories = if (categoryFilter == null || categoryFilter == UNCATEGORIZED_FILTER) {
-                        emptyList()
-                    } else {
-                        TransactionCategories.availableSubcategories(
-                            defaults = TransactionCategories.suggestedSubcategories(
-                                categoryFilter,
-                                isIncome = false
-                            ),
-                            existing = allInvoices
-                                .filter { TransactionCategories.matchesCategory(it.categoria, categoryFilter) }
-                                .map { it.subcategoria }
-                        )
-                    }
-                    InvoicesDisplayData(
-                        invoices = visibleInvoices,
-                        targetCurrency = target,
-                        total = recomputeTotal(visibleInvoices, target),
-                        categoryFilter = categoryFilter,
-                        subcategoryFilter = subcategoryFilter,
-                        availableCategories = availableCategories,
-                        availableSubcategories = availableSubcategories,
-                        hasAnyInvoices = allInvoices.isNotEmpty()
-                    )
-                }
-                .catch { e ->
-                    _uiState.update {
-                        it.copy(error = e.message ?: context.getString(R.string.load_invoice_error), isLoading = false)
-                    }
-                }
-                .collect { data ->
-                    _uiState.update {
-                        it.copy(
-                            invoices = data.invoices,
-                            hasAnyInvoices = data.hasAnyInvoices,
-                            isLoading = false,
-                            error = null,
-                            totalGastosConvertido = data.total.amount,
-                            conversion = data.total,
-                            defaultCurrency = data.targetCurrency,
-                            selectedCategoryFilter = data.categoryFilter,
-                            availableCategories = data.availableCategories,
-                            selectedSubcategoryFilter = data.subcategoryFilter,
-                            availableSubcategories = data.availableSubcategories
-                        )
+                .flowOn(Dispatchers.Default)
+                .catch { failure -> _uiState.update { it.copy(error = failure.message ?: context.getString(R.string.load_invoice_error), isLoading = false) } }
+                .collect { state ->
+                    if (state.query == query.value && state.selectedCategoryFilter == selectedCategoryFilter.value &&
+                        state.selectedSubcategoryFilter == selectedSubcategoryFilter.value && state.periodStart == periodStart.value && state.periodEnd == periodEnd.value) {
+                        _uiState.update { current -> state.copy(isPremium = current.isPremium, uploadingToDrive = current.uploadingToDrive, selectedType = current.selectedType) }
                     }
                 }
         }
     }
 
+    fun search(value: String) {
+        if (query.value == value) return
+        savedStateHandle["visibleLimit"] = MovementListFilter.PAGE_SIZE
+        savedStateHandle["query"] = value
+        _uiState.update { it.copy(query = value) }
+    }
+
+    fun loadMore() {
+        if (_uiState.value.hasMore) savedStateHandle["visibleLimit"] = visibleLimit.value + MovementListFilter.PAGE_SIZE
+    }
+
+    fun clearFilters() {
+        search("")
+        filterByCategory(null)
+        filterByPeriod(null, null)
+    }
+
     fun filterByType(type: InvoiceType?) {
-        if (selectedType.value == type) return
-        _uiState.update { it.copy(selectedType = type, isLoading = true) }
-        selectedType.value = type
+        // Kept for existing callers; this screen always lists expenses.
+        _uiState.update { it.copy(selectedType = type) }
+    }
+
+    fun filterByPeriod(start: Long?, end: Long?) {
+        if (periodStart.value == start && periodEnd.value == end) return
+        savedStateHandle["visibleLimit"] = MovementListFilter.PAGE_SIZE
+        savedStateHandle["periodStart"] = start
+        savedStateHandle["periodEnd"] = end
     }
 
     fun filterByCategory(category: String?) {
+        if (selectedCategoryFilter.value == category && selectedSubcategoryFilter.value == null) return
+        savedStateHandle["visibleLimit"] = MovementListFilter.PAGE_SIZE
         _uiState.update { it.copy(selectedCategoryFilter = category, selectedSubcategoryFilter = null) }
-        selectedCategoryFilter.value = category
-        selectedSubcategoryFilter.value = null
+        savedStateHandle["category"] = category
+        savedStateHandle["subcategory"] = null
     }
 
     fun filterBySubcategory(subcategory: String?) {
+        if (selectedSubcategoryFilter.value == subcategory) return
+        savedStateHandle["visibleLimit"] = MovementListFilter.PAGE_SIZE
         _uiState.update { it.copy(selectedSubcategoryFilter = subcategory) }
-        selectedSubcategoryFilter.value = subcategory
+        savedStateHandle["subcategory"] = subcategory
     }
-
-    /**
-     * Suma los importes de los gastos (excluyendo INGRESO porque esos se
-     * gestionan en la pestaña Ingresos). Si una moneda no tiene tasa, su
-     * importe se excluye (no se suma como si fuera la moneda destino).
-     */
-    private fun recomputeTotal(invoices: List<Invoice>, target: String): ConversionSummary =
-        exchangeRateProvider.summarize(invoices.filter { it.tipo == InvoiceType.GASTO }.map { it.moneyRecord() }, target)
 
     fun refreshRates() {
         viewModelScope.launch {
@@ -201,20 +185,6 @@ class InvoicesViewModel @Inject constructor(
             catch (error: Exception) { _uiState.update { it.copy(error = error.message) } }
         }
 
-    }
-
-    private fun filterInvoicesByCategory(
-        invoices: List<Invoice>,
-        categoryFilter: String?,
-        subcategoryFilter: String? = null
-    ): List<Invoice> {
-        val byCategory = when (categoryFilter) {
-            null -> invoices
-            UNCATEGORIZED_FILTER -> invoices.filter { TransactionCategories.normalizeCategory(it.categoria) == null }
-            else -> invoices.filter { TransactionCategories.matchesCategory(it.categoria, categoryFilter) }
-        }
-        if (subcategoryFilter.isNullOrBlank()) return byCategory
-        return byCategory.filter { TransactionCategories.matchesCategory(it.subcategoria, subcategoryFilter) }
     }
 
     fun deleteInvoice(invoice: Invoice, deleteRemoteImage: Boolean = false) {
@@ -264,13 +234,7 @@ class InvoicesViewModel @Inject constructor(
     }
 }
 
-private data class InvoicesDisplayData(
-    val invoices: List<Invoice>,
-    val targetCurrency: String,
-    val total: ConversionSummary,
-    val categoryFilter: String?,
-    val subcategoryFilter: String?,
-    val availableCategories: List<String>,
-    val availableSubcategories: List<String>,
-    val hasAnyInvoices: Boolean
+private data class InvoicesListData(
+    val rows: List<MovementListEntry>, val filter: MovementListFilter,
+    val categories: List<String>, val subcategories: List<String>, val hasAny: Boolean
 )

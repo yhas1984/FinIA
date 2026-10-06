@@ -19,6 +19,38 @@ import org.junit.Test
 import org.json.JSONObject
 
 class GeminiFallbackTest {
+    @Test fun `known model failures are shared between text validation and OCR for the same key`() = runTest {
+        val calls = mutableListOf<String>()
+        val client = client(calls, ArrayDeque(listOf(503 to "{}", 503 to "{}", 200 to success("ok"),
+            200 to success("ok"), 200 to success("ok"))))
+        client.generateContent(request)
+        assertEquals(listOf(GeminiRestClient.PRIMARY_MODEL, GeminiRestClient.PRIMARY_MODEL, GeminiRestClient.FALLBACK_MODEL), calls)
+        calls.clear()
+        val image = request.copy(contents = listOf(GeminiContent("user", inlineDataParts = listOf(GeminiInlineDataPart("image/jpeg", "synthetic")))))
+        client.generateContent(image)
+        assertEquals(listOf(GeminiRestClient.FALLBACK_MODEL), calls)
+        calls.clear()
+        client.generateContent(request)
+        assertEquals(listOf(GeminiRestClient.FALLBACK_MODEL), calls)
+    }
+
+    @Test fun `model pause for one user key does not affect another key`() = runTest {
+        val calls = mutableListOf<String>()
+        val keys = mutableListOf<String>()
+        val responses = ArrayDeque(listOf(503 to "{}", 503 to "{}", 200 to success("ok"), 200 to success("ok")))
+        val client = GeminiRestClient(GeminiTransport { _, key, model, _, _ ->
+            calls.add(model)
+            keys.add(key)
+            val (code, body) = responses.removeFirst()
+            response(code, body)
+        }, {}, { 0L }, { _, _, _ -> })
+        client.generateContent(request)
+        calls.clear()
+        client.generateContent(request.copy(apiKey = "other-synthetic-key"))
+        assertEquals(listOf(GeminiRestClient.PRIMARY_MODEL), calls)
+        assertEquals(listOf("synthetic-key", "synthetic-key", "synthetic-key", "other-synthetic-key"), keys)
+    }
+
     @Test fun `completed structured stream does not wait for the server to close the connection`() = runTest {
         val command = "{\"action\":\"add_income\",\"monto\":120}"
         val event = "data: " + JSONObject().put("candidates", org.json.JSONArray().put(JSONObject()

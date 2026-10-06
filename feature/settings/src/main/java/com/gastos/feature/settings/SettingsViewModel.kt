@@ -22,6 +22,8 @@ sealed class ApiKeyValidation {
     data object None : ApiKeyValidation()
     data object Valid : ApiKeyValidation()
     data class Invalid(val message: String) : ApiKeyValidation()
+    data class Unavailable(val message: String) : ApiKeyValidation()
+    data object StorageError : ApiKeyValidation()
 }
 
 data class SettingsUiState(
@@ -53,6 +55,10 @@ class SettingsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
+    private val apiKeySession = ApiKeyValidationSession(viewModelScope, aiService::validateApiKey,
+        settingsRepository::updateGeminiApiKey) { validating, result ->
+        _uiState.update { it.copy(isApiKeyValidating = validating, apiKeyValidation = result) }
+    }
 
     init {
         _uiState.update { it.copy(isDebug = billingManager.isDebugBuild) }
@@ -178,39 +184,19 @@ class SettingsViewModel @Inject constructor(
 
     /**
      * Valida la API key con una petición de prueba antes de guardarla.
-     * Si es válida, la persista y reconfigura el modelo; si no, marca el estado
-     * como inválido sin guardar.
+     * Guarda únicamente una comprobación válida vigente. Los fallos de cuota o
+     * disponibilidad conservan la configuración anterior y permiten reintentar.
      */
     fun updateGeminiApiKey(apiKey: String) {
-        _uiState.update {
-            it.copy(isApiKeyValidating = true, apiKeyValidation = ApiKeyValidation.None)
-        }
-        viewModelScope.launch {
-            val errorMessage = aiService.validateApiKey(apiKey)
-            if (errorMessage == null) {
-                settingsRepository.updateGeminiApiKey(apiKey)
-                _uiState.update {
-                    it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.Valid)
-                }
-            } else {
-                _uiState.update {
-                    it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.Invalid(errorMessage))
-                }
-            }
-        }
+        apiKeySession.submit(apiKey)
     }
 
     fun resetApiKeyValidation() {
-        _uiState.update {
-            it.copy(isApiKeyValidating = false, apiKeyValidation = ApiKeyValidation.None)
-        }
+        apiKeySession.reset()
     }
 
     fun clearGeminiApiKey() {
-        viewModelScope.launch {
-            settingsRepository.updateGeminiApiKey("")
-            _uiState.update { it.copy(apiKeyValidation = ApiKeyValidation.None) }
-        }
+        apiKeySession.clear()
     }
 
     fun updateSystemInstructions(instructions: String) {

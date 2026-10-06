@@ -41,10 +41,16 @@ data class AppSettings(
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secureStorage: SecureStorage
-) : CurrencyPreference,
+) : CurrencyPreference, com.gastos.repository.ManualEntryDefaultsProvider,
     BackupSettingsProvider,
     DashboardLayoutPreference,
     FloatingButtonPositionPreference {
+
+    override suspend fun manualEntryDefaults(): com.gastos.repository.ManualEntryDefaults {
+        val preferences = context.dataStore.data.first()
+        return com.gastos.repository.ManualEntryDefaults(
+            preferences[Keys.DEFAULT_CURRENCY] ?: "EUR", preferences[Keys.DEFAULT_COUNTRY] ?: "ES")
+    }
 
     // Scope propio para stateIn (el repo es un @Singleton a nivel app).
     private val repoScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

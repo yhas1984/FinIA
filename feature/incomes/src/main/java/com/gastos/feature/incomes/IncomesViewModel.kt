@@ -1,8 +1,14 @@
 package com.gastos.feature.incomes
 
+import com.gastos.domain.model.MovementListEntry
+import com.gastos.domain.model.MovementListFilter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.map
 import com.gastos.domain.model.ConversionSummary
-import com.gastos.domain.model.moneyRecord
 import com.gastos.domain.model.summarize
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.content.Context
@@ -28,8 +34,13 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class IncomesUiState(
+    val periodStart: Long? = null,
+    val periodEnd: Long? = null,
     val conversion: ConversionSummary? = null,
-    val incomes: List<Income> = emptyList(),
+    val incomes: List<MovementListEntry> = emptyList(),
+    val query: String = "",
+    val matchingCount: Int = 0,
+    val hasMore: Boolean = false,
     val hasAnyIncomes: Boolean = false,
     val selectedCategoryFilter: String? = null,
     val availableCategories: List<String> = emptyList(),
@@ -53,106 +64,99 @@ class IncomesViewModel @Inject constructor(
     private val exchangeRateProvider: ExchangeRateProvider,
     private val currencyPreference: CurrencyPreference,
     private val invoiceDriveService: com.gastos.feature.backup.InvoiceDriveService,
-    private val invoiceImageStorage: InvoiceImageStorage
+    private val invoiceImageStorage: InvoiceImageStorage,
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(IncomesUiState())
     val uiState: StateFlow<IncomesUiState> = _uiState.asStateFlow()
-    private val selectedCategoryFilter = MutableStateFlow<String?>(null)
-    private val selectedSubcategoryFilter = MutableStateFlow<String?>(null)
+    private val selectedCategoryFilter = savedStateHandle.getStateFlow<String?>("category", null)
+    private val selectedSubcategoryFilter = savedStateHandle.getStateFlow<String?>("subcategory", null)
 
-    init {
-        // Una sola cadena reactiva: ingresos + moneda destino + tasas.
+    private val query = savedStateHandle.getStateFlow("query", "")
+    private val visibleLimit = savedStateHandle.getStateFlow("visibleLimit", MovementListFilter.PAGE_SIZE)
+
+    private val periodStart = savedStateHandle.getStateFlow<Long?>("periodStart", null)
+    private val periodEnd = savedStateHandle.getStateFlow<Long?>("periodEnd", null)
+
+    init { observeIncomes() }
+
+    private fun observeIncomes() {
         viewModelScope.launch {
-            incomeRepository.getAllIncomes()
-                .combine(selectedCategoryFilter) { incomes, categoryFilter ->
-                    incomes to categoryFilter
+            val filters = combine(query, selectedCategoryFilter, selectedSubcategoryFilter, periodStart, periodEnd) { search, category, subcategory, start, end ->
+                MovementListFilter(search, category, subcategory, start, end)
+            }.conflate()
+            incomeRepository.observeListEntries()
+                .map { it.sortedWith(compareByDescending<MovementListEntry> { row -> row.date }.thenBy { row -> row.documentUuid }) }
+                .combine(filters) { rows, filter ->
+                    val filtered = rows.filter(filter::includes)
+                    val categories = TransactionCategories.availableCategories(TransactionCategories.defaultIncomeCategories, rows.map { it.category })
+                    val subcategories = if (filter.category == null || filter.category == UNCATEGORIZED_FILTER) emptyList() else
+                        TransactionCategories.availableSubcategories(TransactionCategories.suggestedSubcategories(filter.category, isIncome = true),
+                            rows.filter { TransactionCategories.matchesCategory(it.category, filter.category) }.map { it.subcategory })
+                    IncomesListData(filtered, filter, categories, subcategories, rows.isNotEmpty())
                 }
-                .combine(selectedSubcategoryFilter) { (allIncomes, categoryFilter), subcategoryFilter ->
-                    Triple(allIncomes, categoryFilter, subcategoryFilter)
+                .combine(currencyPreference.defaultCurrency) { data, target -> data to target }
+                .combine(exchangeRateProvider.rates) { (data, target), _ ->
+                    Triple(data, target, exchangeRateProvider.summarize(data.rows.map { it.moneyRecord() }, target))
                 }
-                .combine(currencyPreference.defaultCurrency) { (allIncomes, categoryFilter, subcategoryFilter), target ->
-                    (allIncomes to categoryFilter) to (subcategoryFilter to target)
+                .combine(visibleLimit) { (data, target, conversion), limit ->
+                    IncomesUiState(incomes = data.rows.take(limit), query = data.filter.query, matchingCount = data.rows.size,
+                        hasMore = data.rows.size > limit, periodStart = data.filter.start, periodEnd = data.filter.end,
+                        hasAnyIncomes = data.hasAny, selectedCategoryFilter = data.filter.category,
+                        selectedSubcategoryFilter = data.filter.subcategory, availableCategories = data.categories,
+                        availableSubcategories = data.subcategories, totalIngresosConvertido = conversion.amount,
+                        conversion = conversion, defaultCurrency = target, isLoading = false)
                 }
-                .combine(exchangeRateProvider.rates) { (outer, inner), _ ->
-                    val (allIncomes, categoryFilter) = outer
-                    val (subcategoryFilter, target) = inner
-                    val visibleIncomes = filterIncomesByCategory(
-                        allIncomes,
-                        categoryFilter,
-                        subcategoryFilter
-                    )
-                    val availableCategories = TransactionCategories.availableCategories(
-                        defaults = TransactionCategories.defaultIncomeCategories,
-                        existing = allIncomes.map { it.categoria }
-                    )
-                    val availableSubcategories = if (categoryFilter == null || categoryFilter == UNCATEGORIZED_FILTER) {
-                        emptyList()
-                    } else {
-                        TransactionCategories.availableSubcategories(
-                            defaults = TransactionCategories.suggestedSubcategories(
-                                categoryFilter,
-                                isIncome = true
-                            ),
-                            existing = allIncomes
-                                .filter { TransactionCategories.matchesCategory(it.categoria, categoryFilter) }
-                                .map { it.subcategoria }
-                        )
-                    }
-                    IncomesDisplayData(
-                        incomes = visibleIncomes,
-                        targetCurrency = target,
-                        total = recomputeTotal(visibleIncomes, target),
-                        categoryFilter = categoryFilter,
-                        subcategoryFilter = subcategoryFilter,
-                        availableCategories = availableCategories,
-                        availableSubcategories = availableSubcategories,
-                        hasAnyIncomes = allIncomes.isNotEmpty()
-                    )
-                }
-                .catch { e ->
-                    _uiState.update {
-                        it.copy(error = e.message ?: context.getString(R.string.load_income_error), isLoading = false)
-                    }
-                }
-                .collect { data ->
-                    _uiState.update {
-                        it.copy(
-                            incomes = data.incomes,
-                            hasAnyIncomes = data.hasAnyIncomes,
-                            isLoading = false,
-                            error = null,
-                            totalIngresosConvertido = data.total.amount,
-                            conversion = data.total,
-                            defaultCurrency = data.targetCurrency,
-                            selectedCategoryFilter = data.categoryFilter,
-                            availableCategories = data.availableCategories,
-                            selectedSubcategoryFilter = data.subcategoryFilter,
-                            availableSubcategories = data.availableSubcategories
-                        )
+                .flowOn(Dispatchers.Default)
+                .catch { failure -> _uiState.update { it.copy(error = failure.message ?: context.getString(R.string.load_income_error), isLoading = false) } }
+                .collect { state ->
+                    if (state.query == query.value && state.selectedCategoryFilter == selectedCategoryFilter.value &&
+                        state.selectedSubcategoryFilter == selectedSubcategoryFilter.value && state.periodStart == periodStart.value && state.periodEnd == periodEnd.value) {
+                        _uiState.value = state
                     }
                 }
         }
     }
 
+    fun search(value: String) {
+        if (query.value == value) return
+        savedStateHandle["visibleLimit"] = MovementListFilter.PAGE_SIZE
+        savedStateHandle["query"] = value
+        _uiState.update { it.copy(query = value) }
+    }
+
+    fun loadMore() {
+        if (_uiState.value.hasMore) savedStateHandle["visibleLimit"] = visibleLimit.value + MovementListFilter.PAGE_SIZE
+    }
+
+    fun clearFilters() {
+        search("")
+        filterByCategory(null)
+        filterByPeriod(null, null)
+    }
+
+    fun filterByPeriod(start: Long?, end: Long?) {
+        if (periodStart.value == start && periodEnd.value == end) return
+        savedStateHandle["visibleLimit"] = MovementListFilter.PAGE_SIZE
+        savedStateHandle["periodStart"] = start
+        savedStateHandle["periodEnd"] = end
+    }
+
     fun filterByCategory(category: String?) {
+        if (selectedCategoryFilter.value == category && selectedSubcategoryFilter.value == null) return
+        savedStateHandle["visibleLimit"] = MovementListFilter.PAGE_SIZE
         _uiState.update { it.copy(selectedCategoryFilter = category, selectedSubcategoryFilter = null) }
-        selectedCategoryFilter.value = category
-        selectedSubcategoryFilter.value = null
+        savedStateHandle["category"] = category
+        savedStateHandle["subcategory"] = null
     }
 
     fun filterBySubcategory(subcategory: String?) {
+        if (selectedSubcategoryFilter.value == subcategory) return
+        savedStateHandle["visibleLimit"] = MovementListFilter.PAGE_SIZE
         _uiState.update { it.copy(selectedSubcategoryFilter = subcategory) }
-        selectedSubcategoryFilter.value = subcategory
+        savedStateHandle["subcategory"] = subcategory
     }
-
-    /**
-     * Convierte cada ingreso a la moneda por defecto del usuario y suma.
-     * Si falta la tasa de alguna moneda, su importe se excluye del total
-     * (no se suma como si fuera la moneda por defecto).
-     */
-    private fun recomputeTotal(incomes: List<Income>, target: String): ConversionSummary =
-        exchangeRateProvider.summarize(incomes.map { it.moneyRecord() }, target)
 
     fun refreshRates() {
         viewModelScope.launch {
@@ -161,20 +165,6 @@ class IncomesViewModel @Inject constructor(
             catch (error: Exception) { _uiState.update { it.copy(error = error.message) } }
         }
 
-    }
-
-    private fun filterIncomesByCategory(
-        incomes: List<Income>,
-        categoryFilter: String?,
-        subcategoryFilter: String? = null
-    ): List<Income> {
-        val byCategory = when (categoryFilter) {
-            null -> incomes
-            UNCATEGORIZED_FILTER -> incomes.filter { TransactionCategories.normalizeCategory(it.categoria) == null }
-            else -> incomes.filter { TransactionCategories.matchesCategory(it.categoria, categoryFilter) }
-        }
-        if (subcategoryFilter.isNullOrBlank()) return byCategory
-        return byCategory.filter { TransactionCategories.matchesCategory(it.subcategoria, subcategoryFilter) }
     }
 
     fun deleteIncome(income: Income, deleteRemoteImage: Boolean = false) {
@@ -196,13 +186,7 @@ class IncomesViewModel @Inject constructor(
     }
 }
 
-private data class IncomesDisplayData(
-    val incomes: List<Income>,
-    val targetCurrency: String,
-    val total: ConversionSummary,
-    val categoryFilter: String?,
-    val subcategoryFilter: String?,
-    val availableCategories: List<String>,
-    val availableSubcategories: List<String>,
-    val hasAnyIncomes: Boolean
+private data class IncomesListData(
+    val rows: List<MovementListEntry>, val filter: MovementListFilter,
+    val categories: List<String>, val subcategories: List<String>, val hasAny: Boolean
 )

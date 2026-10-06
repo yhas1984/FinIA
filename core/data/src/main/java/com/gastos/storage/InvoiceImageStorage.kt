@@ -183,7 +183,7 @@ class InvoiceImageStorage @Inject constructor(
         private const val SWAP_STARTED = "started"
         private const val OLD_IMAGES_PRESERVED = "old_preserved"
         private const val NEW_IMAGES_ACTIVE = "new_active"
-        private val SUPPORTED_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "heic", "heif")
+        private val SUPPORTED_EXTENSIONS = setOf("jpg", "jpeg", "png", "webp", "heic", "heif", "pdf")
         private val SAFE_FILE_NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]*")
     }
 }

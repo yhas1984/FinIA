@@ -41,6 +41,8 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose.lib)
 
+    implementation(libs.room.runtime)
+    implementation(libs.room.ktx)
     // Core
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

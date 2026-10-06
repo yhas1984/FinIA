@@ -13,5 +13,7 @@ data class DocumentDraftEntity(
     val evidenceJson: String? = null,
     val status: String = "PENDING",
     val error: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val sourceName: String? = null,
+    val sourceMimeType: String? = null
 )

@@ -52,9 +52,11 @@ class SheetsSingleWorkbookTest {
             val file = SheetsRecoverySnapshot.save(folder,"account",book)
             assertEquals(book,SheetsRecoverySnapshot.read(file))
             SheetsRecoverySnapshot.save(folder,"account",book)
-            assertEquals(1,folder.listFiles()!!.size)
-            SheetsRecoverySnapshot.save(folder,"other-account",book)
             assertEquals(2,folder.listFiles()!!.size)
+            repeat(4) { SheetsRecoverySnapshot.save(folder,"account",book) }
+            assertEquals(3,SheetsRecoverySnapshot.list(folder,"account","existing-book").size)
+            SheetsRecoverySnapshot.save(folder,"other-account",book)
+            assertEquals(4,folder.listFiles()!!.size)
         } finally { folder.deleteRecursively() }
     }
 }

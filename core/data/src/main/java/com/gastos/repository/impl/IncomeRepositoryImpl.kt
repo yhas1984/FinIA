@@ -21,6 +21,12 @@ class IncomeRepositoryImpl @Inject constructor(
     private val database: AppDatabase
 ) : IncomeRepository {
 
+    override fun observeListEntries(): Flow<List<MovementListEntry>> =
+        combine(incomeDao.observeListEntries(), database.invoiceDao().observeListEntries(InvoiceType.INGRESO)) { native, legacy ->
+            (native.map { it.toListEntry(income = true) } + legacy.map { it.toListEntry(income = true, legacy = true) })
+                .distinctBy { it.documentUuid }.sortedWith(compareByDescending<MovementListEntry> { it.date }.thenBy { it.documentUuid })
+        }
+
     override fun getAllIncomes(): Flow<List<Income>> =
         combine(incomeDao.getAllIncomes(), database.invoiceDao().getInvoicesByType(InvoiceType.INGRESO)) { native, legacy ->
             mergeIncomes(legacy.map { it.toDomain() }, native.map { it.toDomain() })
@@ -39,7 +45,7 @@ class IncomeRepositoryImpl @Inject constructor(
     override suspend fun insertIncome(income: Income): Long =
         database.withTransaction {
             DocumentGuard(database).check(income.documentIdentity())
-            incomeDao.insertIncomeEntity(income.toEntity().copy(updatedAt = System.currentTimeMillis()))
+            incomeDao.insertIncomeEntity(com.gastos.storage.CategoryCatalog(database).assign(income).toEntity().copy(updatedAt = System.currentTimeMillis()))
         }
 
     override suspend fun updateIncome(income: Income) {
@@ -48,14 +54,20 @@ class IncomeRepositoryImpl @Inject constructor(
             if (income.id < 0) {
                 val original = requireNotNull(database.invoiceDao().getInvoiceById(-income.id))
                 check(original.tipo == InvoiceType.INGRESO && original.documentUuid == income.documentUuid)
-                val invoice = original.toDomain().copy(fecha = income.fecha, proveedor = income.concepto,
+                check(original.financialRevision == income.financialRevision) { "MOVEMENT_CHANGED" }
+                val assigned: Income = com.gastos.storage.CategoryCatalog(database).assign(income)
+                val invoice = original.toDomain().copy(categoryId = assigned.categoryId, subcategoryId = assigned.subcategoryId, financialRevision = original.financialRevision + 1, manualAmountAdjusted = income.manualAmountAdjusted, fecha = income.fecha, proveedor = income.concepto,
                     total = income.monto, moneda = income.moneda, categoria = income.categoria, subcategoria = income.subcategoria,
                     numeroFactura = income.evidence?.document?.number, nifEmisor = income.evidence?.document?.issuerTaxId,
                     ivaPercent = income.ivaPercent, irpfPercent = income.irpfPercent, taxes = income.taxes,
                     baseImponible = income.evidence?.document?.taxBase, cuotaIva = income.evidence?.document?.vatAmount,
                     evidence = income.evidence, notas = income.notas, updatedAt = System.currentTimeMillis())
                 database.invoiceDao().updatePreservingImageState(invoice.toEntity())
-            } else incomeDao.updatePreservingImageState(income.toEntity().copy(updatedAt = System.currentTimeMillis()))
+            } else {
+                val current = requireNotNull(incomeDao.getIncomeById(income.id))
+                check(current.financialRevision == income.financialRevision) { "MOVEMENT_CHANGED" }
+                incomeDao.updatePreservingImageState(com.gastos.storage.CategoryCatalog(database).assign(income).toEntity().copy(financialRevision = current.financialRevision + 1, updatedAt = System.currentTimeMillis()))
+            }
         }
     }
 

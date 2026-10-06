@@ -43,7 +43,10 @@ class LiveGeminiSmokeTest {
         val reports = JSONArray()
         try {
             reader.configureGemini(key, "")
-            for (fixture in fixtures) {
+            val selected = InstrumentationRegistry.getArguments().getString("liveFixture")
+            val requested = fixtures.filter { selected == null || it.id == selected }
+            check(requested.isNotEmpty()) { "Unknown synthetic fixture" }
+            for (fixture in requested) {
                 val file = File.createTempFile("synthetic-tax-", ".png", context.cacheDir)
                 try {
                     val bitmap = Bitmap.createBitmap(1500, 1700, Bitmap.Config.ARGB_8888)

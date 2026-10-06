@@ -1,0 +1,4 @@
+<resources>
+    <string name="organization_no_subcategories">This category has no subcategories yet. Add them whenever you need them.</string>
+    <string name="organization_no_limits_hint">No limits for this month. Create one to compare spending in a category with an amount you choose.</string>
+</resources>

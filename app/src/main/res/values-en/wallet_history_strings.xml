@@ -1,0 +1,19 @@
+<resources>
+    <string name="wallet_legacy_payment">Wallet payment</string>
+    <string name="wallet_show_more">Show more payments</string>
+    <string name="wallet_open_expense">Open expense</string>
+    <string name="wallet_undo_unavailable">This payment was edited, has a document or is linked to a bank statement. Review its details before deleting it.</string>
+    <string name="wallet_retry_disabled">Enable capture and notification access to retry.</string>
+    <string name="wallet_retry">Retry registration</string>
+    <string name="wallet_ignore">Ignore this notice</string>
+    <string name="wallet_amount_unknown">Original amount unavailable</string>
+    <string name="wallet_ignored">Ignored. Does not affect the balance.</string>
+    <string name="wallet_paused">Registration paused. Does not affect the balance.</string>
+    <string name="wallet_failed_manual">Could not save. Retry when ready.</string>
+    <string name="wallet_failed_retrying">Save failed. The notice is kept for retry.</string>
+    <string name="wallet_waiting">Waiting for local registration.</string>
+    <string name="wallet_undone">Payment undone</string>
+    <string name="wallet_movement_removed">The expense was deleted.</string>
+    <string name="wallet_registered">Expense registered</string>
+    <string name="wallet_payment_detail">Payment notice details: merchant, amount, currency and date. These include neither taxes nor the original notification text.</string>
+</resources>

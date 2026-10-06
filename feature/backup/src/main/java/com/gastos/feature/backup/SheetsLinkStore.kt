@@ -55,9 +55,15 @@ class SheetsLinkStore @Inject constructor(
         preferences.getString("synced:$account:$book:$uuid", null)
 
     fun recordFingerprint(account: String, book: String, uuid: String, fingerprint: String?) {
+        recordFingerprints(account, book, mapOf(uuid to fingerprint))
+    }
+
+    fun recordFingerprints(account: String, book: String, fingerprints: Map<String, String?>) {
         val editor = preferences.edit()
-        val key = "synced:$account:$book:$uuid"
-        if (fingerprint == null) editor.remove(key) else editor.putString(key, fingerprint)
+        fingerprints.forEach { (uuid, fingerprint) ->
+            val key = "synced:$account:$book:$uuid"
+            if (fingerprint == null) editor.remove(key) else editor.putString(key, fingerprint)
+        }
         check(editor.commit()) { "Cannot persist Sheets acknowledgement" }
     }
 
@@ -65,6 +71,11 @@ class SheetsLinkStore @Inject constructor(
         val editor = preferences.edit()
         preferences.all.keys.filter { it.startsWith("synced:$account:$book:") }.forEach(editor::remove)
         check(editor.commit()) { "Cannot reset Sheets acknowledgements" }
+    }
+
+    fun isRecoveryPaused(account: String, book: String): Boolean = preferences.getBoolean("recovery-paused:$account:$book", false)
+    fun setRecoveryPaused(account: String, book: String, paused: Boolean) {
+        check(preferences.edit().putBoolean("recovery-paused:$account:$book", paused).commit()) { "Cannot persist recovery state" }
     }
 
     fun getLegacySpreadsheetId(): String =

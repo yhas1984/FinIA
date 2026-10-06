@@ -44,12 +44,12 @@ class TaxMigrationTest {
             }
             db.version = 13
         }
-        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_13_14, MIGRATION_14_15).build()
+        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17).build()
         try {
             val db = database.openHelper.writableDatabase
             for (table in before.keys) db.query("SELECT * FROM $table").use { cursor ->
                 assertTrue(cursor.moveToFirst())
-                assertEquals(before[table], cursor.columnNames.filter { it != "taxesJson" }.map { column -> "$column=${cursor.getString(cursor.getColumnIndexOrThrow(column))}" })
+                assertEquals(before[table], cursor.columnNames.filter { it !in setOf("taxesJson", "categoryId", "subcategoryId", "sourceMimeType", "sourceName", "origin", "manualAmountAdjusted", "financialRevision") }.map { column -> "$column=${cursor.getString(cursor.getColumnIndexOrThrow(column))}" })
                 assertEquals("[]", cursor.getString(cursor.getColumnIndexOrThrow("taxesJson")))
             }
             db.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }

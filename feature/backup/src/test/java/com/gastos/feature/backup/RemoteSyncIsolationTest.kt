@@ -36,7 +36,7 @@ class RemoteSyncIsolationTest {
         val drive = mockk<InvoiceDriveService> {
             coEvery { upload(any<Invoice>(), any()) } returns InvoiceDriveUploadResult(invoice, false, "SERVER_UNAVAILABLE")
         }
-        val sheets = mockk<SheetsSyncManager> { coEvery { process(any()) } returns true }
+        val sheets = mockk<SheetsSyncManager> { coEvery { process(any()) } returns true; coEvery { processBatch(any()) } returns emptySet() }
         val worker = RemoteSyncWorker(mockk(relaxed = true), mockk(relaxed = true), outbox, invoices,
             mockk(relaxed = true), drive, sheets, mockk { every { shouldDefer() } returns false })
         worker.doWork()

@@ -42,6 +42,31 @@ internal fun DocumentCapturePanel(state: CaptureUiState, model: DocumentCaptureV
                 }
             }
         }
+    } else if (state.enrichmentConflict != null) {
+        Column {
+            Text(stringResource(R.string.capture_enrichment_conflict))
+            TextButton(onClick = { model.resolveEnrichment(true) }) { Text(stringResource(R.string.capture_keep_changes)) }
+            TextButton(onClick = { model.resolveEnrichment(false) }) { Text(stringResource(R.string.capture_use_document)) }
+            state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
+    } else if (state.bankIncomeChoices.isNotEmpty()) {
+        Column {
+            state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Text(stringResource(R.string.bank_income_receipt_question))
+            state.bankIncomeChoices.forEach { income -> TextButton(onClick = { model.attachBankIncome(income) }) {
+                Text("${income.concepto} · ${formatMoney(income.monto, income.moneda)}")
+            } }
+            TextButton(onClick = model::registerSeparateDocument) { Text(stringResource(R.string.bank_separate_income)) }
+        }
+    } else if (state.walletChoices.isNotEmpty()) {
+        Column {
+            state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Text(stringResource(R.string.wallet_receipt_question))
+            state.walletChoices.forEach { wallet -> TextButton(onClick = { model.attachWalletReceipt(wallet) }) {
+                Text("${wallet.proveedor} · ${formatMoney(wallet.total, wallet.moneda)}")
+            } }
+            TextButton(onClick = model::registerSeparateDocument) { Text(stringResource(R.string.wallet_separate_document)) }
+        }
     } else if (state.selected != null || state.duplicates.isNotEmpty()) {
         CaptureResultNotice(state, model, onOpen)
     } else if (state.saved == null) state.message?.let { message ->

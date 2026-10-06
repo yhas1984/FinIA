@@ -15,7 +15,7 @@ internal data class LegacySheetDate(val timestamp: Long) {
 }
 internal data class SheetFormula(val value: String)
 internal data class ManagedSheet(val title: String, val headers: List<Any>, val keyIndex: Int,
-    val dateColumns: Set<Int> = emptySet(), val rateColumns: Set<Int> = emptySet(), val numberColumns: Set<Int> = emptySet())
+    val dateColumns: Set<Int> = emptySet(), val rateColumns: Set<Int> = emptySet(), val numberColumns: Set<Int> = emptySet(), val percentColumns: Set<Int> = emptySet())
 internal data class SheetSnapshot(val id: Int, val title: String, val rows: List<List<Any>>, val rowCount: Int = 1000, val columnCount: Int = 26)
 internal data class ManagedRecord(val values: List<Any>, val legacyKey: Long? = null, val legacyChecks: Map<Int, Any> = emptyMap())
 
@@ -51,6 +51,7 @@ internal class SheetsWorkbookPlan(val definition: ManagedSheet, val snapshot: Sh
             row == 0 -> null
             column in definition.dateColumns -> NumberFormat().setType("DATE").setPattern("yyyy-mm-dd")
             column in definition.rateColumns -> NumberFormat().setType("NUMBER").setPattern("0.000000")
+            column in definition.percentColumns -> NumberFormat().setType("NUMBER").setPattern("0.00\" %\"")
             column in definition.numberColumns -> NumberFormat().setType("NUMBER").setPattern("#,##0.00")
             else -> null
         }
@@ -92,6 +93,12 @@ internal class SheetsWorkbookPlan(val definition: ManagedSheet, val snapshot: Sh
         } else null
         val row: Int = matching.firstOrNull() ?: legacyRow ?: nextRow++
         usedRows += row
+        if (matching.isEmpty() && legacyRow == null) columns.forEach { column ->
+            requests += Request().setRepeatCell(RepeatCellRequest().setRange(GridRange().setSheetId(snapshot.id)
+                .setStartRowIndex(row).setEndRowIndex(row+1).setStartColumnIndex(column).setEndColumnIndex(column+1))
+                .setCell(CellData().setUserEnteredFormat(CellFormat().setTextFormat(TextFormat().setFontSize(11))
+                    .setVerticalAlignment("MIDDLE").setWrapStrategy("WRAP"))).setFields("userEnteredFormat(textFormat.fontSize,verticalAlignment,wrapStrategy)"))
+        }
         record.values.forEachIndexed { column, value -> put(row, column, value) }
     }
     fun clearWhere(predicate: (List<Any>) -> Boolean) {
