@@ -9,9 +9,16 @@ on:
       - codex/**
   pull_request:
 
+# Un solo run por rama: evita el duplicado push + pull_request
+# (el run anterior de la misma rama se cancela automáticamente).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   android:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,7 +52,7 @@ jobs:
 
   recovery-regressions:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4

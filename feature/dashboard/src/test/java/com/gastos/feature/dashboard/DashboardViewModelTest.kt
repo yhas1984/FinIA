@@ -195,7 +195,10 @@ class DashboardViewModelTest {
         vm.previousMonth()
 
         vm.uiState.test {
-            val state = awaitStable { !it.isCurrentMonth }
+            // Espera al estado estable del reloj fijo: la primera emisión
+            // puede calcularse con el reloj del sistema (mes real) y no
+            // representa el mes seleccionado (mismo patrón que `mes siguiente`).
+            val state = awaitStable { it.selectedMonth == MonthRef(2026, 7) }
             assertEquals(MonthRef(2026, 7), state.selectedMonth)
             assertEquals("Julio 2026", state.selectedMonthLabel)
             assertEquals(false, state.isCurrentMonth)
@@ -337,7 +340,9 @@ class DashboardViewModelTest {
         vm.previousMonth()
 
         vm.uiState.test {
-            val state = awaitStable { !it.isCurrentMonth }
+            // Igual que en `mes anterior`: ignora la emisión transitoria del
+            // reloj del sistema y espera el mes seleccionado con el reloj fijo.
+            val state = awaitStable { it.selectedMonth == MonthRef(2026, 7) }
             assertEquals(100.0, state.totalGastosMes, 0.001)
             assertEquals(300.0, state.totalIngresosMes, 0.001)
             assertEquals(200.0, state.balanceMes, 0.001)
