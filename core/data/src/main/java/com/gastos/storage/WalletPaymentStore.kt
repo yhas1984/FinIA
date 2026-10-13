@@ -14,6 +14,8 @@ import javax.inject.Singleton
 @Singleton
 class WalletPaymentStore @Inject constructor(@ApplicationContext private val context: Context, private val database: AppDatabase) {
     private val settings get() = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+    // Aviso al usuario cuando el gasto queda registrado (best-effort, no rompe la captura).
+    private val captureNotifier = WalletCaptureNotifier(context)
     val enabled: Boolean get() = settings.getBoolean("enabled", false)
     @Synchronized
     fun setEnabled(enabled: Boolean) {
@@ -74,21 +76,24 @@ class WalletPaymentStore @Inject constructor(@ApplicationContext private val con
 
     private suspend fun process(id: String, hasAccess: () -> Boolean = { true }): Boolean {
         try {
-            return database.withTransaction {
-                val row = database.automationDao().record(id) ?: return@withTransaction false
+            val captured = database.withTransaction {
+                val row = database.automationDao().record(id) ?: return@withTransaction null
                 val capture: WalletCaptureRecord = AutomationCodec.json.decodeFromString(row.payload)
-                if (!enabled || !hasAccess() || capture.session != captureSession() || capture.status == WalletCaptureStatus.IGNORED || capture.attempts >= WalletPaymentPolicy.MAX_ATTEMPTS) return@withTransaction false
+                if (!enabled || !hasAccess() || capture.session != captureSession() || capture.status == WalletCaptureStatus.IGNORED || capture.attempts >= WalletPaymentPolicy.MAX_ATTEMPTS) return@withTransaction null
                 val payment: WalletPayment = capture.payment
                 if (database.automationDao().record("wallet:${payment.eventId}") != null) {
                     database.automationDao().deleteRecord(id)
-                    return@withTransaction false
+                    return@withTransaction null
                 }
                 register(payment)
                 // A disable during a suspended database call rolls the transaction back.
                 check(enabled && hasAccess() && capture.session == captureSession()) { "WALLET_DISABLED" }
                 database.automationDao().deleteRecord(id)
-                true
+                capture
             }
+            // Confirmation only after the expense is durably committed.
+            if (captured != null) captureNotifier.notifyCaptured(captured.payment)
+            return captured != null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {

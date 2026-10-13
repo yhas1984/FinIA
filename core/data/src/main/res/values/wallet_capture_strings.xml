@@ -1,0 +1,5 @@
+<resources>
+    <string name="wallet_capture_channel">Gastos de Google Wallet</string>
+    <string name="wallet_capture_title">Gasto incluido</string>
+    <string name="wallet_capture_body">%1$s · %2$s — añadido a tus gastos</string>
+</resources>

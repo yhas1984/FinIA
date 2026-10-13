@@ -1,0 +1,5 @@
+<resources>
+    <string name="wallet_capture_channel">Google Wallet expenses</string>
+    <string name="wallet_capture_title">Expense added</string>
+    <string name="wallet_capture_body">%1$s · %2$s — added to your expenses</string>
+</resources>
