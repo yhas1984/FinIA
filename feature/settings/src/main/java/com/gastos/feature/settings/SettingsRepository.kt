@@ -34,7 +34,9 @@ data class AppSettings(
     val defaultCurrency: String = "EUR",
     val defaultCountry: String = "ES",
     val darkMode: String = "system",
-    val isPro: Boolean = false
+    val isPro: Boolean = false,
+    val remindersEnabled: Boolean = false,
+    val remindersPerDay: Int = 1
 )
 
 @Singleton
@@ -63,6 +65,8 @@ class SettingsRepository @Inject constructor(
         val DASHBOARD_WIDGET_ORDER = stringPreferencesKey("dashboard_widget_order")
         val DASHBOARD_HIDDEN_WIDGETS = stringPreferencesKey("dashboard_hidden_widgets")
         val FLOATING_BUTTON_POSITIONS = stringPreferencesKey("floating_button_positions")
+        val REMINDERS_ENABLED = booleanPreferencesKey("reminders_enabled")
+        val REMINDERS_PER_DAY = intPreferencesKey("reminders_per_day")
     }
 
     /**
@@ -82,7 +86,9 @@ class SettingsRepository @Inject constructor(
             systemInstructions = preferences[Keys.SYSTEM_INSTRUCTIONS] ?: "",
             defaultCurrency = preferences[Keys.DEFAULT_CURRENCY] ?: "EUR",
             defaultCountry = preferences[Keys.DEFAULT_COUNTRY] ?: "ES",
-            darkMode = preferences[Keys.DARK_MODE] ?: "system"
+            darkMode = preferences[Keys.DARK_MODE] ?: "system",
+            remindersEnabled = preferences[Keys.REMINDERS_ENABLED] ?: false,
+            remindersPerDay = (preferences[Keys.REMINDERS_PER_DAY] ?: 1).coerceIn(1, 2)
         )
     }
 
@@ -120,6 +126,19 @@ class SettingsRepository @Inject constructor(
     suspend fun updateDarkMode(mode: String) {
         context.dataStore.edit { preferences ->
             preferences[Keys.DARK_MODE] = mode
+        }
+    }
+
+    suspend fun updateRemindersEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.REMINDERS_ENABLED] = enabled
+        }
+    }
+
+    suspend fun updateRemindersPerDay(count: Int) {
+        val normalized = count.coerceIn(1, 2)
+        context.dataStore.edit { preferences ->
+            preferences[Keys.REMINDERS_PER_DAY] = normalized
         }
     }
 

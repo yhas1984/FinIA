@@ -47,6 +47,8 @@ class AppStartup @Inject constructor() {
 
     @Inject lateinit var limitNotifier: com.gastos.automation.LimitNotifier
 
+    @Inject lateinit var dailyReminderScheduler: com.gastos.feature.settings.DailyReminderScheduler
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun start() {
@@ -63,5 +65,6 @@ class AppStartup @Inject constructor() {
         applicationScope.launch { limitNotifier.observe() }
         cloudBackupScheduler.reconcile()
         remoteSyncQueue.schedule()
+        applicationScope.launch { runCatching { dailyReminderScheduler.reconcile() } }
     }
 }
