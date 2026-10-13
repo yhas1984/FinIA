@@ -14,4 +14,5 @@
     <string name="reminder_midday_body">Take a minute to jot down this morning&#8217;s expenses and income.</string>
     <string name="reminder_evening_title">End of day</string>
     <string name="reminder_evening_body">Don&#8217;t forget to log today&#8217;s expenses and income before the day ends.</string>
+    <string name="settings_reminders_test">Send a test notification</string>
 </resources>

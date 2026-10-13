@@ -14,4 +14,5 @@
     <string name="reminder_midday_body">Dedica un minuto a apuntar los gastos e ingresos de esta mañana.</string>
     <string name="reminder_evening_title">Cierre del día</string>
     <string name="reminder_evening_body">No olvides registrar los gastos e ingresos de hoy antes de terminar el día.</string>
+    <string name="settings_reminders_test">Enviar notificación de prueba</string>
 </resources>

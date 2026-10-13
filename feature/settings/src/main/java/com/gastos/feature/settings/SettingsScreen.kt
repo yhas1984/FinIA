@@ -483,6 +483,12 @@ fun SettingsScreen(
                             Text(stringResource(R.string.settings_reminders_permission_button))
                         }
                     }
+                    if (uiState.isDebug) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        TextButton(onClick = { postReminder(context, ReminderSlot.EVENING) }) {
+                            Text(stringResource(R.string.settings_reminders_test))
+                        }
+                    }
                 }
             }
 
