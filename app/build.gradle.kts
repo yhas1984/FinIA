@@ -15,8 +15,8 @@ android {
         applicationId = "com.gastos.ingresos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 29
-        versionName = "1.9.2"
+        versionCode = 30
+        versionName = "1.9.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -90,6 +90,12 @@ android {
 }
 
 dependencies {
+    // Fuerza transitivas con vulnerabilidades conocidas (hallazgos Snyk 13-oct-2026):
+    // guava — Allocation of Resources Without Limits or Throttling (corregida en 33.7.2).
+    constraints {
+        implementation("com.google.guava:guava:33.7.2-android")
+    }
+
     // Compose BOM
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

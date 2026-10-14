@@ -1,9 +1,13 @@
 package com.gastos.feature.settings
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.selection.selectable
@@ -53,6 +57,12 @@ fun SettingsScreen(
     val scrollState = rememberScrollState()
     val context = LocalContext.current
     val locale = LocalLocale.current.platformLocale
+
+    // Permiso de notificaciones (Android 13+): necesario para recordatorios y avisos de Wallet.
+    var notificationsGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> notificationsGranted = granted }
 
     var showApiKeyDialog by rememberSaveable { mutableStateOf(false) }
     var apiGuideStep by remember { mutableIntStateOf(0) }
@@ -386,6 +396,99 @@ fun SettingsScreen(
                     Icon(Icons.Default.RestartAlt, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(stringResource(R.string.reset_positions))
+                }
+            }
+
+            // Sección Recordatorios
+            SettingsSection(
+                title = stringResource(R.string.settings_reminders_section),
+                icon = Icons.Outlined.Notifications
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_reminders_switch),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_reminders_help),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = uiState.settings.remindersEnabled,
+                        onCheckedChange = { enabled ->
+                            viewModel.updateRemindersEnabled(enabled)
+                            if (enabled && Build.VERSION.SDK_INT >= 33 && !notificationsGranted) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        }
+                    )
+                }
+
+                if (uiState.settings.remindersEnabled) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.settings_reminders_frequency),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = uiState.settings.remindersPerDay <= 1,
+                            onClick = { viewModel.updateRemindersPerDay(1) },
+                            label = { Text(stringResource(R.string.settings_reminders_once)) }
+                        )
+                        FilterChip(
+                            selected = uiState.settings.remindersPerDay >= 2,
+                            onClick = { viewModel.updateRemindersPerDay(2) },
+                            label = { Text(stringResource(R.string.settings_reminders_twice)) }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(
+                            if (uiState.settings.remindersPerDay >= 2) R.string.settings_reminders_twice_help
+                            else R.string.settings_reminders_once_help
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (Build.VERSION.SDK_INT >= 33 && !notificationsGranted) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = stringResource(R.string.settings_reminders_permission),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = { notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                        ) {
+                            Text(stringResource(R.string.settings_reminders_permission_button))
+                        }
+                    }
+                    if (uiState.isDebug) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        TextButton(onClick = { postReminder(context, ReminderSlot.EVENING) }) {
+                            Text(stringResource(R.string.settings_reminders_test))
+                        }
+                    }
                 }
             }
 

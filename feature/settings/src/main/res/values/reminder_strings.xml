@@ -1,0 +1,18 @@
+<resources>
+    <string name="settings_reminders_section">Recordatorios</string>
+    <string name="settings_reminders_switch">Recordatorios diarios</string>
+    <string name="settings_reminders_help">FinAI te recuerda registrar tus gastos e ingresos para que no se te escapen.</string>
+    <string name="settings_reminders_frequency">Frecuencia</string>
+    <string name="settings_reminders_once">1 al día</string>
+    <string name="settings_reminders_twice">2 al día</string>
+    <string name="settings_reminders_once_help">Un aviso por la noche (20:30).</string>
+    <string name="settings_reminders_twice_help">Un aviso al mediodía (13:30) y otro por la noche (20:30).</string>
+    <string name="settings_reminders_permission">Activa las notificaciones para recibir los recordatorios.</string>
+    <string name="settings_reminders_permission_button">Activar notificaciones</string>
+    <string name="reminder_channel_name">Recordatorios diarios</string>
+    <string name="reminder_midday_title">¿Registramos los gastos de hoy?</string>
+    <string name="reminder_midday_body">Dedica un minuto a apuntar los gastos e ingresos de esta mañana.</string>
+    <string name="reminder_evening_title">Cierre del día</string>
+    <string name="reminder_evening_body">No olvides registrar los gastos e ingresos de hoy antes de terminar el día.</string>
+    <string name="settings_reminders_test">Enviar notificación de prueba</string>
+</resources>

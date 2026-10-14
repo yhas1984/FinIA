@@ -14,6 +14,8 @@ import javax.inject.Singleton
 @Singleton
 class WalletPaymentStore @Inject constructor(@ApplicationContext private val context: Context, private val database: AppDatabase) {
     private val settings get() = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+    // Aviso al usuario cuando el gasto queda registrado (best-effort, no rompe la captura).
+    private val captureNotifier = WalletCaptureNotifier(context)
     val enabled: Boolean get() = settings.getBoolean("enabled", false)
     @Synchronized
     fun setEnabled(enabled: Boolean) {
@@ -74,21 +76,32 @@ class WalletPaymentStore @Inject constructor(@ApplicationContext private val con
 
     private suspend fun process(id: String, hasAccess: () -> Boolean = { true }): Boolean {
         try {
-            return database.withTransaction {
-                val row = database.automationDao().record(id) ?: return@withTransaction false
+            val captured = database.withTransaction {
+                val row = database.automationDao().record(id) ?: return@withTransaction null
                 val capture: WalletCaptureRecord = AutomationCodec.json.decodeFromString(row.payload)
-                if (!enabled || !hasAccess() || capture.session != captureSession() || capture.status == WalletCaptureStatus.IGNORED || capture.attempts >= WalletPaymentPolicy.MAX_ATTEMPTS) return@withTransaction false
+                if (!enabled || !hasAccess() || capture.session != captureSession() || capture.status == WalletCaptureStatus.IGNORED || capture.attempts >= WalletPaymentPolicy.MAX_ATTEMPTS) return@withTransaction null
                 val payment: WalletPayment = capture.payment
                 if (database.automationDao().record("wallet:${payment.eventId}") != null) {
                     database.automationDao().deleteRecord(id)
-                    return@withTransaction false
+                    return@withTransaction null
+                }
+                // Segundo guard: si Wallet re-publicó el MISMO aviso con un `when` nuevo, el eventId cambia y
+                // el chequeo anterior no lo ve — compara clave de aviso + contenido dentro de la ventana.
+                val recentEvents: List<PaymentEvent> = database.automationDao().records("PAYMENT")
+                    .map { AutomationCodec.json.decodeFromString<PaymentEvent>(it.payload) }
+                if (WalletPaymentPolicy.isRepublishedNotice(payment, recentEvents)) {
+                    database.automationDao().deleteRecord(id)
+                    return@withTransaction null
                 }
                 register(payment)
                 // A disable during a suspended database call rolls the transaction back.
                 check(enabled && hasAccess() && capture.session == captureSession()) { "WALLET_DISABLED" }
                 database.automationDao().deleteRecord(id)
-                true
+                capture
             }
+            // Confirmation only after the expense is durably committed.
+            if (captured != null) captureNotifier.notifyCaptured(captured.payment)
+            return captured != null
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: Exception) {
@@ -113,7 +126,7 @@ class WalletPaymentStore @Inject constructor(@ApplicationContext private val con
             paisCodigo = "", notas = context.getString(com.gastos.data.R.string.wallet_event_date), tipo = InvoiceType.GASTO, origin = "WALLET", evidence = evidence), useRules = true)
         database.invoiceDao().insertInvoice(record.toEntity())
         database.automationDao().putRecord(AutomationRecordEntity("wallet:${payment.eventId}", "PAYMENT",
-            AutomationCodec.json.encodeToString(PaymentEvent(payment.eventId, "", record.documentUuid, payment.occurredAt,
+            AutomationCodec.json.encodeToString(PaymentEvent(payment.eventId, payment.notificationKey, record.documentUuid, payment.occurredAt,
                 merchant = payment.merchant, amount = payment.amount, currency = payment.currency))))
         FinancialMutationStore(context, database).enqueue(record.documentUuid)
         database.chatMessageDao().insertAndTrim(createDocumentChatMessage(context, record.documentIdentity()))

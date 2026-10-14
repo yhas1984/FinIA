@@ -1,0 +1,18 @@
+<resources>
+    <string name="settings_reminders_section">Reminders</string>
+    <string name="settings_reminders_switch">Daily reminders</string>
+    <string name="settings_reminders_help">FinAI reminds you to log your expenses and income so nothing slips through.</string>
+    <string name="settings_reminders_frequency">Frequency</string>
+    <string name="settings_reminders_once">Once a day</string>
+    <string name="settings_reminders_twice">Twice a day</string>
+    <string name="settings_reminders_once_help">One nudge in the evening (8:30 pm).</string>
+    <string name="settings_reminders_twice_help">One nudge at midday (1:30 pm) and another in the evening (8:30 pm).</string>
+    <string name="settings_reminders_permission">Enable notifications to receive the reminders.</string>
+    <string name="settings_reminders_permission_button">Enable notifications</string>
+    <string name="reminder_channel_name">Daily reminders</string>
+    <string name="reminder_midday_title">Log today&#8217;s expenses?</string>
+    <string name="reminder_midday_body">Take a minute to jot down this morning&#8217;s expenses and income.</string>
+    <string name="reminder_evening_title">End of day</string>
+    <string name="reminder_evening_body">Don&#8217;t forget to log today&#8217;s expenses and income before the day ends.</string>
+    <string name="settings_reminders_test">Send a test notification</string>
+</resources>

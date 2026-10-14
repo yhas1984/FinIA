@@ -50,7 +50,8 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val aiService: AIService,
     private val billingManager: BillingManager,
-    private val exchangeRateProvider: ExchangeRateProvider
+    private val exchangeRateProvider: ExchangeRateProvider,
+    private val dailyReminderScheduler: DailyReminderScheduler
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -218,6 +219,20 @@ class SettingsViewModel @Inject constructor(
 
     fun updateDarkMode(mode: String) {
         viewModelScope.launch { settingsRepository.updateDarkMode(mode) }
+    }
+
+    fun updateRemindersEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateRemindersEnabled(enabled)
+            dailyReminderScheduler.reconcile()
+        }
+    }
+
+    fun updateRemindersPerDay(count: Int) {
+        viewModelScope.launch {
+            settingsRepository.updateRemindersPerDay(count)
+            dailyReminderScheduler.reconcile()
+        }
     }
 
     fun updateFloatingButtonPosition(id: String, position: FloatingButtonPosition) {

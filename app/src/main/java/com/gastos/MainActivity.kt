@@ -73,8 +73,26 @@ class MainActivity : ComponentActivity() {
         importedBank?.let { outState.putString("pending_bank", it.toString()) }
         super.onSaveInstanceState(outState)
     }
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+
+    /**
+     * Pide una sola vez el permiso de notificaciones (Android 13+), necesario para
+     * los recordatorios diarios y la confirmación de gastos de Google Wallet.
+     */
+    private fun requestNotificationPermissionOnce() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) return
+        val preferences = getSharedPreferences("finai_notifications", MODE_PRIVATE)
+        if (preferences.getBoolean("permission_requested", false)) return
+        preferences.edit().putBoolean("permission_requested", true).apply()
+        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestNotificationPermissionOnce()
         if (savedInstanceState == null) receiveDocument(intent)
         else importedDocument = savedInstanceState.getString("pending_document")?.let(android.net.Uri::parse)
         savedInstanceState?.getString("pending_bank")?.let { importedBank = android.net.Uri.parse(it) }

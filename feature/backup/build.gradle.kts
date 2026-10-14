@@ -26,6 +26,12 @@ android {
 }
 
 dependencies {
+    // Fuerza transitivas con vulnerabilidades conocidas (hallazgos Snyk 13-oct-2026):
+    // guava — se fija la última de la línea -android (aún sin release con el fix upstream).
+    constraints {
+        implementation("com.google.guava:guava:33.7.2-android")
+    }
+
     // Compose
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
