@@ -123,4 +123,24 @@ class WalletCaptureRecoveryTest {
             assertEquals(1, db.invoiceDao().getInvoiceCount())
         } finally { testContext.getSharedPreferences(WalletPaymentStore.PREFERENCES, Context.MODE_PRIVATE).edit().clear().commit(); db.close() }
     }
+
+    @Test fun republishedNoticeWithFreshTimestampDoesNotCreateASecondExpense(): Unit = runBlocking {
+        val testContext = isolated(UUID.randomUUID().toString())
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val store = WalletPaymentStore(testContext, db)
+            store.setEnabled(true)
+            val slot = "0|com.google.android.apps.walletnfcrel|7|tag|10172"
+            val t = 1_791_158_400_000L
+            val first = WalletPayment("event-a", "Synthetic merchant", 20.0, "EUR", t, notificationKey = slot)
+            assertTrue(store.capture(first))
+            assertEquals(1, db.invoiceDao().getInvoiceCount())
+            // Google Wallet re-publica el MISMO aviso 5 s después con un `when` nuevo -> hash distinto -> se ignora.
+            assertFalse(store.capture(first.copy(eventId = "event-b", occurredAt = t + 5_000)))
+            assertEquals(1, db.invoiceDao().getInvoiceCount())
+            // Un pago realmente distinto (mismo aviso reutilizado, minutos después) sí se registra.
+            assertTrue(store.capture(first.copy(eventId = "event-c", occurredAt = t + 5 * 60_000)))
+            assertEquals(2, db.invoiceDao().getInvoiceCount())
+        } finally { testContext.getSharedPreferences(WalletPaymentStore.PREFERENCES, Context.MODE_PRIVATE).edit().clear().commit(); db.close() }
+    }
 }

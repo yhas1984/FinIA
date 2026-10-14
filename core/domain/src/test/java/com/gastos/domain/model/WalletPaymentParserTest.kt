@@ -14,6 +14,7 @@ class WalletPaymentParserTest {
         assertEquals(5.99, payment.amount, 0.0)
         assertEquals("EUR", payment.currency)
         assertEquals(EVENT_TIME, payment.occurredAt)
+        assertEquals("wallet-event", payment.notificationKey)
     }
 
     @Test

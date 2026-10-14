@@ -7,7 +7,9 @@ import java.util.Locale
 
 /** Only affirmative payment notices with an explicit currency and merchant become expenses. */
 @kotlinx.serialization.Serializable
-data class WalletPayment(val eventId: String, val merchant: String, val amount: Double, val currency: String, val occurredAt: Long)
+data class WalletPayment(val eventId: String, val merchant: String, val amount: Double, val currency: String, val occurredAt: Long,
+    /** Clave cruda del aviso (pkg|id|tag|uid): identifica la notificación para detectar re-publicaciones del MISMO pago. */
+    val notificationKey: String = "")
 
 object WalletPaymentParser {
     const val PACKAGE: String = "com.google.android.apps.walletnfcrel"
@@ -36,7 +38,7 @@ object WalletPaymentParser {
         val merchant = compactMerchant ?: Regex("(?i)(?:\\ben\\b|\\bat\\b|\\bto\\b)\\s+([^\\n]+)").find(normalizedBody)?.groupValues?.get(1)?.trim()?.trimEnd('.', ' ')
             ?.takeIf { it.length in 2..100 && !money.any { match -> it.contains(match.value) } } ?: return null
         val id = MessageDigest.getInstance("SHA-256").digest("$packageName|$key|$occurredAt".toByteArray()).joinToString("") { "%02x".format(it) }
-        return WalletPayment(id, merchant, value, currency, occurredAt)
+        return WalletPayment(id, merchant, value, currency, occurredAt, notificationKey = key)
     }
     private fun findCompactMerchant(title: String, body: String): String? {
         val money: MatchResult = moneyPattern.find(body) ?: return null

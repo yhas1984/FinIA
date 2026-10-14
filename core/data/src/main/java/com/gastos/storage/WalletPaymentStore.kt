@@ -85,6 +85,14 @@ class WalletPaymentStore @Inject constructor(@ApplicationContext private val con
                     database.automationDao().deleteRecord(id)
                     return@withTransaction null
                 }
+                // Segundo guard: si Wallet re-publicó el MISMO aviso con un `when` nuevo, el eventId cambia y
+                // el chequeo anterior no lo ve — compara clave de aviso + contenido dentro de la ventana.
+                val recentEvents: List<PaymentEvent> = database.automationDao().records("PAYMENT")
+                    .map { AutomationCodec.json.decodeFromString<PaymentEvent>(it.payload) }
+                if (WalletPaymentPolicy.isRepublishedNotice(payment, recentEvents)) {
+                    database.automationDao().deleteRecord(id)
+                    return@withTransaction null
+                }
                 register(payment)
                 // A disable during a suspended database call rolls the transaction back.
                 check(enabled && hasAccess() && capture.session == captureSession()) { "WALLET_DISABLED" }
@@ -118,7 +126,7 @@ class WalletPaymentStore @Inject constructor(@ApplicationContext private val con
             paisCodigo = "", notas = context.getString(com.gastos.data.R.string.wallet_event_date), tipo = InvoiceType.GASTO, origin = "WALLET", evidence = evidence), useRules = true)
         database.invoiceDao().insertInvoice(record.toEntity())
         database.automationDao().putRecord(AutomationRecordEntity("wallet:${payment.eventId}", "PAYMENT",
-            AutomationCodec.json.encodeToString(PaymentEvent(payment.eventId, "", record.documentUuid, payment.occurredAt,
+            AutomationCodec.json.encodeToString(PaymentEvent(payment.eventId, payment.notificationKey, record.documentUuid, payment.occurredAt,
                 merchant = payment.merchant, amount = payment.amount, currency = payment.currency))))
         FinancialMutationStore(context, database).enqueue(record.documentUuid)
         database.chatMessageDao().insertAndTrim(createDocumentChatMessage(context, record.documentIdentity()))

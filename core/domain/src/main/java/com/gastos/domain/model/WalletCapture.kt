@@ -36,4 +36,22 @@ object WalletPaymentPolicy {
             require(capture.attempts in 0..MAX_ATTEMPTS && capture.error in setOf(null, "WALLET_STORAGE_FAILED"))
         }
     }
+
+    /** Ventana en la que una re-publicación del MISMO aviso cuenta como el mismo pago, no como uno nuevo. */
+    const val REPUBLICATION_WINDOW_MS: Long = 90_000
+
+    /**
+     * Google Wallet puede re-publicar/actualizar la notificación del mismo pago (p. ej. al confirmar el estado
+     * final) con un `when` nuevo → el eventId (hash de pkg|key|when) cambia y la deduplicación por eventId no lo
+     * detecta. Este guard: misma clave de aviso + mismo comercio/importe/moneda + diferencia de tiempo dentro de
+     * la ventana ⇒ es el MISMO pago y no debe crear un segundo gasto.
+     */
+    fun isRepublishedNotice(payment: WalletPayment, recent: List<PaymentEvent>): Boolean =
+        payment.notificationKey.isNotBlank() && recent.any { event ->
+            event.notificationKey == payment.notificationKey &&
+                event.merchant?.equals(payment.merchant, ignoreCase = true) == true &&
+                event.amount?.let { kotlin.math.abs(it - payment.amount) < 0.005 } == true &&
+                event.currency?.equals(payment.currency, ignoreCase = true) == true &&
+                kotlin.math.abs(event.postedAt - payment.occurredAt) <= REPUBLICATION_WINDOW_MS
+        }
 }
