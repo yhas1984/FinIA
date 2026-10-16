@@ -15,7 +15,7 @@ android {
         applicationId = "com.gastos.ingresos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 32
+        versionCode = 33
         versionName = "1.9.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
