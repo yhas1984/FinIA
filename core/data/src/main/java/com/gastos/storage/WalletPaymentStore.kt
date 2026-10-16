@@ -89,7 +89,7 @@ class WalletPaymentStore @Inject constructor(@ApplicationContext private val con
                 // el chequeo anterior no lo ve — compara clave de aviso + contenido dentro de la ventana.
                 val recentEvents: List<PaymentEvent> = database.automationDao().records("PAYMENT")
                     .map { AutomationCodec.json.decodeFromString<PaymentEvent>(it.payload) }
-                if (WalletPaymentPolicy.isRepublishedNotice(payment, recentEvents)) {
+                if (WalletPaymentPolicy.isDuplicateNotice(payment, recentEvents)) {
                     database.automationDao().deleteRecord(id)
                     return@withTransaction null
                 }

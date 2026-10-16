@@ -94,14 +94,32 @@ class WalletCaptureRecoveryTest {
             store.setEnabled(true)
             val results = coroutineScope { List(3) { async { store.capture(payment()) } }.awaitAll() }
             assertEquals(1, results.count { it })
-            assertTrue(store.capture(payment("another-event")))
-            assertEquals(2, db.invoiceDao().getInvoiceCount())
+            assertFalse("mismo comercio+importe+momento con otro aviso = mismo pago", store.capture(payment("another-event")))
+            assertEquals(1, db.invoiceDao().getInvoiceCount())
             val invoice = db.invoiceDao().documentRecords().first().toDomain()
             val event = PaymentEvent("synthetic-event", "", invoice.documentUuid, payment().occurredAt)
             assertTrue(WalletPaymentPolicy.canUndo(event, invoice, false))
             assertFalse(WalletPaymentPolicy.canUndo(event, invoice.copy(financialRevision = 1), false))
             assertFalse(WalletPaymentPolicy.canUndo(event, invoice, true))
             assertFalse(WalletPaymentPolicy.canUndo(event, invoice.copy(origin = "WALLET_RECEIPT", imagenUri = "synthetic"), false))
+        } finally { testContext.getSharedPreferences(WalletPaymentStore.PREFERENCES, Context.MODE_PRIVATE).edit().clear().commit(); db.close() }
+    }
+
+    @Test fun lateRepublishedPaymentFromWalletDoesNotCreateASecondExpense(): Unit = runBlocking {
+        // Caso real 16-oct-2026: Consum Benimaclet 3,80 € registrado dos veces (aviso re-publicado 11 min después).
+        val testContext = isolated(UUID.randomUUID().toString())
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val store = WalletPaymentStore(testContext, db)
+            store.setEnabled(true)
+            assertTrue(store.capture(WalletPayment("event-first", "CONSUM BENIMACLET", 3.80, "EUR", 1_791_158_400_000, notificationKey = "slot-a")))
+            assertEquals(1, db.invoiceDao().getInvoiceCount())
+            val republished = WalletPayment("event-second", "CONSUM BENIMACLET", 3.80, "EUR", 1_791_158_400_000 + 11 * 60_000, notificationKey = "slot-b")
+            assertFalse("la re-publicación tardía no debe crear un segundo gasto", store.capture(republished))
+            assertEquals(1, db.invoiceDao().getInvoiceCount())
+            assertTrue("otra compra del mismo comercio más tarde sí se registra",
+                store.capture(WalletPayment("event-third", "CONSUM BENIMACLET", 3.80, "EUR", 1_791_158_400_000 + 50 * 60_000, notificationKey = "slot-c")))
+            assertEquals(2, db.invoiceDao().getInvoiceCount())
         } finally { testContext.getSharedPreferences(WalletPaymentStore.PREFERENCES, Context.MODE_PRIVATE).edit().clear().commit(); db.close() }
     }
 
