@@ -55,7 +55,7 @@ internal fun postReminder(context: Context, slot: ReminderSlot) {
         }
         val body = context.getString(bodyRes)
         val notification = NotificationCompat.Builder(context, REMINDER_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_finai)
             .setContentTitle(context.getString(titleRes))
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
