@@ -56,7 +56,7 @@ class BankImportUiTest {
                 try {
                     compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText(label))
                     compose.onAllNodesWithText(label).fetchSemanticsNodes().size == 1
-                } catch (_: AssertionError) { false }
+                } catch (_: Throwable) { false } // ante carrera de arranque puede lanzar IllegalStateException («No compose hierarchies found»)
             }
             return compose.onNodeWithText(label)
         }
@@ -72,6 +72,11 @@ class BankImportUiTest {
                     activity.setContent { MaterialTheme { BankImportScreen({}, { _, _ -> }, model = model) } }
                 }
                 content()
+                // readiness: en runners lentos la composición puede no estar registrada aún
+                compose.waitUntil(15_000) {
+                    try { compose.onAllNodes(hasScrollToNodeAction()).fetchSemanticsNodes().isNotEmpty() }
+                    catch (_: Throwable) { false }
+                }
                 scenario.onActivity { model.read(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)) }
                 compose.waitUntil(20_000) { !model.busy.value && model.table.value != null }
                 assertEquals(1, model.headerLine.value)
@@ -90,7 +95,7 @@ class BankImportUiTest {
                 assertEquals("Imported CSV must remain available", tableBeforeRecreation, model.table.value)
                 assertEquals("Preview must survive recreation", previewBeforeRecreation, model.preview.value)
                 assertEquals("Mapping must survive recreation", mappingBeforeRecreation, model.mapping.value)
-                compose.waitUntil(10_000) { compose.onAllNodesWithText(text(R.string.bank_title)).fetchSemanticsNodes().isNotEmpty() }
+                compose.waitUntil(10_000) { try { compose.onAllNodesWithText(text(R.string.bank_title)).fetchSemanticsNodes().isNotEmpty() } catch (_: Throwable) { false } }
                 scrollToText(R.string.bank_preview_count, 2, 1).assertIsDisplayed()
                 scrollToText(R.string.bank_exclude_invalid).assertIsOn()
                 scrollToText(R.string.bank_stage).assertIsEnabled().performClick()
@@ -124,7 +129,7 @@ class BankImportUiTest {
                         model.batchId.value == importedBatch &&
                         model.data.value.bank.batches.any { it.id == importedBatch && it.mapping.reverseSign } &&
                         model.data.value.bank.transactions.filter { it.batchId == importedBatch }.associateBy { it.id } == expectedRows &&
-                        compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty()
+                        try { compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty() } catch (_: Throwable) { false }
                 }
                 compose.waitForIdle()
                 // Android's dialog-window removal runs outside Compose's virtual animation clock.

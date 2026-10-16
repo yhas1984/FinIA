@@ -86,7 +86,7 @@ class WalletCaptureRecoveryTest {
         } finally { testContext.getSharedPreferences(WalletPaymentStore.PREFERENCES, Context.MODE_PRIVATE).edit().clear().commit(); db.close() }
     }
 
-    @Test fun simultaneousRedeliveryIsIdempotentButTwoDistinctPaymentsRemainPossible(): Unit = runBlocking {
+    @Test fun simultaneousRedeliveryIsIdempotentAndSameContentIsMerged(): Unit = runBlocking {
         val testContext = isolated(UUID.randomUUID().toString())
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
@@ -156,8 +156,12 @@ class WalletCaptureRecoveryTest {
             // Google Wallet re-publica el MISMO aviso 5 s después con un `when` nuevo -> hash distinto -> se ignora.
             assertFalse(store.capture(first.copy(eventId = "event-b", occurredAt = t + 5_000)))
             assertEquals(1, db.invoiceDao().getInvoiceCount())
-            // Un pago realmente distinto (mismo aviso reutilizado, minutos después) sí se registra.
-            assertTrue(store.capture(first.copy(eventId = "event-c", occurredAt = t + 5 * 60_000)))
+            // Reutilizar el aviso minutos después con el mismo comercio e importe es una re-publicación del MISMO
+            // pago (caso real 16-oct-2026: Consum 3,80 ×2 y Pan Pao 1,45 ×2) → se ignora.
+            assertFalse(store.capture(first.copy(eventId = "event-c", occurredAt = t + 5 * 60_000)))
+            assertEquals(1, db.invoiceDao().getInvoiceCount())
+            // Una compra real del mismo comercio e importe fuera de la ventana de contenido sí se registra.
+            assertTrue(store.capture(first.copy(eventId = "event-d", occurredAt = t + 45 * 60_000)))
             assertEquals(2, db.invoiceDao().getInvoiceCount())
         } finally { testContext.getSharedPreferences(WalletPaymentStore.PREFERENCES, Context.MODE_PRIVATE).edit().clear().commit(); db.close() }
     }
