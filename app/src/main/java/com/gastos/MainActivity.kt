@@ -90,6 +90,22 @@ class MainActivity : ComponentActivity() {
         notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
     }
 
+    /**
+     * Re-engancha el listener de avisos si MIUI/Doze lo dejó muerto. Coste cero cuando ya está vivo: solo se
+     * pide rebind si el servicio no ha conectado en esta sesión de la app. Evita que un pago se pierda en
+     * silencio mientras el usuario no toca el teléfono (16-oct-2026: el aviso de las 12:12 quedó huérfano
+     * porque el servicio murió al actualizar la app a las 11:51 y no revivió hasta las 13:04).
+     */
+    private fun reviveWalletCapture() {
+        try {
+            val component = android.content.ComponentName(this, WalletNotificationService::class.java)
+            android.service.notification.NotificationListenerService.requestRebind(component)
+            android.util.Log.i("FinAI", "WalletNotificationService rebind solicitado (captura de pagos viva)")
+        } catch (_: Exception) {
+            // Best-effort: nunca debe afectar a la app.
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestNotificationPermissionOnce()
@@ -106,6 +122,7 @@ class MainActivity : ComponentActivity() {
                 val observer = LifecycleEventObserver { _, event ->
                     if (event == Lifecycle.Event.ON_RESUME) {
                         settingsViewModel.onAppResumed()
+                        this@MainActivity.reviveWalletCapture()
                     }
                 }
                 lifecycleOwner.lifecycle.addObserver(observer)
