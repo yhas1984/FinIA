@@ -41,45 +41,29 @@ object WalletPaymentPolicy {
     const val REPUBLICATION_WINDOW_MS: Long = 90_000
 
     /**
-     * Ventana de contenido: un segundo aviso con el MISMO comercio, importe y moneda dentro de este margen es el
-     * mismo pago (Wallet publica "pago enviado" y luego "pago completado" con clave/when nuevos y a veces minutos
-     * después). Sin esta ventana el gasto se duplica: reportado por el usuario el 16-oct-2026 (Consum 3,80 ×2 y
-     * Pan Pao 1,45 ×2 en un mismo día, con la 1.9.4 ya instalada).
+     * Google Wallet publica el MISMO pago en varios avisos (preparado/enviado y luego completado) reutilizando
+     * la MISMA notificación (mismos id y tag → misma pasta del aviso) y suele cambiar el `when` con cada
+     * actualización. La identidad del pago es ese hash del aviso, no el comercio/importe: dos cafés iguales en el
+     * mismo bar son dos pagos reales y deben registrarse los dos.
+     *
+     * @return la pista del aviso (`id|tag`) o cadena vacía si el aviso no la trae.
      */
-    const val CONTENT_WINDOW_MS: Long = 30 * 60_000
+    fun noticeIdentity(notificationKey: String): String {
+        val parts = notificationKey.split('|')
+        return if (parts.size >= 4) "${parts[2]}|${parts[3]}" else ""
+    }
 
     /**
-     * Google Wallet puede re-publicar/actualizar la notificación del mismo pago (p. ej. al confirmar el estado
-     * final) con un `when` nuevo → el eventId (hash de pkg|key|when) cambia y la deduplicación por eventId no lo
-     * detecta. Este guard: misma clave de aviso + mismo comercio/importe/moneda + diferencia de tiempo dentro de
-     * la ventana ⇒ es el MISMO pago y no debe crear un segundo gasto.
+     * Mismo aviso = mismo pago, aunque Wallet le haya cambiado el `when` (el eventId, que es hash de pkg|key|when,
+     * cambiaría y por eso la deduplicación por eventId sola no lo detecta). Sin ventana de tiempo y sin comparar
+     * importe ni comercio: si el aviso es el mismo, el pago es el mismo.
      */
-    fun isRepublishedNotice(payment: WalletPayment, recent: List<PaymentEvent>): Boolean =
-        payment.notificationKey.isNotBlank() && recent.any { event ->
-            !event.undone &&
-                event.notificationKey == payment.notificationKey &&
-                event.merchant?.equals(payment.merchant, ignoreCase = true) == true &&
-                event.amount?.let { kotlin.math.abs(it - payment.amount) < 0.005 } == true &&
-                event.currency?.equals(payment.currency, ignoreCase = true) == true &&
-                kotlin.math.abs(event.postedAt - payment.occurredAt) <= REPUBLICATION_WINDOW_MS
-        }
-
-    /**
-     * Guard por contenido para las re-publicaciones que se escapan de [isRepublishedNotice] (clave de aviso nueva
-     * o intervalo mayor que [REPUBLICATION_WINDOW_MS]): mismo comercio + mismo importe + misma moneda dentro de
-     * [CONTENT_WINDOW_MS] es el MISMO pago. El contrato se mantiene donde importa: importe o comercio distintos
-     * siguen siendo pagos distintos (dos cafés iguales seguidos son dos gastos reales), y un evento deshecho no
-     * cuenta — si el usuario elimina un gasto, una compra real posterior del mismo importe debe registrarse.
-     */
-    fun isDuplicateContent(payment: WalletPayment, recent: List<PaymentEvent>): Boolean =
-        recent.any { event ->
-            !event.undone &&
-                event.merchant?.equals(payment.merchant, ignoreCase = true) == true &&
-                event.amount?.let { kotlin.math.abs(it - payment.amount) < 0.005 } == true &&
-                event.currency?.equals(payment.currency, ignoreCase = true) == true &&
-                kotlin.math.abs(event.postedAt - payment.occurredAt) <= CONTENT_WINDOW_MS
-        }
+    fun isRepublishedNotice(payment: WalletPayment, recent: List<PaymentEvent>): Boolean {
+        val identity = noticeIdentity(payment.notificationKey)
+        if (identity.isEmpty()) return false
+        return recent.any { event -> !event.undone && noticeIdentity(event.notificationKey) == identity }
+    }
 
     fun isDuplicateNotice(payment: WalletPayment, recent: List<PaymentEvent>): Boolean =
-        isRepublishedNotice(payment, recent) || isDuplicateContent(payment, recent)
+        isRepublishedNotice(payment, recent)
 }
