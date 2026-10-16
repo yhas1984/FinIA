@@ -48,4 +48,11 @@ class WalletCapturePolicyTest {
         val sameShopLater = WalletPayment("event-c", "PAN PAO", 1.45, "EUR", 1_000 + 45 * 60_000, notificationKey = "clave-c")
         assertFalse("misma compra 45 min después = pago nuevo", WalletPaymentPolicy.isDuplicateNotice(sameShopLater, listOf(first)))
     }
+
+    @Test fun undoneExpenseNeverBlocksTheSamePurchaseAgain() {
+        // Caso: el usuario borra/deshace un gasto y vuelve a comprar lo mismo poco después → debe registrarse.
+        val undone = PaymentEvent("event-a", "clave-a", "doc-1", 1_000, undone = true, merchant = "PAN PAO", amount = 1.45, currency = "EUR")
+        val again = WalletPayment("event-b", "PAN PAO", 1.45, "EUR", 1_000 + 5 * 60_000, notificationKey = "clave-b")
+        assertFalse("un gasto deshecho no bloquea una compra real posterior", WalletPaymentPolicy.isDuplicateNotice(again, listOf(undone)))
+    }
 }

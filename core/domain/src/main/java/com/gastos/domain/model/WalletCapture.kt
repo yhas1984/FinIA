@@ -56,7 +56,8 @@ object WalletPaymentPolicy {
      */
     fun isRepublishedNotice(payment: WalletPayment, recent: List<PaymentEvent>): Boolean =
         payment.notificationKey.isNotBlank() && recent.any { event ->
-            event.notificationKey == payment.notificationKey &&
+            !event.undone &&
+                event.notificationKey == payment.notificationKey &&
                 event.merchant?.equals(payment.merchant, ignoreCase = true) == true &&
                 event.amount?.let { kotlin.math.abs(it - payment.amount) < 0.005 } == true &&
                 event.currency?.equals(payment.currency, ignoreCase = true) == true &&
@@ -67,11 +68,13 @@ object WalletPaymentPolicy {
      * Guard por contenido para las re-publicaciones que se escapan de [isRepublishedNotice] (clave de aviso nueva
      * o intervalo mayor que [REPUBLICATION_WINDOW_MS]): mismo comercio + mismo importe + misma moneda dentro de
      * [CONTENT_WINDOW_MS] es el MISMO pago. El contrato se mantiene donde importa: importe o comercio distintos
-     * siguen siendo pagos distintos (dos cafés iguales seguidos son dos gastos reales).
+     * siguen siendo pagos distintos (dos cafés iguales seguidos son dos gastos reales), y un evento deshecho no
+     * cuenta — si el usuario elimina un gasto, una compra real posterior del mismo importe debe registrarse.
      */
     fun isDuplicateContent(payment: WalletPayment, recent: List<PaymentEvent>): Boolean =
         recent.any { event ->
-            event.merchant?.equals(payment.merchant, ignoreCase = true) == true &&
+            !event.undone &&
+                event.merchant?.equals(payment.merchant, ignoreCase = true) == true &&
                 event.amount?.let { kotlin.math.abs(it - payment.amount) < 0.005 } == true &&
                 event.currency?.equals(payment.currency, ignoreCase = true) == true &&
                 kotlin.math.abs(event.postedAt - payment.occurredAt) <= CONTENT_WINDOW_MS

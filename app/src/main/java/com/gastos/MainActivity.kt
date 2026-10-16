@@ -98,6 +98,10 @@ class MainActivity : ComponentActivity() {
      */
     private fun reviveWalletCapture() {
         try {
+            // Solo si el listener no está conectado en este proceso: no molesta cuando ya está vivo y garantiza la
+            // reconexión (con su recuperación de avisos) cuando MIUI lo dejó muerto. Dentro del mismo proceso,
+            // valor 0 significa "proceso recién arrancado o listener desconectado".
+            if (WalletNotificationService.connectedAt > 0L) return
             val component = android.content.ComponentName(this, WalletNotificationService::class.java)
             android.service.notification.NotificationListenerService.requestRebind(component)
             android.util.Log.i("FinAI", "WalletNotificationService rebind solicitado (captura de pagos viva)")

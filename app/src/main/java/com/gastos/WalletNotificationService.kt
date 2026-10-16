@@ -21,29 +21,42 @@ class WalletNotificationService : NotificationListenerService() {
      */
     override fun onListenerConnected() {
         super.onListenerConnected()
+        connectedAt = System.currentTimeMillis()
         recoverActiveNotifications()
     }
 
+    /** Un listener desconectado deja de capturar; se marca para que la app pida rebind al volver a primer plano. */
+    override fun onListenerDisconnected() {
+        connectedAt = 0L
+        super.onListenerDisconnected()
+    }
+
     private fun recoverActiveNotifications() {
-        if (!payments.enabled) return
-        val active = try { activeNotifications ?: return } catch (_: Exception) { return }
-        for (sbn in active) {
-            if (sbn.packageName != WalletPaymentParser.PACKAGE || sbn.isOngoing) continue
-            // Ventana amplia a propósito: el between pago y publicación puede ser grande y el aviso puede llevar
-            // horas en la barra; la deduplicación por contenido del store decide si ya estaba registrado.
-            val occurredAt = sbn.notification.`when`
-            if (occurredAt <= 0 || System.currentTimeMillis() - occurredAt > RECOVERY_WINDOW_MS) continue
-            val extras = sbn.notification.extras
-            val payment = WalletPaymentParser.parse(sbn.packageName, sbn.key, occurredAt,
-                extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty(),
-                (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString().orEmpty()) ?: continue
-            WalletCaptureWorker.schedule(applicationContext, payment, payments.captureSession())
+        try {
+            if (!payments.enabled) return
+            val active = activeNotifications ?: return
+            for (sbn in active) {
+                if (sbn.packageName != WalletPaymentParser.PACKAGE || sbn.isOngoing) continue
+                // Ventana amplia a propósito: el between pago y publicación puede ser grande y el aviso puede llevar
+                // horas en la barra; la deduplicación por contenido del store decide si ya estaba registrado.
+                val occurredAt = sbn.notification.`when`
+                if (occurredAt <= 0 || System.currentTimeMillis() - occurredAt > RECOVERY_WINDOW_MS) continue
+                val extras = sbn.notification.extras
+                val payment = WalletPaymentParser.parse(sbn.packageName, sbn.key, occurredAt,
+                    extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty(),
+                    (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString().orEmpty()) ?: continue
+                WalletCaptureWorker.schedule(applicationContext, payment, payments.captureSession())
+            }
+        } catch (_: Exception) {
+            // Best-effort: un fallo aquí no debe tumbar el listener (el sistema podría desactivarlo por un crash).
         }
     }
 
-    private companion object {
+    companion object {
         /** Margen para recuperar un aviso que quedó en la barra mientras el servicio estaba muerto (6 h). */
-        const val RECOVERY_WINDOW_MS = 6 * 60 * 60_000L
+        private const val RECOVERY_WINDOW_MS = 6 * 60 * 60_000L
+        /** 0 = sin conexión conocida en este proceso; la app pide rebind solo cuando vale 0. */
+        @Volatile var connectedAt: Long = 0L
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
