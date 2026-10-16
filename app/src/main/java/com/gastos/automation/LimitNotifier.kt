@@ -30,7 +30,7 @@ class LimitNotifier @Inject constructor(@ApplicationContext private val context:
                     manager.createNotificationChannel(NotificationChannel("monthly_limits", context.getString(R.string.limits_tab), NotificationManager.IMPORTANCE_DEFAULT))
                     val intent = android.content.Intent(context, com.gastos.MainActivity::class.java)
                     val pending = android.app.PendingIntent.getActivity(context, 0, intent, android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
-                    val notification = NotificationCompat.Builder(context, "monthly_limits").setSmallIcon(android.R.drawable.ic_dialog_info)
+                    val notification = NotificationCompat.Builder(context, "monthly_limits").setSmallIcon(R.drawable.ic_stat_finai)
                         .setContentTitle(context.getString(R.string.limit_notification_title)).setContentText(context.getString(R.string.limit_notification_body, progress.category,
                             formatMoney(spent, limit.currency), formatMoney(limit.amount, limit.currency))).setContentIntent(pending).setAutoCancel(true).build()
                     manager.notify(limit.id.hashCode(), notification)

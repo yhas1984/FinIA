@@ -37,7 +37,7 @@ class WalletCaptureNotifier(private val context: Context) {
                 R.string.wallet_capture_body, payment.merchant, formatMoney(payment.amount, payment.currency)
             )
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_stat_finai)
                 .setContentTitle(context.getString(R.string.wallet_capture_title))
                 .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))
