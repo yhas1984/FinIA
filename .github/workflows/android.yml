@@ -71,6 +71,10 @@ jobs:
           api-level: 35
           arch: x86_64
           disable-animations: true
+          # 16-oct-2026: el emulador por defecto se degradaba («bad color buffer handle») y tumbaba los
+          # tests de UI. Se fuerza render por software (estable), sin instantáneas y con más memoria.
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096
+          emulator-boot-timeout: 1200
           script: bash scripts/ci-recovery-regressions.sh
       - name: Preserve instrumentation reports
         if: always()
