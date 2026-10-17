@@ -73,7 +73,9 @@ jobs:
           disable-animations: true
           # 16-oct-2026: el emulador por defecto se degradaba («bad color buffer handle») y tumbaba los
           # tests de UI. Se fuerza render por software (estable), sin instantáneas y con más memoria.
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096
+          # 17-oct-2026: se desactiva Vulkan (otra fuente conocida de esos errores de framebuffer con
+          # SwiftShader) y se apagan las cámaras, que no hacen falta y consumen recursos gráficos.
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096 -camera-back none -camera-front none -feature -Vulkan
           emulator-boot-timeout: 1200
           script: bash scripts/ci-recovery-regressions.sh
       - name: Preserve instrumentation reports
