@@ -312,7 +312,7 @@ class AIService @Inject constructor(
                 GeminiGenerateRequest(
                     apiKey = currentApiKey,
                     systemInstruction = buildSystemPrompt(systemInstructions),
-                    contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(queryExtractionPrompt(query))))),
+                    contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(queryExtractionPrompt(query, java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())))))),
                     generationConfig = GeminiGenerationConfig(thinkingLevel = QUERY_THINKING_LEVEL)
                 )
             )
@@ -405,7 +405,7 @@ class AIService @Inject constructor(
             Reglas de acción:
             1. CONSULTA FINANCIERA: si pregunta cuánto gastó, sus ingresos, balance, totales,
                comercios, proveedores, productos comprados, etc.:
-                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
                Diferencia siempre estos filtros:
                 - COMERCIO/PROVEEDOR: Mercadona, Lidl, Amazon, Repsol, etc. Usa
                   query_type="gastos", proveedor="nombre", categoria=null e item=null.
@@ -427,6 +427,15 @@ class AIService @Inject constructor(
                - "ingresado", "cobrado", "recibido", "salario" o "nómina"
                  significan ingresos, no balance.
                - "lo que va de mes", "este mes" y "mes actual" usan periodo="mes".
+               - PERIODO CONCRETO: si el usuario nombra un mes, aunque sea pasado, usa
+                 periodo="YYYY-MM" con el año que corresponda a la fecha de hoy:
+                 * "en agosto" (hoy 2026-10-17) => periodo="2026-08".
+                 * "en el mes de agosto de 2025" => periodo="2025-08".
+                 * "el mes pasado" => periodo="mes anterior".
+                 * "del 1 al 15 de agosto" => periodo="2026-08-01..2026-08-15".
+                 NUNCA devuelvas periodo="mes" si el usuario ha nombrado un mes o unas fechas.
+               - CORRECCIÓN DE PERIODO: si el usuario rectifica ("dije agosto, no este mes"),
+                 repite la consulta con el periodo corregido; no repitas la respuesta anterior.
                - En seguimientos como "ese comercio", "esa tienda" o "ahí", conserva
                  el proveedor mencionado en la conversación anterior.
                Reglas extra para productos:
@@ -480,7 +489,7 @@ class AIService @Inject constructor(
             Action rules:
             1. FINANCIAL QUERY: if the user asks how much was spent, income, balance, totals,
                stores, providers, purchased products, etc.:
-                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
                Distinguish these filters:
                 - STORE/PROVIDER: Mercadona, Lidl, Amazon, Repsol, etc. Use query_type="gastos",
                    proveedor="name", categoria=null and item=null.
@@ -495,6 +504,13 @@ class AIService @Inject constructor(
                 - "earned", "profit", "net", or "what's left" mean balance (income minus expenses).
                 - "received", "paid", "salary" mean income, not balance.
                 - "this month" and similar map to periodo="mes".
+                - SPECIFIC PERIOD: if the user names a month, even a past one, use
+                  periodo="YYYY-MM" with the year matching today's date ("in August" with today
+                  2026-10-17 => periodo="2026-08"; "last month" => periodo="mes anterior";
+                  "August 1 to 15" => periodo="2026-08-01..2026-08-15"). NEVER return periodo="mes"
+                  when a month or a date range was named.
+                - PERIOD CORRECTION: if the user corrects the period ("I said August, not this
+                  month"), run the query again with the corrected period; never repeat the answer.
                 - In follow-ups like "that store" or "there", keep the previous provider.
                 Product rules: generic names use match_mode="group"; exact line descriptions use match_mode="exact".
                 Do not use balance for product questions.
@@ -630,9 +646,10 @@ class AIService @Inject constructor(
         put("required", JSONArray(listOf("nombre", "porcentaje", "base", "importe", "tratamiento", "efecto")))
     })
 
-    private fun queryExtractionPrompt(query: String): String = """
+    private fun queryExtractionPrompt(query: String, today: String): String = """
+        Hoy es $today.
         Extrae los parámetros de esta consulta financiera y devuelve SOLO el JSON:
-        {"query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año","categoria":"texto o null","subcategoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
+        {"query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","categoria":"texto o null","subcategoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
 
         Reglas:
         - comercio, tienda, supermercado, empresa o proveedor => proveedor, nunca item
@@ -647,6 +664,10 @@ class AIService @Inject constructor(
         - si la consulta es sobre un producto, usa query_type="productos", nunca "balance"
         - "ganado", "ganancia", "beneficio", "neto" o "lo que me queda" => balance
         - "ingresado", "cobrado", "recibido", "salario" o "nómina" => ingresos
+        - mes nombrado por el usuario, aunque sea pasado => periodo="YYYY-MM" con el año correcto
+          según la fecha de hoy ("en agosto" con hoy 2026-10-17 => "2026-08"); "el mes pasado" =>
+          "mes anterior"; un rango de fechas => "YYYY-MM-DD..YYYY-MM-DD"
+        - si el usuario nombra un mes o unas fechas, NUNCA devuelvas periodo="mes"
 
         Consulta: "$query"
     """.trimIndent()

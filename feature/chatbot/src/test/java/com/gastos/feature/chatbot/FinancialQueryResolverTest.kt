@@ -4,6 +4,8 @@ import com.gastos.domain.model.Product
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.util.Calendar
+import java.util.TimeZone
 
 class FinancialQueryResolverTest {
     @Test
@@ -26,6 +28,87 @@ class FinancialQueryResolverTest {
         assertEquals("semana", FinancialQueryResolver.normalizePeriod("esta semana"))
         assertEquals("mes", FinancialQueryResolver.normalizePeriod("este mes"))
         assertEquals("año", FinancialQueryResolver.normalizePeriod("año"))
+    }
+
+    private val zona = TimeZone.getTimeZone("Europe/Madrid")
+
+    private fun momento(anio: Int, mes: Int, dia: Int): Long =
+        Calendar.getInstance(zona).apply {
+            clear()
+            set(anio, mes - 1, dia, 12, 0, 0)
+        }.timeInMillis
+
+    private fun limite(anio: Int, mes: Int, dia: Int, hora: Int, minuto: Int, segundo: Int, ms: Int): Long =
+        Calendar.getInstance(zona).apply {
+            clear()
+            set(anio, mes - 1, dia, hora, minuto, segundo)
+            set(Calendar.MILLISECOND, ms)
+        }.timeInMillis
+
+    @Test
+    fun `a named month is kept instead of falling back to the current month`() {
+        val hoy = momento(2026, 10, 17)
+        assertEquals("mes:2026-08", FinancialQueryResolver.normalizePeriod("agosto", hoy, zona))
+        assertEquals("mes:2026-08", FinancialQueryResolver.normalizePeriod("en el mes de agosto", hoy, zona))
+        assertEquals("mes:2026-08", FinancialQueryResolver.normalizePeriod("agosto de 2026", hoy, zona))
+        assertEquals("mes:2025-08", FinancialQueryResolver.normalizePeriod("agosto de 2025", hoy, zona))
+        assertEquals("mes:2026-09", FinancialQueryResolver.normalizePeriod("septiembre", hoy, zona))
+        assertEquals("mes:2026-08", FinancialQueryResolver.normalizePeriod("2026-08", hoy, zona))
+        assertEquals("mes:2026-08", FinancialQueryResolver.normalizePeriod("08/2026", hoy, zona))
+    }
+
+    @Test
+    fun `month names resolve to the most recent past year`() {
+        val enero = momento(2026, 1, 10)
+        assertEquals("mes:2025-12", FinancialQueryResolver.normalizePeriod("diciembre", enero, zona))
+        assertEquals("mes:2026-01", FinancialQueryResolver.normalizePeriod("enero", enero, zona))
+    }
+
+    @Test
+    fun `relative months and explicit ranges`() {
+        val hoy = momento(2026, 10, 17)
+        assertEquals("mes:2026-09", FinancialQueryResolver.normalizePeriod("el mes pasado", hoy, zona))
+        assertEquals("mes:2026-09", FinancialQueryResolver.normalizePeriod("mes anterior", hoy, zona))
+        assertEquals("mes:2026-11", FinancialQueryResolver.normalizePeriod("el mes que viene", hoy, zona))
+        assertEquals(
+            "rango:2026-08-01:2026-08-15",
+            FinancialQueryResolver.normalizePeriod("2026-08-01..2026-08-15", hoy, zona)
+        )
+    }
+
+    @Test
+    fun `the period named in the question wins over the model`() {
+        val hoy = momento(2026, 10, 17)
+        assertEquals(
+            "mes:2026-08",
+            FinancialQueryResolver.periodFromQuestion("cuando gaste en Mercadona en el mes de agosto?", hoy, zona)
+        )
+        assertNull(FinancialQueryResolver.periodFromQuestion("y este mes?", hoy, zona))
+        assertNull(FinancialQueryResolver.periodFromQuestion("cuanto he gastado", hoy, zona))
+    }
+
+    @Test
+    fun `period range covers the whole requested month`() {
+        val hoy = momento(2026, 10, 17)
+        val (inicio, fin) = FinancialQueryResolver.periodRange("mes:2026-08", hoy, zona)
+        assertEquals(limite(2026, 8, 1, 0, 0, 0, 0), inicio)
+        assertEquals(limite(2026, 8, 31, 23, 59, 59, 999), fin)
+        assertEquals(31L * 24 * 60 * 60 * 1000, fin - inicio + 1)
+    }
+
+    @Test
+    fun `period range for explicit dates`() {
+        val hoy = momento(2026, 10, 17)
+        val (inicio, fin) = FinancialQueryResolver.periodRange("rango:2026-08-01:2026-08-15", hoy, zona)
+        assertEquals(limite(2026, 8, 1, 0, 0, 0, 0), inicio)
+        assertEquals(limite(2026, 8, 15, 23, 59, 59, 999), fin)
+    }
+
+    @Test
+    fun `period label names the specific month`() {
+        assertEquals("agosto de 2026", FinancialQueryResolver.periodLabel("mes:2026-08", "es"))
+        assertEquals("August 2026", FinancialQueryResolver.periodLabel("mes:2026-08", "en"))
+        assertEquals("este mes", FinancialQueryResolver.periodLabel("mes", "es"))
     }
 
     @Test
