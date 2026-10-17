@@ -86,9 +86,11 @@ class WalletPaymentStore @Inject constructor(@ApplicationContext private val con
                     return@withTransaction null
                 }
                 // Segundo guard: si Wallet re-publicó el MISMO aviso con un `when` nuevo, el eventId cambia y
-                // el chequeo anterior no lo ve — compara clave de aviso + contenido dentro de la ventana.
+                // el chequeo anterior no lo ve — la identidad del aviso (id|tag) decide. Un evento deshecho no
+                // cuenta: su gasto ya no está, así que no debe bloquear una compra real posterior.
                 val recentEvents: List<PaymentEvent> = database.automationDao().records("PAYMENT")
                     .map { AutomationCodec.json.decodeFromString<PaymentEvent>(it.payload) }
+                    .filter { !it.undone }
                 if (WalletPaymentPolicy.isDuplicateNotice(payment, recentEvents)) {
                     database.automationDao().deleteRecord(id)
                     return@withTransaction null

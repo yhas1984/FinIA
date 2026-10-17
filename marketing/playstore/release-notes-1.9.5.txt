@@ -1,0 +1,15 @@
+<es-ES>
+• Corregido: los pagos ya no se pierden. Si el sistema había dormido la captura, al abrir la app se recuperan los avisos de pago que quedaron pendientes.
+• Corregido: los pagos ya no se duplican. Cada aviso de Google Wallet se identifica individualmente, así que una notificación repetida no crea un segundo gasto, y dos compras iguales reales (dos cafés seguidos) se registran las dos.
+• La captura de pagos se reengancha sola cuando el sistema la interrumpe.
+</es-ES>
+<en-US>
+• Fixed: payments are no longer missed. If the system had put capture to sleep, reopening the app recovers the payment notices that were left pending.
+• Fixed: payments are no longer duplicated. Each Google Wallet notice is now identified individually, so a repeated notice no longer creates a second expense, and two genuine identical purchases (two coffees in a row) are both recorded.
+• Payment capture reconnects by itself when the system interrupts it.
+</en-US>
+<es-419>
+• Corregido: los pagos ya no se pierden. Si el sistema había dormido la captura, al abrir la app se recuperan los avisos de pago pendientes.
+• Corregido: los pagos ya no se duplican. Cada aviso de Google Wallet se identifica por separado, así que un aviso repetido no crea un segundo gasto, y dos compras iguales reales (dos cafés seguidos) se registran las dos.
+• La captura de pagos se reconecta automáticamente cuando el sistema la interrumpe.
+</es-419>

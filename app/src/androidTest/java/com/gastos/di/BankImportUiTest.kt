@@ -33,6 +33,13 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class BankImportUiTest {
     @get:Rule val compose = createEmptyComposeRule()
+
+    // El emulador del CI (GL por software, runner compartido, a veces con el framebuffer degradado)
+    // puede tardar mucho más que un móvil real en registrar la composición. Medido el 16-oct-2026:
+    // 3,9 s en emulador local · 6,1 s en un móvil real · >15 s en el emulador de GitHub, que reventaba
+    // la espera de 15 s con «ComposeTimeoutException» pese a que la APP era correcta.
+    // El significado de cada espera no cambia (sigue exigiendo que la condición se cumpla): solo el margen.
+    private val ESPERA_UI_MS = 60_000L
     @Test fun preamblePreviewExplicitExclusionAndMappingCorrectionStayRecoverable() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
@@ -52,11 +59,11 @@ class BankImportUiTest {
         fun scrollToText(id: Int, vararg args: Any): SemanticsNodeInteraction {
             // LazyColumn disposes off-screen items after recreation; locate through its scroll action first.
             val label = text(id, *args)
-            compose.waitUntil(10_000) {
+            compose.waitUntil(ESPERA_UI_MS) {
                 try {
                     compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText(label))
                     compose.onAllNodesWithText(label).fetchSemanticsNodes().size == 1
-                } catch (_: AssertionError) { false }
+                } catch (_: Throwable) { false } // ante carrera de arranque puede lanzar IllegalStateException («No compose hierarchies found»)
             }
             return compose.onNodeWithText(label)
         }
@@ -72,11 +79,16 @@ class BankImportUiTest {
                     activity.setContent { MaterialTheme { BankImportScreen({}, { _, _ -> }, model = model) } }
                 }
                 content()
+                // readiness: en runners lentos la composición puede no estar registrada aún
+                compose.waitUntil(ESPERA_UI_MS) {
+                    try { compose.onAllNodes(hasScrollToNodeAction()).fetchSemanticsNodes().isNotEmpty() }
+                    catch (_: Throwable) { false }
+                }
                 scenario.onActivity { model.read(FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)) }
-                compose.waitUntil(20_000) { !model.busy.value && model.table.value != null }
+                compose.waitUntil(ESPERA_UI_MS) { !model.busy.value && model.table.value != null }
                 assertEquals(1, model.headerLine.value)
                 scrollToText(R.string.bank_preview).performClick()
-                compose.waitUntil(10_000) { model.preview.value.size == 3 && !model.busy.value }
+                compose.waitUntil(ESPERA_UI_MS) { model.preview.value.size == 3 && !model.busy.value }
                 scrollToText(R.string.bank_preview_count, 2, 1).assertIsDisplayed()
                 scrollToText(R.string.bank_exclude_invalid).assertIsOff()
                 scrollToText(R.string.bank_stage).assertIsNotEnabled()
@@ -90,28 +102,28 @@ class BankImportUiTest {
                 assertEquals("Imported CSV must remain available", tableBeforeRecreation, model.table.value)
                 assertEquals("Preview must survive recreation", previewBeforeRecreation, model.preview.value)
                 assertEquals("Mapping must survive recreation", mappingBeforeRecreation, model.mapping.value)
-                compose.waitUntil(10_000) { compose.onAllNodesWithText(text(R.string.bank_title)).fetchSemanticsNodes().isNotEmpty() }
+                compose.waitUntil(ESPERA_UI_MS) { try { compose.onAllNodesWithText(text(R.string.bank_title)).fetchSemanticsNodes().isNotEmpty() } catch (_: Throwable) { false } }
                 scrollToText(R.string.bank_preview_count, 2, 1).assertIsDisplayed()
                 scrollToText(R.string.bank_exclude_invalid).assertIsOn()
                 scrollToText(R.string.bank_stage).assertIsEnabled().performClick()
-                compose.waitUntil(10_000) { !model.busy.value && model.table.value == null }
+                compose.waitUntil(ESPERA_UI_MS) { !model.busy.value && model.table.value == null }
                 assertEquals(2, runBlocking { store.transactions().size })
                 assertEquals(0, runBlocking { db.invoiceDao().getInvoiceCount() })
                 assertEquals(0, runBlocking { db.incomeDao().getIncomeCount() })
                 scrollToText(R.string.bank_edit_configuration).performClick()
-                compose.waitUntil(10_000) { !model.busy.value && model.table.value != null }
+                compose.waitUntil(ESPERA_UI_MS) { !model.busy.value && model.table.value != null }
                 scenario.onActivity {
                     val mapping = AutomationCodec.json.decodeFromString<BankMapping>(model.mapping.value)
                     model.changeMapping(mapping.copy(reverseSign = true))
                     model.preview()
                 }
-                compose.waitUntil(10_000) { !model.busy.value && model.preview.value.size == 3 }
+                compose.waitUntil(ESPERA_UI_MS) { !model.busy.value && model.preview.value.size == 3 }
                 scrollToText(R.string.bank_preview_count, 2, 1).assertIsDisplayed()
                 scrollToText(R.string.bank_exclude_invalid).assertIsOff().performClick().assertIsOn()
                 scrollToText(R.string.bank_review_rectification).performClick()
-                compose.waitUntil(10_000) { model.rectification.value != null && !model.busy.value }
+                compose.waitUntil(ESPERA_UI_MS) { model.rectification.value != null && !model.busy.value }
                 compose.onNodeWithText(text(R.string.bank_apply_rectification)).performClick()
-                compose.waitUntil(10_000) { !model.busy.value && model.table.value == null }
+                compose.waitUntil(ESPERA_UI_MS) { !model.busy.value && model.table.value == null }
                 val corrected = runBlocking { store.transactions() }
                 assertEquals(2, corrected.size)
                 assertEquals("20", corrected.single { it.description == "Synthetic shop" }.amount)
@@ -119,12 +131,12 @@ class BankImportUiTest {
                 assertEquals(0, runBlocking { db.invoiceDao().getInvoiceCount() })
                 val importedBatch = model.batchId.value
                 val expectedRows = corrected.associateBy { it.id }
-                compose.waitUntil(10_000) {
+                compose.waitUntil(ESPERA_UI_MS) {
                     !model.busy.value && model.table.value == null && model.rectification.value == null &&
                         model.batchId.value == importedBatch &&
                         model.data.value.bank.batches.any { it.id == importedBatch && it.mapping.reverseSign } &&
                         model.data.value.bank.transactions.filter { it.batchId == importedBatch }.associateBy { it.id } == expectedRows &&
-                        compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty()
+                        try { compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty() } catch (_: Throwable) { false }
                 }
                 compose.waitForIdle()
                 // Android's dialog-window removal runs outside Compose's virtual animation clock.
