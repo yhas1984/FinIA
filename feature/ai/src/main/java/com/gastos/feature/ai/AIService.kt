@@ -307,16 +307,22 @@ class AIService @Inject constructor(
 
     suspend fun queryData(query: String): AIResult {
         if (!isConfigured()) return notConfiguredResult()
+        val hoy = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
         return try {
-            val responseText = geminiRestClient.generateContent(
-                GeminiGenerateRequest(
-                    apiKey = currentApiKey,
-                    systemInstruction = buildSystemPrompt(systemInstructions),
-                    contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(queryExtractionPrompt(query, java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())))))),
-                    generationConfig = GeminiGenerationConfig(thinkingLevel = QUERY_THINKING_LEVEL)
-                )
-            )
+            var responseText = pedirConsulta(query, hoy)
             check(responseText.isNotBlank()) { "Gemini devolvió una respuesta vacía." }
+            // Validación local: si la consulta viene mal formada se le devuelve el error al modelo
+            // UNA vez para que la corrija (mejor eso que contestar con el periodo equivocado).
+            val errores = QuerySpecValidator.validate(responseText, hoy)
+            if (errores.isNotEmpty()) {
+                SafeLog.w(TAG, "Consulta inválida (" + errores.joinToString() + "); se pide corrección")
+                val corregida = pedirConsulta(query, hoy, errores)
+                if (corregida.isNotBlank() && QuerySpecValidator.validate(corregida, hoy).isEmpty()) {
+                    responseText = corregida
+                } else {
+                    SafeLog.w(TAG, "La corrección tampoco fue válida; se resuelve localmente")
+                }
+            }
             AIResult(success = true, message = context.getString(R.string.ai_query_processed), queryResult = responseText)
         } catch (error: CancellationException) {
             throw error
@@ -324,6 +330,45 @@ class AIService @Inject constructor(
             SafeLog.w(TAG, "Error en queryData (${error::class.java.simpleName})")
             AIResult(success = false, message = friendlyError(error))
         }
+    }
+
+    /** Pide al modelo el JSON de la consulta, ya con esquema cerrado (sin texto libre). */
+    private suspend fun pedirConsulta(query: String, hoy: String, errores: List<String> = emptyList()): String {
+        val instruccion = queryExtractionPrompt(query, hoy) + if (errores.isEmpty()) "" else
+            "\n\nLa respuesta anterior no es válida: " + errores.joinToString() +
+                "\nDevuelve SOLO el JSON corregido."
+        return geminiRestClient.generateContent(
+            GeminiGenerateRequest(
+                apiKey = currentApiKey,
+                systemInstruction = buildSystemPrompt(systemInstructions),
+                contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(instruccion)))),
+                generationConfig = GeminiGenerationConfig(
+                    thinkingLevel = QUERY_THINKING_LEVEL,
+                    responseMimeType = QUERY_RESPONSE_MIME_TYPE,
+                    responseSchema = queryResponseSchema()
+                )
+            )
+        )
+    }
+
+    /** Esquema de la consulta financiera: el modelo no puede devolver otra forma que esta. */
+    private fun queryResponseSchema(): JSONObject = JSONObject().apply {
+        put("type", "OBJECT")
+        put("properties", JSONObject().apply {
+            put("action", JSONObject().put("type", "STRING").put("enum", JSONArray(listOf("query"))))
+            put("query_type", JSONObject().put("type", "STRING")
+                .put("enum", JSONArray(listOf("gastos", "ingresos", "balance", "productos", "productos_por_comercio"))))
+            put("periodo", JSONObject().put("type", "STRING").put("nullable", true))
+            put("desde", JSONObject().put("type", "STRING").put("nullable", true))
+            put("hasta", JSONObject().put("type", "STRING").put("nullable", true))
+            put("categoria", JSONObject().put("type", "STRING").put("nullable", true))
+            put("subcategoria", JSONObject().put("type", "STRING").put("nullable", true))
+            put("proveedor", JSONObject().put("type", "STRING").put("nullable", true))
+            put("item", JSONObject().put("type", "STRING").put("nullable", true))
+            put("match_mode", JSONObject().put("type", "STRING")
+                .put("enum", JSONArray(listOf("exact", "group", "auto"))).put("nullable", true))
+        })
+        put("required", JSONArray(listOf("action", "query_type")))
     }
 
     private fun notConfiguredResult(): AIResult = AIResult(success = false, message = context.getString(R.string.ai_no_api_key))
@@ -405,7 +450,7 @@ class AIService @Inject constructor(
             Reglas de acción:
             1. CONSULTA FINANCIERA: si pregunta cuánto gastó, sus ingresos, balance, totales,
                comercios, proveedores, productos comprados, etc.:
-                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
                Diferencia siempre estos filtros:
                 - COMERCIO/PROVEEDOR: Mercadona, Lidl, Amazon, Repsol, etc. Usa
                   query_type="gastos", proveedor="nombre", categoria=null e item=null.
@@ -436,6 +481,9 @@ class AIService @Inject constructor(
                  NUNCA devuelvas periodo="mes" si el usuario ha nombrado un mes o unas fechas.
                - CORRECCIÓN DE PERIODO: si el usuario rectifica ("dije agosto, no este mes"),
                  repite la consulta con el periodo corregido; no repitas la respuesta anterior.
+               - FECHAS EXACTAS: si el usuario da un rango de fechas ("del 1 al 15 de agosto",
+                 "entre el 3 y el 10 de septiembre", "desde el 1 de julio"), rellena desde y hasta en
+                 formato YYYY-MM-DD y deja periodo=null. Si solo da un día, desde=hasta ese día.
                - En seguimientos como "ese comercio", "esa tienda" o "ahí", conserva
                  el proveedor mencionado en la conversación anterior.
                Reglas extra para productos:
@@ -489,7 +537,7 @@ class AIService @Inject constructor(
             Action rules:
             1. FINANCIAL QUERY: if the user asks how much was spent, income, balance, totals,
                stores, providers, purchased products, etc.:
-                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
                Distinguish these filters:
                 - STORE/PROVIDER: Mercadona, Lidl, Amazon, Repsol, etc. Use query_type="gastos",
                    proveedor="name", categoria=null and item=null.
@@ -511,6 +559,8 @@ class AIService @Inject constructor(
                   when a month or a date range was named.
                 - PERIOD CORRECTION: if the user corrects the period ("I said August, not this
                   month"), run the query again with the corrected period; never repeat the answer.
+                - EXACT DATES: if the user gives a date range ("August 1 to 15", "between the 3rd
+                  and the 10th of September"), fill desde and hasta as YYYY-MM-DD and set periodo=null.
                 - In follow-ups like "that store" or "there", keep the previous provider.
                 Product rules: generic names use match_mode="group"; exact line descriptions use match_mode="exact".
                 Do not use balance for product questions.
@@ -649,7 +699,7 @@ class AIService @Inject constructor(
     private fun queryExtractionPrompt(query: String, today: String): String = """
         Hoy es $today.
         Extrae los parámetros de esta consulta financiera y devuelve SOLO el JSON:
-        {"query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","categoria":"texto o null","subcategoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
+        {"query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","categoria":"texto o null","subcategoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
 
         Reglas:
         - comercio, tienda, supermercado, empresa o proveedor => proveedor, nunca item
@@ -668,6 +718,8 @@ class AIService @Inject constructor(
           según la fecha de hoy ("en agosto" con hoy 2026-10-17 => "2026-08"); "el mes pasado" =>
           "mes anterior"; un rango de fechas => "YYYY-MM-DD..YYYY-MM-DD"
         - si el usuario nombra un mes o unas fechas, NUNCA devuelvas periodo="mes"
+        - si el usuario nombra un mes o unas fechas, NUNCA devuelvas periodo="mes"
+        - un rango de días ("del 1 al 15 de agosto") => desde="2026-08-01", hasta="2026-08-15", periodo=null
 
         Consulta: "$query"
     """.trimIndent()
@@ -861,6 +913,7 @@ class AIService @Inject constructor(
         private const val CHAT_THINKING_LEVEL = "low"
         private const val QUERY_THINKING_LEVEL = "low"
         private const val OCR_RESPONSE_MIME_TYPE = "application/json"
+        private const val QUERY_RESPONSE_MIME_TYPE = "application/json"
         private const val OCR_MEDIA_RESOLUTION = "MEDIA_RESOLUTION_HIGH"
         private const val ROLE_USER = "user"
         private const val ROLE_MODEL = "model"

@@ -105,6 +105,31 @@ class FinancialQueryResolverTest {
     }
 
     @Test
+    fun `periodOrNull distinguishes a real period from an unknown expression`() {
+        val hoy = momento(2026, 10, 17)
+        assertEquals("mes:2026-08", FinancialQueryResolver.periodOrNull("agosto", hoy, zona))
+        assertEquals("mes:2026-09", FinancialQueryResolver.periodOrNull("mes anterior", hoy, zona))
+        assertEquals("mes", FinancialQueryResolver.periodOrNull("este mes", hoy, zona))
+        assertEquals("mes:2026-08", FinancialQueryResolver.periodOrNull("2026-08", hoy, zona))
+        assertNull(FinancialQueryResolver.periodOrNull("el verano pasado", hoy, zona))
+        assertNull(FinancialQueryResolver.periodOrNull("", hoy, zona))
+        assertNull(FinancialQueryResolver.periodOrNull(null, hoy, zona))
+    }
+
+    @Test
+    fun `rangeFromIso builds a range from explicit dates`() {
+        assertEquals("rango:2026-08-01:2026-08-15",
+            FinancialQueryResolver.rangeFromIso("2026-08-01", "2026-08-15", zona))
+        assertEquals("rango:2026-08-01:2026-08-01",
+            FinancialQueryResolver.rangeFromIso("2026-08-01", null, zona))
+        assertEquals("rango:2026-08-15:2026-08-15",
+            FinancialQueryResolver.rangeFromIso(null, "2026-08-15", zona))
+        assertNull(FinancialQueryResolver.rangeFromIso("01/08/2026", "15/08/2026", zona))
+        assertNull(FinancialQueryResolver.rangeFromIso("2026-08-31", "2026-08-01", zona))
+        assertNull(FinancialQueryResolver.rangeFromIso(null, null, zona))
+    }
+
+    @Test
     fun `period label names the specific month`() {
         assertEquals("agosto de 2026", FinancialQueryResolver.periodLabel("mes:2026-08", "es"))
         assertEquals("August 2026", FinancialQueryResolver.periodLabel("mes:2026-08", "en"))

@@ -224,6 +224,50 @@ internal object FinancialQueryResolver {
         return "mes"
     }
 
+    /** Devuelve el periodo canónico solo si la expresión es reconocible; si no, null. */
+    fun periodOrNull(
+        value: String?,
+        hoy: Long = System.currentTimeMillis(),
+        zona: TimeZone = TimeZone.getDefault()
+    ): String? {
+        val texto = value?.trim().orEmpty()
+        if (texto.isEmpty() || texto.equals("null", ignoreCase = true)) return null
+        val canon = normalizePeriod(texto, hoy, zona)
+        // normalizePeriod devuelve «mes» tanto para «este mes» como para algo que no entiende:
+        // aquí distingo los dos casos comprobando si el texto encaja con las formas conocidas.
+        if (canon != "mes") return canon
+        val norm = normalizeProductName(texto)
+        val esMesActual = norm == "mes" || norm.contains("este mes") || norm.contains("mes actual") ||
+            norm.contains("lo que va de mes") || norm == "month" || norm.contains("this month")
+        return if (esMesActual) "mes" else null
+    }
+
+    /** Convierte dos fechas ISO (desde/hasta) en un periodo canónico de rango, si son válidas. */
+    fun rangeFromIso(
+        desde: String?,
+        hasta: String?,
+        zona: TimeZone = TimeZone.getDefault()
+    ): String? {
+        fun valida(f: String?): String? {
+            val limpio = f?.trim().orEmpty()
+            if (!Regex("""^\d{4}-\d{2}-\d{2}$""").matches(limpio)) return null
+            val p = limpio.split("-")
+            val anio = p[0].toIntOrNull() ?: return null
+            val mes = p[1].toIntOrNull() ?: return null
+            val dia = p[2].toIntOrNull() ?: return null
+            if (mes !in 1..12 || dia !in 1..31) return null
+            return limpio
+        }
+        val d = valida(desde)
+        val h = valida(hasta)
+        return when {
+            d != null && h != null && d <= h -> "rango:$d:$h"
+            d != null && h == null -> "rango:$d:$d"
+            d == null && h != null -> "rango:$h:$h"
+            else -> null
+        }
+    }
+
     /** Si la pregunta nombra un periodo concreto (mes, rango, «el mes pasado»), lo devuelve. */
     fun periodFromQuestion(
         question: String?,
@@ -1054,15 +1098,21 @@ class ChatbotViewModel @Inject constructor(
                     val json = JSONObject(result.queryResult!!)
                     if (json.optString("action") == "query") {
                         val queryType = json.optString("query_type", json.optString("queryType"))
-                        val periodoDelModelo = FinancialQueryResolver.normalizePeriod(
-                            json.optString("periodo", json.optString("period", "mes"))
+                        // Periodo: 1) lo que diga la pregunta del usuario, 2) las fechas ISO que
+                        // mande el modelo (desde/hasta), 3) el periodo que mande el modelo.
+                        val periodoDelModelo = FinancialQueryResolver.periodOrNull(
+                            json.optString("periodo", json.optString("period", ""))
                         )
-                        // Red de seguridad: si en la pregunta hay un mes o un rango concretos,
-                        // manda lo que el usuario escribió (el modelo tiende a caer en «este mes»).
+                        val rangoDelModelo = FinancialQueryResolver.rangeFromIso(
+                            json.optString("desde", json.optString("from", "")),
+                            json.optString("hasta", json.optString("to", ""))
+                        )
                         val periodoDeLaPregunta = FinancialQueryResolver.periodFromQuestion(originalQuestion)
-                        val periodo = periodoDeLaPregunta ?: periodoDelModelo
-                        if (periodoDeLaPregunta != null && periodoDeLaPregunta != periodoDelModelo) {
-                            SafeLog.w(TAG, "Periodo corregido por la pregunta: $periodoDelModelo -> $periodoDeLaPregunta")
+                        val periodo = periodoDeLaPregunta ?: rangoDelModelo ?: periodoDelModelo ?: "mes"
+                        if (periodoDeLaPregunta == null && rangoDelModelo == null && periodoDelModelo == null) {
+                            SafeLog.w(TAG, "Periodo no reconocido en la consulta; se usa el mes en curso")
+                        } else if (periodo != periodoDelModelo) {
+                            SafeLog.w(TAG, "Periodo resuelto localmente: ${periodoDelModelo ?: "?"} -> $periodo")
                         }
                         val categoria = json.optString("categoria", json.optString("category", "")).takeIf { it.isNotEmpty() && it != "null" }
                         val subcategoria = json.optString("subcategoria", json.optString("subcategory", "")).takeIf { it.isNotEmpty() && it != "null" }
