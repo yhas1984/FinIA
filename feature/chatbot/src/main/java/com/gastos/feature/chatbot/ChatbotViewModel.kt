@@ -548,6 +548,21 @@ internal object FinancialQueryResolver {
     }
 
     /**
+     * ¿La pregunta pide comparar de verdad? Sin lenguaje de comparación, `operacion="comparar"`
+     * es un error del modelo: una corrección («dije agosto, no este mes») solo rehace la consulta.
+     */
+    fun pideComparacion(pregunta: String?): Boolean {
+        if (pregunta.isNullOrBlank()) return false
+        val p = pregunta.lowercase(Locale.ROOT)
+        return listOf(
+            "mas que", "más que", "menos que", "comparad", "comparar", "en comparacion", "en comparación",
+            "diferencia", "respecto a", "frente a", "que el mes pasado", "que el mes anterior",
+            "que el ano pasado", "que el año pasado", "que la semana pasada", "more than", "less than",
+            "compared", "versus", " vs "
+        ).any { it in p }
+    }
+
+    /**
      * ¿La pregunta pide de verdad el histórico completo? Sin una palabra que lo diga
      * («en total», «histórico», «alguna vez», «desde siempre»), el periodo por defecto
      * sigue siendo el mes en curso, como siempre ha hecho la app.
@@ -1446,6 +1461,10 @@ class ChatbotViewModel @Inject constructor(
         val language = activeLanguage()
         val periodLabelText = FinancialQueryResolver.periodLabel(periodo, language)
         // ── Operaciones que hacen el cálculo en local (fase 2) ──────────────────
+        // «comparar» solo si la pregunta compara de verdad; si no, se trata como consulta normal
+        val operacion = if (operacion == "comparar" && !FinancialQueryResolver.pideComparacion(originalQuestion)) {
+            "total"
+        } else operacion
         if (operacion == "comparar" && !originalQuestion.isNullOrBlank() &&
             FinancialQueryResolver.comparaContraElPeriodoAnterior(originalQuestion) &&
             periodo != "mes"

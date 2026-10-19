@@ -602,4 +602,15 @@ class FinancialQueryResolverTest {
         assertNull(FinancialQueryResolver.productoMencionado("¿cuánto gasté en agosto?", productos))
         assertNull(FinancialQueryResolver.productoMencionado(null, productos))
     }
+
+    @Test
+    fun `solo se compara cuando la pregunta compara`() {
+        assertTrue(FinancialQueryResolver.pideComparacion("¿he gastado más este mes que el mes pasado?"))
+        assertTrue(FinancialQueryResolver.pideComparacion("gastos comparados con agosto"))
+        assertTrue(FinancialQueryResolver.pideComparacion("¿cuál es la diferencia con julio?"))
+        assertFalse(FinancialQueryResolver.pideComparacion("Dije agosto, no este mes"))
+        assertFalse(FinancialQueryResolver.pideComparacion("¿Y solo de alimentación?"))
+        assertFalse(FinancialQueryResolver.pideComparacion("¿cuánto gasté en agosto?"))
+        assertFalse(FinancialQueryResolver.pideComparacion(null))
+    }
 }
