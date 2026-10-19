@@ -457,7 +457,7 @@ class AIService @Inject constructor(
             Reglas de acción:
             1. CONSULTA FINANCIERA: si pregunta cuánto gastó, sus ingresos, balance, totales,
                comercios, proveedores, productos comprados, etc.:
-                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","operacion":"total|resumen_mensual|ranking|comparar|mayor|ultimo","agrupar_por":"mes|categoria|comercio|producto o null","excluir":"comercios a excluir separados por comas o null","comparar_con":"periodo con el que comparar (p. ej. mes anterior) o null","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|todo|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","operacion":"total|resumen_mensual|ranking|comparar|mayor|ultimo","agrupar_por":"mes|categoria|comercio|producto o null","excluir":"comercios a excluir separados por comas o null","comparar_con":"periodo con el que comparar (p. ej. mes anterior) o null","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
                Diferencia siempre estos filtros:
                 - COMERCIO/PROVEEDOR: Mercadona, Lidl, Amazon, Repsol, etc. Usa
                   query_type="gastos", proveedor="nombre", categoria=null e item=null.
@@ -553,7 +553,7 @@ class AIService @Inject constructor(
             Action rules:
             1. FINANCIAL QUERY: if the user asks how much was spent, income, balance, totals,
                stores, providers, purchased products, etc.:
-                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","operacion":"total|resumen_mensual|ranking|comparar|mayor|ultimo","agrupar_por":"mes|categoria|comercio|producto o null","excluir":"comercios a excluir separados por comas o null","comparar_con":"periodo con el que comparar (p. ej. mes anterior) o null","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|todo|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","operacion":"total|resumen_mensual|ranking|comparar|mayor|ultimo","agrupar_por":"mes|categoria|comercio|producto o null","excluir":"comercios a excluir separados por comas o null","comparar_con":"periodo con el que comparar (p. ej. mes anterior) o null","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
                Distinguish these filters:
                 - STORE/PROVIDER: Mercadona, Lidl, Amazon, Repsol, etc. Use query_type="gastos",
                    proveedor="name", categoria=null and item=null.
@@ -722,7 +722,7 @@ class AIService @Inject constructor(
     private fun queryExtractionPrompt(query: String, today: String): String = """
         Hoy es $today.
         Extrae los parámetros de esta consulta financiera y devuelve SOLO el JSON:
-        {"query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","operacion":"total|resumen_mensual|ranking|comparar|mayor|ultimo","agrupar_por":"mes|categoria|comercio|producto o null","excluir":"comercios a excluir separados por comas o null","comparar_con":"periodo con el que comparar (p. ej. mes anterior) o null","categoria":"texto o null","subcategoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
+        {"query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|todo|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","operacion":"total|resumen_mensual|ranking|comparar|mayor|ultimo","agrupar_por":"mes|categoria|comercio|producto o null","excluir":"comercios a excluir separados por comas o null","comparar_con":"periodo con el que comparar (p. ej. mes anterior) o null","categoria":"texto o null","subcategoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
 
         Reglas:
         - comercio, tienda, supermercado, empresa o proveedor => proveedor, nunca item
@@ -743,6 +743,13 @@ class AIService @Inject constructor(
         - si el usuario nombra un mes o unas fechas, NUNCA devuelvas periodo="mes"
         - si el usuario nombra un mes o unas fechas, NUNCA devuelvas periodo="mes"
         - un rango de días ("del 1 al 15 de agosto") => desde="2026-08-01", hasta="2026-08-15", periodo=null
+        - "al mes", "de media", "por mes", "cada mes" + producto/comercio/categoría =>
+          operacion="resumen_mensual" y periodo="todo", con item si nombra producto
+        - "en qué categoría/comercio gasto más", "dónde gasto más" => operacion="ranking" y
+          agrupar_por="categoria" o "comercio"
+        - "sin contar", "excepto", "quitando" + comercio => excluir="comercio"
+        - "más que el mes pasado", "comparado con" => operacion="comparar" y comparar_con="mes anterior"
+        - "el mayor", "el más caro" => operacion="mayor"; "el último", "lo último" => operacion="ultimo"
 
         Consulta: "$query"
     """.trimIndent()

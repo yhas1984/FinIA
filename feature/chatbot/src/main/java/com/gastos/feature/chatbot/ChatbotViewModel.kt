@@ -485,6 +485,80 @@ internal object FinancialQueryResolver {
         }
     }
 
+    /** ¿La pregunta pide comparar contra el periodo anterior? («más que el mes pasado») */
+    fun comparaContraElPeriodoAnterior(pregunta: String): Boolean {
+        val p = pregunta.lowercase(Locale.ROOT)
+        val mencionaAnterior = listOf("mes pasado", "mes anterior", "pasado", "anterior", "last month")
+            .any { it in p }
+        val mencionaActual = listOf("este mes", "este año", "esta semana", "este periodo", "this month")
+            .any { it in p }
+        return mencionaAnterior && mencionaActual
+    }
+
+    /**
+     * Periodo con el que se compara, RELATIVO al periodo consultado: si se pregunta por agosto y se
+     * compara con «el mes anterior», el otro periodo es julio (no el mes anterior a hoy).
+     */
+    fun periodoComparable(
+        peticion: String,
+        inicioActual: Long,
+        finActual: Long = inicioActual,
+        ahora: Long = System.currentTimeMillis(),
+        zona: java.util.TimeZone = java.util.TimeZone.getDefault()
+    ): Pair<Long, Long> {
+        val p = peticion.lowercase(Locale.ROOT)
+        val calendario = java.util.Calendar.getInstance(zona).apply { timeInMillis = inicioActual }
+        return when {
+            "año" in p || "year" in p -> {
+                val inicio = java.util.Calendar.getInstance(zona).apply {
+                    timeInMillis = inicioActual
+                    set(java.util.Calendar.YEAR, get(java.util.Calendar.YEAR) - 1)
+                    set(java.util.Calendar.DAY_OF_YEAR, 1)
+                    set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                val fin = java.util.Calendar.getInstance(zona).apply {
+                    timeInMillis = inicio
+                    set(java.util.Calendar.MONTH, java.util.Calendar.DECEMBER)
+                    set(java.util.Calendar.DAY_OF_MONTH, 31)
+                    set(java.util.Calendar.HOUR_OF_DAY, 23); set(java.util.Calendar.MINUTE, 59)
+                    set(java.util.Calendar.SECOND, 59); set(java.util.Calendar.MILLISECOND, 999)
+                }.timeInMillis
+                inicio to fin
+            }
+            "semana" in p || "week" in p -> (inicioActual - 7L * 24 * 3600 * 1000) to (inicioActual - 1)
+            "mes" in p || "month" in p -> {
+                val inicio = java.util.Calendar.getInstance(zona).apply {
+                    timeInMillis = inicioActual
+                    add(java.util.Calendar.MONTH, -1)
+                    set(java.util.Calendar.DAY_OF_MONTH, 1)
+                    set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                val fin = java.util.Calendar.getInstance(zona).apply {
+                    timeInMillis = inicio
+                    set(java.util.Calendar.DAY_OF_MONTH, getActualMaximum(java.util.Calendar.DAY_OF_MONTH))
+                    set(java.util.Calendar.HOUR_OF_DAY, 23); set(java.util.Calendar.MINUTE, 59)
+                    set(java.util.Calendar.SECOND, 59); set(java.util.Calendar.MILLISECOND, 999)
+                }.timeInMillis
+                inicio to fin
+            }
+            else -> periodRange(normalizePeriod(peticion, ahora, zona), ahora, zona)
+        }
+    }
+
+    /** Comercios a excluir deducidos de la propia pregunta, cuando el modelo no los devuelve. */
+    fun exclusionesDeLaPregunta(pregunta: String?): List<String> {
+        if (pregunta.isNullOrBlank()) return emptyList()
+        val patron = Regex(
+            "(?:sin contar|sin incluir|excepto|quitando|menos|not counting|excluding)\\s+([\\p{L}0-9 .,\\-']{2,40})",
+            RegexOption.IGNORE_CASE
+        )
+        val bruto = patron.find(pregunta)?.groupValues?.get(1) ?: return emptyList()
+        val limpio = bruto.split(",", " y ", " en ", "?", ".", ";").first().trim()
+        return if (limpio.length >= 2) listOf(limpio) else emptyList()
+    }
+
     fun matchesProvider(candidate: String, requestedProvider: String): Boolean {
         return containsTokenSequence(candidate, requestedProvider) ||
             containsTokenSequence(requestedProvider, candidate)
@@ -1129,6 +1203,11 @@ class ChatbotViewModel @Inject constructor(
                             .map { it.trim() }
                             .filter { it.isNotEmpty() && it != "null" }
                         val compararCon = json.optString("comparar_con", "").takeIf { it.isNotEmpty() && it != "null" }
+                        // «sin contar X», «excepto X»: si el modelo no lo devolvió, se aplica en local
+                        val excluirFinal = (excluir + FinancialQueryResolver.exclusionesDeLaPregunta(originalQuestion))
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .distinct()
                         val response = executeQuery(
                             queryType = queryType,
                             periodo = periodo,
@@ -1140,7 +1219,7 @@ class ChatbotViewModel @Inject constructor(
                             originalQuestion = originalQuestion,
                             operacion = operacion,
                             agruparPor = agruparPor,
-                            excluir = excluir,
+                            excluir = excluirFinal,
                             compararCon = compararCon
                         )
                         showResult(
@@ -1294,40 +1373,69 @@ class ChatbotViewModel @Inject constructor(
         val resolvedProvider = resolvedQuery.provider
         val periodInvoices = invoices.filter { it.fecha in start..end }
         val periodIncomes = incomes.filter { it.fecha in start..end }
-        val filteredInvoices = periodInvoices.filter {
+        val filteredInvoicesBase = periodInvoices.filter {
             TransactionCategories.matchesCategory(it.categoria, normalizedCategory) &&
                 TransactionCategories.matchesCategory(it.subcategoria, normalizedSubcategory) &&
                 (resolvedProvider == null || FinancialQueryResolver.matchesProvider(it.proveedor, resolvedProvider))
         }
-        val filteredIncomes = periodIncomes.filter {
+        val filteredIncomesBase = periodIncomes.filter {
             TransactionCategories.matchesCategory(it.categoria, normalizedCategory) &&
                 TransactionCategories.matchesCategory(it.subcategoria, normalizedSubcategory)
         }
+        // Exclusiones («sin contar Mercadona»): afectan a todo lo que se calcula después
+        val exclusiones = excluir.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val filteredInvoices = if (exclusiones.isEmpty()) filteredInvoicesBase else filteredInvoicesBase.filter { inv ->
+            exclusiones.none { FinancialQueryResolver.matchesProvider(inv.proveedor, it) }
+        }
+        val filteredIncomes = if (exclusiones.isEmpty()) filteredIncomesBase else filteredIncomesBase.filter { inc ->
+            exclusiones.none { FinancialQueryResolver.matchesProvider(inc.concepto, it) }
+        }
         val filteredInvoiceIds = filteredInvoices.map { it.id }.toSet()
-        val invoicesSinExcluir = if (excluir.isEmpty()) filteredInvoices else filteredInvoices.filter { inv ->
-            excluir.none { FinancialQueryResolver.matchesProvider(inv.proveedor, it) }
-        }
-        val incomesSinExcluir = if (excluir.isEmpty()) filteredIncomes else filteredIncomes.filter { inc ->
-            excluir.none { FinancialQueryResolver.matchesProvider(inc.concepto, it) }
-        }
         val periodProducts = allProducts.filter { it.invoiceId in filteredInvoiceIds }
         val invoiceById = filteredInvoices.associateBy { it.id }
         val language = activeLanguage()
         val periodLabelText = FinancialQueryResolver.periodLabel(periodo, language)
         // ── Operaciones que hacen el cálculo en local (fase 2) ──────────────────
+        if (operacion == "comparar" && !originalQuestion.isNullOrBlank() &&
+            FinancialQueryResolver.comparaContraElPeriodoAnterior(originalQuestion) &&
+            periodo != "mes"
+        ) {
+            // «¿he gastado más este mes que el pasado?»: el periodo consultado es ESTE mes
+            return executeQuery(queryType, "mes", categoria, subcategoria, provider, item, matchMode, originalQuestion,
+                operacion, agruparPor, excluir, compararCon)
+        }
         if (!operacion.isNullOrBlank() && operacion != "total") {
-            val movimientos: List<ConsultasAvanzadas.Movimiento> = when (resolvedQueryType) {
-                "ingresos" -> incomesSinExcluir.map {
+            // Si la pregunta nombra un producto, manda el producto (aunque el modelo diga «gastos»)
+            val tipoEfectivo = when {
+                resolvedQueryType == "ingresos" -> "ingresos"
+                !resolvedQuery.item.isNullOrBlank() -> "productos"
+                else -> resolvedQueryType ?: "gastos"
+            }
+            val movimientos: List<ConsultasAvanzadas.Movimiento> = when (tipoEfectivo) {
+                "ingresos" -> filteredIncomes.map {
                     ConsultasAvanzadas.Movimiento(it.fecha, it.monto, it.concepto, it.categoria.orEmpty(), "")
                 }
-                "producto", "productos", "productos_por_comercio" -> periodProducts.mapNotNull { producto ->
-                    val factura = invoiceById[producto.invoiceId] ?: return@mapNotNull null
-                    ConsultasAvanzadas.Movimiento(
-                        factura.fecha, producto.subtotal, factura.proveedor,
-                        factura.categoria.orEmpty(), producto.descripcion
-                    )
+                "producto", "productos", "productos_por_comercio" -> {
+                    val itemTexto = resolvedQuery.item
+                    val base = if (itemTexto.isNullOrBlank()) {
+                        periodProducts
+                    } else {
+                        val primero = FinancialQueryResolver.matchProducts(periodProducts, itemTexto, resolvedQuery.matchMode).matches
+                        // «bananas» → «BANANA»: segundo intento en singular si no hubo coincidencias
+                        if (primero.isEmpty() && itemTexto.endsWith("s", ignoreCase = true)) {
+                            // «bananas» → «banana»
+                            FinancialQueryResolver.matchProducts(periodProducts, itemTexto.dropLast(1), resolvedQuery.matchMode).matches
+                        } else primero
+                    }
+                    base.mapNotNull { producto ->
+                        val factura = invoiceById[producto.invoiceId] ?: return@mapNotNull null
+                        ConsultasAvanzadas.Movimiento(
+                            factura.fecha, producto.subtotal, factura.proveedor,
+                            factura.categoria.orEmpty(), producto.descripcion
+                        )
+                    }
                 }
-                else -> invoicesSinExcluir.map {
+                else -> filteredInvoices.map {
                     ConsultasAvanzadas.Movimiento(it.fecha, it.total, it.proveedor, it.categoria.orEmpty(), "")
                 }
             }
@@ -1340,7 +1448,7 @@ class ChatbotViewModel @Inject constructor(
                     val resumen = ConsultasAvanzadas.resumenMensual(movimientos)
                     val titulo = resolvedQuery.item?.takeIf { it.isNotBlank() }
                         ?: resolvedProvider ?: normalizedCategory?.let { TransactionCategories.displayCategory(it, language) }
-                        ?: (resolvedQueryType ?: "movimientos")
+                        ?: tipoEfectivo
                     buildString {
                         appendLine(context.getString(
                             R.string.chatbot_monthly_summary, titulo, fmt.money(resumen.mediaPorMes),
@@ -1372,7 +1480,9 @@ class ChatbotViewModel @Inject constructor(
                 }
                 operacion == "comparar" -> {
                     val otro = compararCon ?: "mes anterior"
-                    val (otroInicio, otroFin) = getDateRange(otro)
+                    val (otroInicio, otroFin) = FinancialQueryResolver.periodoComparable(
+                        otro, start, end, System.currentTimeMillis()
+                    )
                     val otroTotal = when (resolvedQueryType) {
                         "ingresos" -> incomeRepository.getAllIncomes().first()
                             .filter { it.fecha in otroInicio..otroFin }

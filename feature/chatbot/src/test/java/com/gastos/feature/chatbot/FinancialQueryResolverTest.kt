@@ -2,7 +2,9 @@ package com.gastos.feature.chatbot
 
 import com.gastos.domain.model.Product
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
 import java.util.TimeZone
@@ -531,4 +533,50 @@ class FinancialQueryResolverTest {
             FinancialQueryResolver.resolveClarification("todas", "café", variants)?.matchMode
         )
     }
+
+    // ── fase 2: exclusiones y comparaciones ──────────────────────────────────
+
+    @Test
+    fun `una exclusion se detecta en la pregunta`() {
+        assertEquals(listOf("Mercadona"), FinancialQueryResolver.exclusionesDeLaPregunta("¿Cuánto he gastado sin contar Mercadona?"))
+        assertEquals(listOf("Repsol"), FinancialQueryResolver.exclusionesDeLaPregunta("gastos en total excepto Repsol"))
+        assertEquals(emptyList<String>(), FinancialQueryResolver.exclusionesDeLaPregunta("¿cuánto gasté en agosto?"))
+        assertEquals(emptyList<String>(), FinancialQueryResolver.exclusionesDeLaPregunta(null))
+    }
+
+    @Test
+    fun `la exclusion no se traga la parte del periodo`() {
+        assertEquals(listOf("Mercadona"), FinancialQueryResolver.exclusionesDeLaPregunta("total sin contar Mercadona en agosto"))
+    }
+
+    @Test
+    fun `se detecta cuando la pregunta compara con el periodo anterior`() {
+        assertTrue(FinancialQueryResolver.comparaContraElPeriodoAnterior("¿he gastado más este mes que el mes pasado?"))
+        assertTrue(FinancialQueryResolver.comparaContraElPeriodoAnterior("este mes he gastado más que el anterior"))
+        assertFalse(FinancialQueryResolver.comparaContraElPeriodoAnterior("¿cuánto gasté el mes pasado?"))
+    }
+
+    @Test
+    fun `el periodo a comparar es el anterior al consultado, no el anterior a hoy`() {
+        val zona = java.util.TimeZone.getTimeZone("Europe/Madrid")
+        val agosto = FinancialQueryResolver.periodRange("2026-08", ahora(zona, 2026, 8, 10), zona).first
+        val (ini, fin) = FinancialQueryResolver.periodoComparable("mes anterior", agosto, agosto, ahora(zona, 2026, 10, 18), zona)
+        val julio = FinancialQueryResolver.periodRange("2026-07", ahora(zona, 2026, 8, 10), zona)
+        assertEquals(julio.first, ini)
+        assertEquals(julio.second, fin)
+    }
+
+    @Test
+    fun `comparar con el ano anterior da el ano previo`() {
+        val zona = java.util.TimeZone.getTimeZone("Europe/Madrid")
+        val esteAno = FinancialQueryResolver.periodRange("año", ahora(zona, 2026, 10, 18), zona).first
+        val (ini, _) = FinancialQueryResolver.periodoComparable("año anterior", esteAno, esteAno, ahora(zona, 2026, 10, 18), zona)
+        val dosMil25 = FinancialQueryResolver.periodRange("2025-01", ahora(zona, 2026, 10, 18), zona)
+        assertEquals(dosMil25.first, ini)
+    }
+
+    private fun ahora(zona: java.util.TimeZone, anio: Int, mes: Int, dia: Int): Long =
+        java.util.Calendar.getInstance(zona).apply {
+            clear(); set(anio, mes - 1, dia, 12, 0, 0)
+        }.timeInMillis
 }
