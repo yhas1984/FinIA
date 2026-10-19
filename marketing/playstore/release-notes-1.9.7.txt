@@ -1,13 +1,18 @@
-1.9.7 — El asistente ya responde a lo que de verdad le preguntas
-
-· Puedes preguntar por un producto y su ritmo de gasto: «¿cuánto gasto al mes
-  en bananas?» responde con la media mensual, el total, cuántas veces lo has
-  comprado y el detalle mes a mes. También sirve para ingresos.
-· Nuevas preguntas que antes no sabía contestar:
-  · «¿en qué categoría gasto más?» y «¿en qué comercio gasto más?» (ranking real)
-  · «¿he gastado más este mes que el pasado?» (comparación con el periodo anterior)
-  · «¿cuál fue mi mayor gasto?» y «¿cuál es mi último movimiento?»
-  · «¿cuánto gasté en total sin contar Mercadona?» (exclusiones)
-· Los meses concretos y los rangos de días siguen respondiéndose con el periodo
-  exacto que pides (gastos, ingresos y balance).
-· Las cuentas las hace la app, no la IA: las cifras nunca se inventan.
+<es-ES>
+• Nuevo: «¿cuánto gasto al mes en bananas?» responde la media mensual, el total, cuántas veces lo compraste y el detalle mes a mes. También con ingresos.
+• Nuevas preguntas: en qué categoría o comercio gastas más, si gastaste más este mes que el pasado, tu mayor gasto, tu último movimiento y el total sin contar un comercio.
+• Los meses y rangos de días se responden con el periodo exacto que pides, en gastos, ingresos y balance.
+• Las cuentas las hace la app, no la IA: nunca se inventan cifras.
+</es-ES>
+<en-US>
+• New: "how much do I spend a month on bananas?" answers with the monthly average, the total, how many times you bought it and the month-by-month breakdown. Also for income.
+• New questions: where you spend most by category or store, if you spent more this month than last, your biggest expense and your latest transaction.
+• You can also ask for totals excluding a store, and months or date ranges answer with the exact period you ask for.
+• The app does the maths, not the AI: figures are never made up.
+</en-US>
+<es-419>
+• Nuevo: «¿cuánto gasto al mes en bananas?» responde la media mensual, el total, cuántas veces lo compraste y el detalle mes a mes. También con ingresos.
+• Preguntas nuevas: en qué categoría o comercio gastas más, si gastaste más este mes que el anterior, tu mayor gasto, tu último movimiento y el total sin contar un comercio.
+• Los meses y rangos de días se responden con el periodo exacto que pides, en gastos, ingresos y balance.
+• Las cuentas las hace la app, no la IA: nunca se inventan cifras.
+</es-419>
