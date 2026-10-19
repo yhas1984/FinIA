@@ -17,8 +17,11 @@ internal object QuerySpecValidator {
         "hoy", "today", "semana", "esta semana", "semana actual", "lo que va de semana",
         "week", "this week", "mes", "este mes", "mes actual", "lo que va de mes", "month",
         "this month", "año", "ano", "este año", "este ano", "year", "this year",
-        "mes anterior", "el mes pasado", "mes pasado", "last month"
+        "mes anterior", "el mes pasado", "mes pasado", "last month",
+        "todo", "todo el histórico", "historico", "histórico", "en total", "todos los periodos", "all time"
     )
+    private val OPERACIONES = setOf("total", "resumen_mensual", "ranking", "comparar", "mayor", "ultimo")
+    private val AGRUPACIONES = setOf("mes", "categoria", "comercio", "producto")
     private val FECHA_ISO = Regex("""^\d{4}-\d{2}-\d{2}$""")
     private val MES_ISO = Regex("""^\d{4}-\d{1,2}$""")
     private val RANGO_ISO = Regex("""^\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}$""")
@@ -65,6 +68,14 @@ internal object QuerySpecValidator {
             }
         }
 
+        val operacion = json.optString("operacion", "").trim()
+        if (operacion.isNotEmpty() && operacion != "null" && operacion !in OPERACIONES) {
+            errores.add("operacion no reconocida: $operacion")
+        }
+        val agrupacion = json.optString("agrupar_por", "").trim()
+        if (agrupacion.isNotEmpty() && agrupacion != "null" && agrupacion !in AGRUPACIONES) {
+            errores.add("agrupar_por no reconocido: $agrupacion")
+        }
         val modo = json.optString("match_mode", "").trim()
         if (modo.isNotEmpty() && modo != "null" && modo !in setOf("exact", "group", "auto")) {
             errores.add("match_mode desconocido: $modo")

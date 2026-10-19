@@ -99,4 +99,18 @@
     <string name="chatbot_response_unavailable">No se pudo mostrar esta respuesta. Comprueba los movimientos registrados antes de volver a enviarla.</string>
     <string name="chatbot_retry_incomplete">Reintentar respuesta</string>
     <string name="exchange_refresh_failed">No se pudieron actualizar las tasas. Inténtalo de nuevo.</string>
+        <string name="chatbot_monthly_summary">📦 %1$s: %2$s al mes de media · total %3$s en %4$d compras (%5$d meses con datos)</string>
+    <string name="chatbot_monthly_line">• %1$s: %2$s</string>
+    <string name="chatbot_ranking_title">📊 Ranking por %1$s · %2$s</string>
+    <string name="chatbot_ranking_line">%1$d. %2$s: %3$s (%4$d movimientos)</string>
+    <string name="chatbot_compare_line">• %1$s: %2$s</string>
+    <string name="chatbot_compare_result">Diferencia: %1$s · %2$s</string>
+    <string name="chatbot_movement_line">%1$s: %2$s · %3$s · %4$s</string>
+    <string name="chatbot_no_movements_period">No hay movimientos en %1$s para esa consulta.</string>
+    <string name="chatbot_ranking_by_category">categoría</string>
+    <string name="chatbot_ranking_by_store">comercio</string>
+    <string name="chatbot_ranking_by_product">producto</string>
+    <string name="chatbot_biggest_movement">Mayor movimiento</string>
+    <string name="chatbot_last_movement">Último movimiento</string>
+    <string name="chatbot_compare_no_baseline">sin datos del periodo anterior</string>
 </resources>

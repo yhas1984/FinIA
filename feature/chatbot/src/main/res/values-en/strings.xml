@@ -99,4 +99,18 @@
     <string name="chatbot_response_unavailable">This response could not be displayed. Check your recorded transactions before sending it again.</string>
     <string name="chatbot_retry_incomplete">Retry response</string>
     <string name="exchange_refresh_failed">Exchange rates could not be refreshed. Please try again.</string>
+        <string name="chatbot_monthly_summary">📦 %1$s: %2$s per month on average · %3$s total in %4$d purchases (%5$d months with data)</string>
+    <string name="chatbot_monthly_line">• %1$s: %2$s</string>
+    <string name="chatbot_ranking_title">📊 Ranking by %1$s · %2$s</string>
+    <string name="chatbot_ranking_line">%1$d. %2$s: %3$s (%4$d movements)</string>
+    <string name="chatbot_compare_line">• %1$s: %2$s</string>
+    <string name="chatbot_compare_result">Difference: %1$s · %2$s</string>
+    <string name="chatbot_movement_line">%1$s: %2$s · %3$s · %4$s</string>
+    <string name="chatbot_no_movements_period">There are no movements in %1$s for that query.</string>
+    <string name="chatbot_ranking_by_category">category</string>
+    <string name="chatbot_ranking_by_store">store</string>
+    <string name="chatbot_ranking_by_product">product</string>
+    <string name="chatbot_biggest_movement">Biggest movement</string>
+    <string name="chatbot_last_movement">Last movement</string>
+    <string name="chatbot_compare_no_baseline">no data for the previous period</string>
 </resources>

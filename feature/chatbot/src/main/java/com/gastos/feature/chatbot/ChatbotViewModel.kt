@@ -195,6 +195,7 @@ internal object FinancialQueryResolver {
             "semana", "esta semana", "semana actual", "lo que va de semana", "week", "this week" -> return "semana"
             "ano", "este ano", "ano actual", "lo que va de ano", "year", "this year" -> return "año"
             "mes", "este mes", "mes actual", "lo que va de mes", "month", "this month" -> return "mes"
+            "todo", "todo el historico", "historico", "en total", "todos los periodos", "all time", "all", "ever" -> return "todo"
         }
         if (norm.contains("mes pasado") || norm.contains("mes anterior") || norm.contains("last month")) {
             val anterior = cal.clone() as Calendar
@@ -276,7 +277,7 @@ internal object FinancialQueryResolver {
     ): String? {
         if (question.isNullOrBlank()) return null
         val periodo = normalizePeriod(question, hoy, zona)
-        return periodo.takeIf { it != "mes" && it != "semana" && it != "año" && it != "hoy" }
+        return periodo.takeIf { it != "mes" && it != "semana" && it != "año" && it != "hoy" && it != "todo" }
     }
 
     /** Rango [inicio, fin] en milisegundos del periodo pedido. */
@@ -305,6 +306,7 @@ internal object FinancialQueryResolver {
                 inicio to (inicio + 7L * 24 * 60 * 60 * 1000 - 1)
             }
             canon == "año" -> instante(zona, anio, 1, 1, 0, 0, 0, 0) to instante(zona, anio, 12, 31, 23, 59, 59, 999)
+            canon == "todo" -> 0L to instante(zona, anio, 12, 31, 23, 59, 59, 999)
             canon.startsWith("mes:") -> {
                 val (a, m) = desglosarMes(canon) ?: (anio to mes)
                 primerDiaDelMes(zona, a, m) to ultimoDiaDelMes(zona, a, m)
@@ -336,6 +338,7 @@ internal object FinancialQueryResolver {
             canon == "hoy" -> if (en) "today" else "hoy"
             canon == "semana" -> if (en) "this week" else "esta semana"
             canon == "año" -> if (en) "this year" else "este año"
+            canon == "todo" -> if (en) "all time" else "todo el histórico"
             canon.startsWith("mes:") -> {
                 val (anio, mes) = desglosarMes(canon) ?: return if (en) "this month" else "este mes"
                 if (en) "${MESES_EN[mes - 1]} $anio" else "${MESES_ES[mes - 1]} de $anio"
@@ -1119,6 +1122,13 @@ class ChatbotViewModel @Inject constructor(
                         val provider = json.optString("proveedor", json.optString("provider", "")).takeIf { it.isNotEmpty() && it != "null" }
                         val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
                         val matchMode = json.optString("match_mode", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val operacion = json.optString("operacion", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val agruparPor = json.optString("agrupar_por", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val excluir = json.optString("excluir", "")
+                            .split(",", ";", " y ")
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() && it != "null" }
+                        val compararCon = json.optString("comparar_con", "").takeIf { it.isNotEmpty() && it != "null" }
                         val response = executeQuery(
                             queryType = queryType,
                             periodo = periodo,
@@ -1127,7 +1137,11 @@ class ChatbotViewModel @Inject constructor(
                             provider = provider,
                             item = item,
                             matchMode = matchMode,
-                            originalQuestion = originalQuestion
+                            originalQuestion = originalQuestion,
+                            operacion = operacion,
+                            agruparPor = agruparPor,
+                            excluir = excluir,
+                            compararCon = compararCon
                         )
                         showResult(
                             text = response.text,
@@ -1240,9 +1254,16 @@ class ChatbotViewModel @Inject constructor(
         provider: String?,
         item: String?,
         matchMode: String?,
-        originalQuestion: String?
+        originalQuestion: String?,
+        operacion: String? = null,
+        agruparPor: String? = null,
+        excluir: List<String> = emptyList(),
+        compararCon: String? = null
     ): ExecutedFinancialQuery {
-        lastFinancialQuery = { executeQuery(queryType, periodo, categoria, subcategoria, provider, item, matchMode, originalQuestion) }
+        lastFinancialQuery = {
+            executeQuery(queryType, periodo, categoria, subcategoria, provider, item, matchMode, originalQuestion,
+                operacion, agruparPor, excluir, compararCon)
+        }
         val (start, end) = getDateRange(periodo)
         val target = currencyPreference.defaultCurrency.value
         val fmt = java.text.NumberFormat.getCurrencyInstance(activeLocale()).apply {
@@ -1283,10 +1304,113 @@ class ChatbotViewModel @Inject constructor(
                 TransactionCategories.matchesCategory(it.subcategoria, normalizedSubcategory)
         }
         val filteredInvoiceIds = filteredInvoices.map { it.id }.toSet()
+        val invoicesSinExcluir = if (excluir.isEmpty()) filteredInvoices else filteredInvoices.filter { inv ->
+            excluir.none { FinancialQueryResolver.matchesProvider(inv.proveedor, it) }
+        }
+        val incomesSinExcluir = if (excluir.isEmpty()) filteredIncomes else filteredIncomes.filter { inc ->
+            excluir.none { FinancialQueryResolver.matchesProvider(inc.concepto, it) }
+        }
         val periodProducts = allProducts.filter { it.invoiceId in filteredInvoiceIds }
         val invoiceById = filteredInvoices.associateBy { it.id }
         val language = activeLanguage()
         val periodLabelText = FinancialQueryResolver.periodLabel(periodo, language)
+        // ── Operaciones que hacen el cálculo en local (fase 2) ──────────────────
+        if (!operacion.isNullOrBlank() && operacion != "total") {
+            val movimientos: List<ConsultasAvanzadas.Movimiento> = when (resolvedQueryType) {
+                "ingresos" -> incomesSinExcluir.map {
+                    ConsultasAvanzadas.Movimiento(it.fecha, it.monto, it.concepto, it.categoria.orEmpty(), "")
+                }
+                "producto", "productos", "productos_por_comercio" -> periodProducts.mapNotNull { producto ->
+                    val factura = invoiceById[producto.invoiceId] ?: return@mapNotNull null
+                    ConsultasAvanzadas.Movimiento(
+                        factura.fecha, producto.subtotal, factura.proveedor,
+                        factura.categoria.orEmpty(), producto.descripcion
+                    )
+                }
+                else -> invoicesSinExcluir.map {
+                    ConsultasAvanzadas.Movimiento(it.fecha, it.total, it.proveedor, it.categoria.orEmpty(), "")
+                }
+            }
+            val avisoSinDatos = if (movimientos.isEmpty()) {
+                context.getString(R.string.chatbot_no_movements_period, periodLabelText)
+            } else null
+            val texto = when {
+                avisoSinDatos != null -> avisoSinDatos
+                operacion == "resumen_mensual" -> {
+                    val resumen = ConsultasAvanzadas.resumenMensual(movimientos)
+                    val titulo = resolvedQuery.item?.takeIf { it.isNotBlank() }
+                        ?: resolvedProvider ?: normalizedCategory?.let { TransactionCategories.displayCategory(it, language) }
+                        ?: (resolvedQueryType ?: "movimientos")
+                    buildString {
+                        appendLine(context.getString(
+                            R.string.chatbot_monthly_summary, titulo, fmt.money(resumen.mediaPorMes),
+                            fmt.money(resumen.total), resumen.compras, resumen.mesesConDatos
+                        ))
+                        resumen.meses.take(12).forEach { fila ->
+                            appendLine(context.getString(R.string.chatbot_monthly_line, fila.etiqueta, fmt.money(fila.importe)))
+                        }
+                    }.trimEnd()
+                }
+                operacion == "ranking" -> {
+                    val por = agruparPor ?: "categoria"
+                    val filas = ConsultasAvanzadas.ranking(movimientos, { movimiento -> when (por) {
+                        "comercio" -> movimiento.comercio
+                        "producto" -> movimiento.producto
+                        else -> movimiento.categoria
+                    } })
+                    val nombre = when (por) {
+                        "comercio" -> context.getString(R.string.chatbot_ranking_by_store)
+                        "producto" -> context.getString(R.string.chatbot_ranking_by_product)
+                        else -> context.getString(R.string.chatbot_ranking_by_category)
+                    }
+                    buildString {
+                        appendLine(context.getString(R.string.chatbot_ranking_title, nombre, periodLabelText))
+                        filas.forEachIndexed { indice, fila ->
+                            appendLine(context.getString(R.string.chatbot_ranking_line, indice + 1, fila.etiqueta, fmt.money(fila.importe), fila.movimientos))
+                        }
+                    }.trimEnd()
+                }
+                operacion == "comparar" -> {
+                    val otro = compararCon ?: "mes anterior"
+                    val (otroInicio, otroFin) = getDateRange(otro)
+                    val otroTotal = when (resolvedQueryType) {
+                        "ingresos" -> incomeRepository.getAllIncomes().first()
+                            .filter { it.fecha in otroInicio..otroFin }
+                            .sumAvailable { exchangeRateProvider.convert(it.monto, it.moneda, target) }
+                        else -> invoiceRepository.getAllInvoices().first()
+                            .filter { it.fecha in otroInicio..otroFin && it.tipo == InvoiceType.GASTO }
+                            .sumAvailable { exchangeRateProvider.convert(it.total, it.moneda, target) }
+                    }
+                    val actual = ConsultasAvanzadas.total(movimientos)
+                    val comparacion = ConsultasAvanzadas.comparar(actual, otroTotal ?: 0.0)
+                    val signo = if (comparacion.diferencia >= 0) "+" else "−"
+                    val porcentaje = comparacion.porcentaje?.let { String.format(activeLocale(), "%+.0f%%", it) }
+                        ?: context.getString(R.string.chatbot_compare_no_baseline)
+                    buildString {
+                        appendLine(context.getString(R.string.chatbot_compare_line, periodLabelText, fmt.money(actual)))
+                        appendLine(context.getString(R.string.chatbot_compare_line, FinancialQueryResolver.periodLabel(otro), fmt.money(comparacion.anterior)))
+                        append(context.getString(R.string.chatbot_compare_result, "$signo${fmt.money(kotlin.math.abs(comparacion.diferencia))}", porcentaje))
+                    }
+                }
+                operacion == "mayor" -> ConsultasAvanzadas.mayor(movimientos)?.let { m ->
+                    context.getString(R.string.chatbot_movement_line, "🔝 " + context.getString(R.string.chatbot_biggest_movement),
+                        m.comercio, fmt.money(m.importe), monthOf(m.fecha))
+                } ?: avisoSinDatos
+                operacion == "ultimo" -> ConsultasAvanzadas.ultimo(movimientos)?.let { m ->
+                    context.getString(R.string.chatbot_movement_line, "🧾 " + context.getString(R.string.chatbot_last_movement),
+                        m.comercio, fmt.money(m.importe), monthOf(m.fecha))
+                } ?: avisoSinDatos
+                else -> null
+            }
+            if (texto != null) {
+                return ExecutedFinancialQuery(
+                    texto,
+                    "Consulta financiera ejecutada: operacion=${operacion}; periodo=$periodo; " +
+                        "proveedor=${resolvedProvider ?: "ninguno"}; item=${resolvedQuery.item ?: "ninguno"}."
+                )
+            }
+        }
+
         val scopeLabel = buildString {
             append(periodLabelText)
             resolvedProvider?.let { append(context.getString(R.string.chatbot_scope_provider, it)) }
