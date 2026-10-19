@@ -547,6 +547,50 @@ internal object FinancialQueryResolver {
         }
     }
 
+    /**
+     * ¿La pregunta pide de verdad el histórico completo? Sin una palabra que lo diga
+     * («en total», «histórico», «alguna vez», «desde siempre»), el periodo por defecto
+     * sigue siendo el mes en curso, como siempre ha hecho la app.
+     */
+    fun pideTodoElHistorico(pregunta: String?): Boolean {
+        if (pregunta.isNullOrBlank()) return false
+        val p = pregunta.lowercase(Locale.ROOT)
+        return listOf(
+            "en total", "total", "todo el historico", "todo el histórico", "historico", "histórico",
+            "todos los periodos", "todas las veces", "alguna vez", "desde siempre", "desde el principio",
+            "all time", "overall", "ever", "sin contar", "sin incluir", "excepto"
+        ).any { it in p }
+    }
+
+    /**
+     * Producto mencionado en la pregunta, buscado entre los productos que existen de verdad.
+     * Red de seguridad para cuando el modelo no rellena `item`: si el usuario dice «bananas»
+     * y hay un producto «BANANA», se usa ese. Se exige palabra completa para no confundir
+     * «pan» con «paneles» ni «sal» con «salario».
+     */
+    fun productoMencionado(pregunta: String?, productos: List<String>): String? {
+        if (pregunta.isNullOrBlank() || productos.isEmpty()) return null
+        val palabras = normalizeProductName(pregunta).split(" ").filter { it.length >= 3 }.toSet()
+        if (palabras.isEmpty()) return null
+        // candidatos: productos cuyo nombre completo está en la pregunta (el más largo primero)
+        val candidatos = productos
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sortedByDescending { it.length }
+            .filter { nombre ->
+                val normalizado = normalizeProductName(nombre)
+                normalizado.isNotBlank() && (
+                    (" " + normalizeProductName(pregunta) + " ").contains(" " + normalizado + " ") ||
+                        // singular/plural: «bananas» contiene «banana»
+                        normalizado.split(" ").all { palabra ->
+                            palabras.any { p -> p == palabra || p == palabra + "s" || p + "s" == palabra }
+                        }
+                    )
+            }
+        return candidatos.firstOrNull()
+    }
+
     /** Comercios a excluir deducidos de la propia pregunta, cuando el modelo no los devuelve. */
     fun exclusionesDeLaPregunta(pregunta: String?): List<String> {
         if (pregunta.isNullOrBlank()) return emptyList()
@@ -1339,6 +1383,12 @@ class ChatbotViewModel @Inject constructor(
         excluir: List<String> = emptyList(),
         compararCon: String? = null
     ): ExecutedFinancialQuery {
+        // «todo el histórico» solo si la pregunta lo pide (o si la operación lo exige por definición:
+        // un «al mes de media» sin histórico no tiene sentido); si no, el mes en curso
+        val exigeHistorico = operacion == "resumen_mensual" || operacion == "mayor" || operacion == "ultimo"
+        val periodo = if (periodo == "todo" && !exigeHistorico &&
+            !FinancialQueryResolver.pideTodoElHistorico(originalQuestion)
+        ) "mes" else periodo
         lastFinancialQuery = {
             executeQuery(queryType, periodo, categoria, subcategoria, provider, item, matchMode, originalQuestion,
                 operacion, agruparPor, excluir, compararCon)
@@ -1405,10 +1455,13 @@ class ChatbotViewModel @Inject constructor(
                 operacion, agruparPor, excluir, compararCon)
         }
         if (!operacion.isNullOrBlank() && operacion != "total") {
-            // Si la pregunta nombra un producto, manda el producto (aunque el modelo diga «gastos»)
+            // Si la pregunta nombra un producto, manda el producto (aunque el modelo diga «gastos»
+            // o no lo haya rellenado: se busca en los productos que existen de verdad)
+            val itemLocal = resolvedQuery.item?.takeIf { it.isNotBlank() }
+                ?: FinancialQueryResolver.productoMencionado(originalQuestion, allProducts.map { it.descripcion })
             val tipoEfectivo = when {
                 resolvedQueryType == "ingresos" -> "ingresos"
-                !resolvedQuery.item.isNullOrBlank() -> "productos"
+                itemLocal != null -> "productos"
                 else -> resolvedQueryType ?: "gastos"
             }
             val movimientos: List<ConsultasAvanzadas.Movimiento> = when (tipoEfectivo) {
@@ -1416,7 +1469,7 @@ class ChatbotViewModel @Inject constructor(
                     ConsultasAvanzadas.Movimiento(it.fecha, it.monto, it.concepto, it.categoria.orEmpty(), "")
                 }
                 "producto", "productos", "productos_por_comercio" -> {
-                    val itemTexto = resolvedQuery.item
+                    val itemTexto = itemLocal
                     val base = if (itemTexto.isNullOrBlank()) {
                         periodProducts
                     } else {
@@ -1446,7 +1499,7 @@ class ChatbotViewModel @Inject constructor(
                 avisoSinDatos != null -> avisoSinDatos
                 operacion == "resumen_mensual" -> {
                     val resumen = ConsultasAvanzadas.resumenMensual(movimientos)
-                    val titulo = resolvedQuery.item?.takeIf { it.isNotBlank() }
+                    val titulo = itemLocal
                         ?: resolvedProvider ?: normalizedCategory?.let { TransactionCategories.displayCategory(it, language) }
                         ?: tipoEfectivo
                     buildString {

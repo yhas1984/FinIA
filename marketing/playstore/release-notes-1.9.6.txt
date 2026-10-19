@@ -1,0 +1,16 @@
+1.9.6 — El asistente ya entiende cualquier periodo
+
+· Ahora puedes preguntar por un mes concreto o por un rango de días: «¿cuánto
+  gasté en agosto?», «¿y en septiembre de 2025?», «gastos del 1 al 15 de julio».
+· Antes, cualquier mes que no fuera el actual se respondía como «este mes».
+· Las consultas llevan fechas exactas (desde/hasta) en lugar de una palabra, así
+  que responden al periodo que pides también en ingresos y en balance.
+· Si la pregunta es ambigua o no se entiende el periodo, el asistente lo dice en
+  vez de contestar con otro mes.
+· Consultas revisadas antes de ejecutarse: si algo no cuadra (una fecha imposible,
+  un filtro raro), se corrige antes de responder.
+
+Notas internas (no publicar):
+· Detalle técnico en el PR de la rama fix/periodos-concretos-chat.
+· Verificación: 40 tests del resolutor de periodos y 8 del validador de consultas.
+· Pendiente medir en dispositivo con la batería de 60 preguntas tras actualizar.

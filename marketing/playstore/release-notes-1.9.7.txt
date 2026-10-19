@@ -1,0 +1,13 @@
+1.9.7 — El asistente ya responde a lo que de verdad le preguntas
+
+· Puedes preguntar por un producto y su ritmo de gasto: «¿cuánto gasto al mes
+  en bananas?» responde con la media mensual, el total, cuántas veces lo has
+  comprado y el detalle mes a mes. También sirve para ingresos.
+· Nuevas preguntas que antes no sabía contestar:
+  · «¿en qué categoría gasto más?» y «¿en qué comercio gasto más?» (ranking real)
+  · «¿he gastado más este mes que el pasado?» (comparación con el periodo anterior)
+  · «¿cuál fue mi mayor gasto?» y «¿cuál es mi último movimiento?»
+  · «¿cuánto gasté en total sin contar Mercadona?» (exclusiones)
+· Los meses concretos y los rangos de días siguen respondiéndose con el periodo
+  exacto que pides (gastos, ingresos y balance).
+· Las cuentas las hace la app, no la IA: las cifras nunca se inventan.

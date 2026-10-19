@@ -579,4 +579,27 @@ class FinancialQueryResolverTest {
         java.util.Calendar.getInstance(zona).apply {
             clear(); set(anio, mes - 1, dia, 12, 0, 0)
         }.timeInMillis
+
+    @Test
+    fun `solo se usa el historico cuando la pregunta lo pide`() {
+        assertTrue(FinancialQueryResolver.pideTodoElHistorico("¿cuánto he gastado en total?"))
+        assertTrue(FinancialQueryResolver.pideTodoElHistorico("gastos en todo el histórico"))
+        assertTrue(FinancialQueryResolver.pideTodoElHistorico("¿alguna vez he comprado en Lidl?"))
+        assertTrue(FinancialQueryResolver.pideTodoElHistorico("total sin contar Mercadona"))
+        assertFalse(FinancialQueryResolver.pideTodoElHistorico("¿cuánto he gastado en Alimentación?"))
+        assertFalse(FinancialQueryResolver.pideTodoElHistorico("gastos de esta semana"))
+        assertFalse(FinancialQueryResolver.pideTodoElHistorico(null))
+    }
+
+    @Test
+    fun `el producto se detecta en la pregunta aunque el modelo no lo rellene`() {
+        val productos = listOf("BANANA", "LECHE ENTERA", "AGUA CONSUM 8L", "PAN", "SAL")
+        assertEquals("BANANA", FinancialQueryResolver.productoMencionado("¿cuánto gasto al mes en bananas?", productos))
+        assertEquals("BANANA", FinancialQueryResolver.productoMencionado("y en banana?", productos))
+        assertEquals("LECHE ENTERA", FinancialQueryResolver.productoMencionado("cuánto gasto en leche entera", productos))
+        assertEquals("AGUA CONSUM 8L", FinancialQueryResolver.productoMencionado("agua Consum 8L al mes", productos))
+        assertNull(FinancialQueryResolver.productoMencionado("¿cuánto gasto en salario?", productos))
+        assertNull(FinancialQueryResolver.productoMencionado("¿cuánto gasté en agosto?", productos))
+        assertNull(FinancialQueryResolver.productoMencionado(null, productos))
+    }
 }
