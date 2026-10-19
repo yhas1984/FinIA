@@ -7,7 +7,7 @@
 <en-US>
 • New: "how much do I spend a month on bananas?" answers with the monthly average, the total, how many times you bought it and the month-by-month breakdown. Also for income.
 • New questions: where you spend most by category or store, if you spent more this month than last, your biggest expense and your latest transaction.
-• You can also ask for totals excluding a store, and months or date ranges answer with the exact period you ask for.
+• Totals excluding a store work too, and months or date ranges answer with the exact period you ask for.
 • The app does the maths, not the AI: figures are never made up.
 </en-US>
 <es-419>
