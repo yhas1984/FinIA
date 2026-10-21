@@ -37,6 +37,10 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.activity.result.IntentSenderRequest
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import java.io.File
 
 sealed class ChatMessage {
@@ -99,7 +103,21 @@ fun ChatbotScreen(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         if (success && capturedImageUri != null) {
-            captureModel.processImage(capturedImageUri!!)
+            captureModel.processImage(capturedImageUri)
+        }
+    }
+
+    // Launcher del escáner de documentos de ML Kit: devuelve la página ya recortada y
+    // enderezada por Google, así el OCR recibe una imagen limpia en vez de una foto torcida.
+    val documentScannerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val pagina = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+                ?.pages?.firstOrNull()
+            if (pagina != null) {
+                captureModel.processImage(pagina.imageUri)
+            }
         }
     }
 
@@ -121,6 +139,42 @@ fun ChatbotScreen(
     ) { isGranted ->
         if (isGranted) {
             viewModel.startVoiceInput()
+        }
+    }
+
+    // Cámara del sistema: plan B si el escáner de ML Kit no está disponible (sin Play Services)
+    val abrirCamaraDelSistema: () -> Unit = {
+        when (PackageManager.PERMISSION_GRANTED) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) -> {
+                launchCamera(context) { uri ->
+                    capturedImageUriText = uri.toString()
+                    cameraLauncher.launch(uri)
+                }
+            }
+            else -> {
+                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        }
+    }
+
+    // Escáner de documentos (ML Kit): bordes detectados, recorte y enderezado antes del OCR
+    val abrirEscaner: () -> Unit = {
+        val actividad = context.activityOrNull()
+        if (actividad == null) {
+            // Sin Activity no se puede resolver el IntentSender del escáner
+            abrirCamaraDelSistema()
+        } else {
+            val opciones = GmsDocumentScannerOptions.Builder()
+                .setGalleryImportAllowed(false)
+                .setPageLimit(1)
+                .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
+                .build()
+            GmsDocumentScanning.getClient(opciones)
+                .getStartScanIntent(actividad)
+                .addOnSuccessListener { sender ->
+                    documentScannerLauncher.launch(IntentSenderRequest.Builder(sender).build())
+                }
+                .addOnFailureListener { abrirCamaraDelSistema() }
         }
     }
 
@@ -198,20 +252,10 @@ fun ChatbotScreen(
                             onDismissRequest = { showScanMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.chatbot_menu_take_photo)) },
+                                text = { Text(stringResource(R.string.chatbot_menu_scan_document)) },
                                 onClick = {
                                     showScanMenu = false
-                                    when (PackageManager.PERMISSION_GRANTED) {
-                                        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) -> {
-                                            launchCamera(context) { uri ->
-                                                capturedImageUriText = uri.toString()
-                                                cameraLauncher.launch(uri)
-                                            }
-                                        }
-                                        else -> {
-                                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                                        }
-                                    }
+                                    abrirEscaner()
                                 }
                             )
                             DropdownMenuItem(
@@ -589,6 +633,16 @@ private fun ReportAiContentDialog(
     )
 }
 
+
+/** Desenvuelve el Context hasta la Activity que lo contiene (el escáner la exige). */
+private fun android.content.Context.activityOrNull(): android.app.Activity? {
+    var actual: android.content.Context? = this
+    while (actual is android.content.ContextWrapper) {
+        if (actual is android.app.Activity) return actual
+        actual = actual.baseContext
+    }
+    return null
+}
 
 /**
  * Crea un archivo temporal para la foto y devuelve su URI vía FileProvider.

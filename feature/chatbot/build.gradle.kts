@@ -36,6 +36,9 @@ dependencies {
     // Navigation
     implementation(libs.navigation.compose)
 
+    // Escáner de documentos de ML Kit (detección de bordes, recorte y enderezado)
+    implementation(libs.mlkit.document.scanner)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

@@ -14,6 +14,7 @@ coroutines = "1.10.2"
 billing = "9.1.0"
 play-review = "2.0.2"
 play-services-auth = "21.6.0"
+mlkit-document-scanner = "16.0.0-beta1"
 datastore = "1.2.1"
 androidx-security-crypto = "1.1.0"
 tink = "1.23.0"
@@ -76,6 +77,7 @@ play-review = { group = "com.google.android.play", name = "review", version.ref 
 
 # Google Sign In
 play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "play-services-auth" }
+mlkit-document-scanner = { group = "com.google.android.gms", name = "play-services-mlkit-document-scanner", version.ref = "mlkit-document-scanner" }
 
 # Google API Client (Sheets REST v4)
 google-api-client-android = { group = "com.google.api-client", name = "google-api-client-android", version = "2.7.0" }

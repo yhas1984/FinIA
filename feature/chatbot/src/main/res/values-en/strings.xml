@@ -7,6 +7,7 @@
     <string name="chatbot_voice">Voice</string>
     <string name="chatbot_scan">Scan</string>
     <string name="chatbot_menu_take_photo">📷 Take photo</string>
+    <string name="chatbot_menu_scan_document">🧾 Scan document</string>
     <string name="chatbot_menu_attach_image">🖼️ Attach image</string>
     <string name="chatbot_input_placeholder">Type here…</string>
     <string name="chatbot_cd_send">Send</string>
