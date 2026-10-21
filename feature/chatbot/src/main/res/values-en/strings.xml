@@ -113,4 +113,12 @@
     <string name="chatbot_biggest_movement">Biggest movement</string>
     <string name="chatbot_last_movement">Last movement</string>
     <string name="chatbot_compare_no_baseline">no data for the previous period</string>
+    <string name="chatbot_report_ai">Report</string>
+    <string name="chatbot_report_title">Report content</string>
+    <string name="chatbot_report_body">If this response looks offensive, wrong or unsafe, you can tell us. Your mail app will open with the text already included; nothing is sent without your permission.</string>
+    <string name="chatbot_report_reason_offensive">Offensive content</string>
+    <string name="chatbot_report_reason_wrong">Incorrect information</string>
+    <string name="chatbot_report_reason_unsafe">Unsafe or harmful content</string>
+    <string name="chatbot_report_reason_other">Other reason</string>
+    <string name="chatbot_report_send">Open mail</string>
 </resources>

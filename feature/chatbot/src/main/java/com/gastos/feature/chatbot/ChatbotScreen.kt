@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -65,6 +66,8 @@ fun ChatbotScreen(
         captureState.duplicates.isNotEmpty() ||
         captureState.message != null || captureState.saved != null
     val lastMessage: ChatMessage? = uiState.messages.lastOrNull()
+    // Petición de reseña de Play: solo cuando ya hay conversación real, una vez por instalación.
+    ReviewPromptEffect(aiMessageCount = uiState.messages.count { it is ChatMessage.AI && it.text.isNotBlank() })
     val showTyping: Boolean = uiState.isProcessing && (lastMessage !is ChatMessage.AI || lastMessage.text.isEmpty())
     val showRetry: Boolean = uiState.canRetryIncomplete && !uiState.isProcessing
     val listState = rememberLazyListState()
@@ -87,6 +90,9 @@ fun ChatbotScreen(
     val capturedImageUri = capturedImageUriText?.let(Uri::parse)
     var showScanMenu by rememberSaveable { mutableStateOf(false) }
     var showClearDialog by remember { mutableStateOf(false) }
+    // Reporte de contenido generado por IA (política de Google Play)
+    var reportTarget by remember { mutableStateOf<String?>(null) }
+    var pendingMessageToReport by remember { mutableStateOf<String?>(null) }
 
     // Launcher para tomar una foto con la cámara
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -332,7 +338,10 @@ fun ChatbotScreen(
                     items(uiState.messages) { message ->
                         when (message) {
                             is ChatMessage.User -> UserMessageBubble(message.text)
-                            is ChatMessage.AI -> AIMessageBubble(message.text)
+                            is ChatMessage.AI -> AIMessageBubble(
+                                text = message.text,
+                                onReport = { reportTarget = message.text }
+                            )
                             is ChatMessage.System -> SystemMessageBubble(message.text)
                             is ChatMessage.Document -> DocumentMessageBubble(message.text, message.uuid?.let { uuid -> { onOpenReceipt(uuid, message.kind) } })
                         }
@@ -384,6 +393,24 @@ fun ChatbotScreen(
             }
         )
     }
+
+    // Reporte de contenido generado por IA (requisito de la política de Google Play).
+    reportTarget?.let { textoReportado ->
+        ReportAiContentDialog(
+            aiText = textoReportado,
+            onDismiss = { reportTarget = null },
+            onSend = { motivo, etiqueta ->
+                AiContentReporter.sendReport(
+                    context = context,
+                    aiText = textoReportado,
+                    reason = motivo,
+                    reasonLabel = etiqueta,
+                    appVersion = AiContentReporter.appVersion(context)
+                )
+                reportTarget = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -430,12 +457,12 @@ private fun UserMessageBubble(text: String) {
 }
 
 @Composable
-private fun AIMessageBubble(text: String) {
+private fun AIMessageBubble(text: String, onReport: (() -> Unit)? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxWidth(0.9f)
                 .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
@@ -447,6 +474,32 @@ private fun AIMessageBubble(text: String) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium
             )
+            // Canal de reporte exigido por la política de contenido generado por IA de Google Play.
+            if (onReport != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = onReport,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.heightIn(min = 32.dp).testTag("report_ai_content")
+                    ) {
+                        Icon(
+                            Icons.Default.Flag,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(R.string.chatbot_report_ai),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -471,6 +524,71 @@ private fun SystemMessageBubble(text: String) {
         }
     }
 }
+
+/**
+ * Diálogo de reporte de contenido generado por IA.
+ *
+ * Dos pasos: elegir el motivo y pasar al gestor de correo con el reporte redactado.
+ * El texto de la respuesta viaja en el cuerpo del correo; la app no envía nada por sí sola.
+ */
+@Composable
+private fun ReportAiContentDialog(
+    aiText: String,
+    onDismiss: () -> Unit,
+    onSend: (AiContentReporter.Reason, String) -> Unit
+) {
+    val motivos = listOf(
+        AiContentReporter.Reason.OFFENSIVE to stringResource(R.string.chatbot_report_reason_offensive),
+        AiContentReporter.Reason.WRONG to stringResource(R.string.chatbot_report_reason_wrong),
+        AiContentReporter.Reason.UNSAFE to stringResource(R.string.chatbot_report_reason_unsafe),
+        AiContentReporter.Reason.OTHER to stringResource(R.string.chatbot_report_reason_other)
+    )
+    var seleccionado by remember { mutableStateOf<Int?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.chatbot_report_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(R.string.chatbot_report_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                motivos.forEachIndexed { index, (_, etiqueta) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { seleccionado = index }
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = seleccionado == index,
+                            onClick = { seleccionado = index }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(etiqueta, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    seleccionado?.let { onSend(motivos[it].first, motivos[it].second) }
+                },
+                enabled = seleccionado != null
+            ) { Text(stringResource(R.string.chatbot_report_send)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.capture_close)) }
+        }
+    )
+}
+
 
 /**
  * Crea un archivo temporal para la foto y devuelve su URI vía FileProvider.

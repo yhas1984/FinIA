@@ -48,6 +48,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.coroutines.android)
 
+    // Petición de reseña con la API oficial de Play (In-App Review)
+    implementation(libs.play.review)
+
     // Sheets sync (desde backup)
     implementation(project(":feature:backup"))
 

@@ -113,4 +113,12 @@
     <string name="chatbot_biggest_movement">Mayor movimiento</string>
     <string name="chatbot_last_movement">Último movimiento</string>
     <string name="chatbot_compare_no_baseline">sin datos del periodo anterior</string>
+    <string name="chatbot_report_ai">Reportar</string>
+    <string name="chatbot_report_title">Reportar contenido</string>
+    <string name="chatbot_report_body">Si esta respuesta te parece ofensiva, incorrecta o insegura, puedes avisarnos. Se abrirá tu correo con el texto ya incluido; no se envía nada sin tu permiso.</string>
+    <string name="chatbot_report_reason_offensive">Contenido ofensivo</string>
+    <string name="chatbot_report_reason_wrong">Información incorrecta</string>
+    <string name="chatbot_report_reason_unsafe">Contenido inseguro o dañino</string>
+    <string name="chatbot_report_reason_other">Otro motivo</string>
+    <string name="chatbot_report_send">Abrir correo</string>
 </resources>
