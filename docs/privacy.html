@@ -14,7 +14,7 @@
 <body>
 
 <h1>Política de Privacidad de FinAI</h1>
-<p class="updated">Última actualización: 31 de julio de 2026 (versión 1.5.1)</p>
+<p class="updated">Última actualización: 21 de octubre de 2026</p>
 
 <div style="background:#f3e9ff; border:1px solid #d9c5ff; border-radius:8px; padding:10px 14px; font-size:.95em; margin: 16px 0 28px;">
   <strong>Aplicación:</strong> FinAI &middot;
@@ -62,6 +62,15 @@
 <ul>
   <li><strong>Cámara</strong>: se usa exclusivamente para escanear facturas mediante foto. No grabamos video ni accedemos a la cámara sin tu acción explícita.</li>
   <li><strong>Micrófono</strong>: se usa exclusivamente para reconocimiento de voz cuando activas el botón de voz. FinAI utiliza el proveedor de reconocimiento disponible en el dispositivo (por ejemplo, servicios de voz de Google), que puede procesar el audio fuera del dispositivo según su propia política. No hay grabación en segundo plano.</li>
+</ul>
+
+<h2>7 bis. Notificaciones de pagos (Google Wallet)</h2>
+<p>FinAI puede leer las notificaciones de pago que genera <strong>Google Wallet</strong> en tu dispositivo para proponerte el gasto con el importe y el comercio ya rellenados. Esta función es <strong>opcional y está desactivada por defecto</strong>: solo se activa si tú lo haces expresamente desde Ajustes de FinAI.</p>
+<ul>
+  <li><strong>Qué se lee</strong>: únicamente las notificaciones emitidas por la app de Google Wallet (paquete <code>com.google.android.apps.walletnfcrel</code>). FinAI no lee notificaciones de ninguna otra aplicación, ni de mensajes, ni de correo, ni de bancos.</li>
+  <li><strong>Dónde se procesa</strong>: en tu dispositivo. El texto de la notificación se interpreta localmente para extraer comercio e importe; <strong>no se envía a ningún servidor</strong>.</li>
+  <li><strong>Qué se guarda</strong>: el movimiento resultante (comercio, importe y fecha) en tu base de datos local, igual que si lo escribieras a mano. El contenido íntegro de la notificación no se almacena.</li>
+  <li><strong>Cómo se revoca</strong>: desactivando la opción en Ajustes de FinAI o retirando el permiso de acceso a notificaciones en los ajustes de Android. Al revocarlo, FinAI deja de recibir notificaciones de inmediato.</li>
 </ul>
 
 <h2>8. Almacenamiento de datos</h2>
