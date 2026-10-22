@@ -1,0 +1,23 @@
+<es-ES>
+• Resumen de IVA por periodo: base, cuota y diferencia, en PDF o CSV para tu gestor.
+• Funciona en 14 países. España con sus reglas verificadas (trimestral, modelo 303); en el resto eliges cada cuánto declaras, sin formularios inventados.
+• País y moneda son ajustes separados, con la moneda habitual de cada país como sugerencia.
+• El informe se recalcula al cambiar país o moneda y explica qué documentos deja fuera.
+• Ajustes: Preferencias muestra tu país y moneda.
+</es-ES>
+
+<en-US>
+• VAT summary by period: base, tax and difference, as PDF or CSV for your accountant.
+• Works in 14 countries. Spain with verified rules (quarterly, form 303); elsewhere you pick how often you file, with no invented forms.
+• Country and currency are separate settings, with each country's usual currency suggested.
+• The report recalculates when you change country or currency and explains what it leaves out.
+• Settings: Preferences shows your country and currency.
+</en-US>
+
+<es-419>
+• Resumen de IVA por periodo: base, cuota y diferencia, en PDF o CSV para tu contador.
+• Funciona en 14 países. España con sus reglas verificadas (trimestral, modelo 303); en el resto eliges cada cuánto declaras, sin formularios inventados.
+• País y moneda son ajustes separados, con la moneda habitual de cada país como sugerencia.
+• El informe se recalcula al cambiar país o moneda y explica qué documentos deja fuera.
+• Ajustes: Preferencias muestra tu país y moneda.
+</es-419>
