@@ -17,6 +17,19 @@ data class ConversionSummary(
         .mapValues { (_, values) -> values.sumOf { it.amount } }
 }
 
+/**
+ * Convierte un importe con una tabla de tasas.
+ * Devuelve null si falta alguna de las dos tasas o no son válidas: quien lo use
+ * debe mostrar el importe original, nunca un cero ni un número inventado.
+ */
+fun convertWithRates(amount: Double, from: String, to: String, rates: Map<String, Double>): Double? {
+    if (from.equals(to, ignoreCase = true)) return amount
+    val origin: Double = rates[from.uppercase(java.util.Locale.ROOT)] ?: return null
+    val destination: Double = rates[to.uppercase(java.util.Locale.ROOT)] ?: return null
+    if (!origin.isFinite() || !destination.isFinite() || origin <= 0 || destination <= 0) return null
+    return (amount * destination / origin).takeIf(Double::isFinite)
+}
+
 fun ExchangeRateProvider.summarize(records: List<MoneyRecord>, target: String): ConversionSummary =
     summarizeConversions(records, target, lastUpdated.value, ::convert)
 

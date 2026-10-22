@@ -50,13 +50,7 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private var importedDocument by mutableStateOf<android.net.Uri?>(null)
-    private var importedBank by mutableStateOf<android.net.Uri?>(null)
     private fun receiveDocument(intent: android.content.Intent?) {
-        if (intent?.action == android.content.Intent.ACTION_SEND && intent.type in setOf("text/csv", "text/comma-separated-values", "application/csv", "application/vnd.ms-excel")) {
-            @Suppress("DEPRECATION")
-            val source: android.net.Uri? = intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM)
-            if (source?.scheme == "content") importedBank = source
-        }
         if (intent?.action == android.content.Intent.ACTION_SEND && (intent.type == "application/pdf" || intent.type?.startsWith("image/") == true)) {
             @Suppress("DEPRECATION")
             val source: android.net.Uri? = intent.getParcelableExtra(android.content.Intent.EXTRA_STREAM)
@@ -70,7 +64,6 @@ class MainActivity : ComponentActivity() {
     }
     override fun onSaveInstanceState(outState: Bundle) {
         importedDocument?.let { outState.putString("pending_document", it.toString()) }
-        importedBank?.let { outState.putString("pending_bank", it.toString()) }
         super.onSaveInstanceState(outState)
     }
 
@@ -115,7 +108,6 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionOnce()
         if (savedInstanceState == null) receiveDocument(intent)
         else importedDocument = savedInstanceState.getString("pending_document")?.let(android.net.Uri::parse)
-        savedInstanceState?.getString("pending_bank")?.let { importedBank = android.net.Uri.parse(it) }
         enableEdgeToEdge()
         setContent {
             val settingsViewModel: SettingsViewModel = viewModel()
@@ -136,8 +128,6 @@ class MainActivity : ComponentActivity() {
             GastosEIngresosTheme(darkMode = uiState.settings.darkMode) {
                 FinAIApp(
                     importedDocument = importedDocument,
-                    importedBank = importedBank,
-                    onBankConsumed = { importedBank = null; intent?.removeExtra(android.content.Intent.EXTRA_STREAM) },
                     onImportConsumed = { importedDocument = null; intent?.removeExtra(android.content.Intent.EXTRA_STREAM) },
                     defaultCurrency = uiState.settings.defaultCurrency,
                     floatingButtonPositions = uiState.floatingButtonPositions,
@@ -184,14 +174,11 @@ object Routes {
     const val EDIT_INVOICE = "edit_invoice/{invoiceId}"
     const val EDIT_INCOME = "edit_income/{incomeId}"
     const val CHATBOT = "chatbot"
-    const val BANK = "bank"
 }
 
 @Composable
 fun FinAIApp(
     importedDocument: android.net.Uri? = null,
-    importedBank: android.net.Uri? = null,
-    onBankConsumed: () -> Unit = {},
     onImportConsumed: () -> Unit = {},
     defaultCurrency: String = "EUR",
     floatingButtonPositions: Map<String, FloatingButtonPosition> = emptyMap(),
@@ -212,7 +199,6 @@ fun FinAIApp(
         }
     }
     LaunchedEffect(importedDocument) { if (importedDocument != null) navController.navigate(Routes.CHATBOT) { launchSingleTop = true } }
-    LaunchedEffect(importedBank) { if (importedBank != null) navController.navigate(Routes.BANK) { launchSingleTop = true } }
     val screens = listOf(Screen.Dashboard, Screen.Invoices, Screen.Incomes)
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
@@ -314,17 +300,11 @@ fun FinAIApp(
                     onOpenDocument = { record -> openByUuid(record.uuid, if (record.isIncome) "INCOME" else "EXPENSE") },
                     onOpenReceipt = ::openByUuid,
                     onManualEntry = { income -> navController.navigate(if (income) "edit_income/0" else "edit_invoice/0") },
-                    onNavigateToBank = { navController.navigate(Routes.BANK) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
             composable(Routes.AUTOMATION) { com.gastos.automation.AutomationScreen(onBack = { navController.popBackStack() }, onOpenMovement = { openByUuid(it, "EXPENSE") }) }
-            composable(Routes.BANK) {
-                com.gastos.bank.BankImportScreen(onBack = { navController.popBackStack() },
-                    onOpen = { source, uuid -> navController.navigate("movement/$source/${android.net.Uri.encode(uuid)}") },
-                    importedUri = importedBank, onConsumed = onBankConsumed)
-            }
             composable(Routes.WALLET) {
                 com.gastos.automation.AutomationScreen(
                     onBack = { navController.popBackStack() },
@@ -365,7 +345,6 @@ fun FinAIApp(
                     val backupModel: com.gastos.feature.backup.BackupViewModel = hiltViewModel(parent)
                     BackupScreen(onNavigateBack = { navController.popBackStack() }, viewModel = backupModel,
                         page = com.gastos.feature.backup.DataPage.OVERVIEW,
-                        onNavigateToBank = { navController.navigate(Routes.BANK) },
                         onNavigateToSection = { navController.navigate("backup/${it.name}") },
                         onNavigateToPremium = { navController.navigate(Routes.PREMIUM) },
                         onNavigateToRegionalSettings = {

@@ -69,9 +69,12 @@ fun IncomesScreen(
                 }
                 items(uiState.incomes, key = { it.documentUuid }) { record ->
                     MovementRow(record.description, formatMovementCategory(record.category, record.subcategory, language),
-                        record.date, record.amount, record.currency, true, onEdit = { onNavigateToEdit(record.id) }) {
-                        if (onOpenMovement == null) onNavigateToEdit(record.id) else onOpenMovement(record.movementReference())
-                    }
+                        record.date, record.amount, record.currency, true, onEdit = { onNavigateToEdit(record.id) },
+                        displayAmount = convertWithRates(record.amount, record.currency, uiState.defaultCurrency, uiState.rates),
+                        displayCurrency = uiState.defaultCurrency,
+                        onClick = {
+                            if (onOpenMovement == null) onNavigateToEdit(record.id) else onOpenMovement(record.movementReference())
+                        })
                 }
                 if (uiState.incomes.isNotEmpty()) item { MovementPageFooter(uiState.incomes.size, uiState.matchingCount, uiState.hasMore, viewModel::loadMore) }
             }

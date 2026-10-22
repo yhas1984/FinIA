@@ -42,7 +42,6 @@ fun BackupScreen(
     onNavigateToPremium: () -> Unit = {},
     page: DataPage = DataPage.OVERVIEW,
     onNavigateToSection: (DataPage) -> Unit = {},
-    onNavigateToBank: () -> Unit = {},
     /** Atajo a Ajustes → Preferencias, donde se eligen el país fiscal y la moneda. */
     onNavigateToRegionalSettings: () -> Unit = {},
     viewModel: BackupViewModel = hiltViewModel()
@@ -205,7 +204,6 @@ fun BackupScreen(
                 }
             }
             if (page == DataPage.OVERVIEW) {
-                EssentialRow(stringResource(com.gastos.common.R.string.bank_statements_title), stringResource(com.gastos.common.R.string.bank_statements_hint), Icons.Default.AccountBalance, onNavigateToBank)
                 Surface(shape = MaterialTheme.shapes.large) { Column {
                     EssentialRow(stringResource(com.gastos.common.R.string.essential_sheets), stringResource(com.gastos.common.R.string.essential_sheets_hint), Icons.Default.TableChart, { onNavigateToSection(DataPage.SHEETS) })
                     HorizontalDivider()

@@ -788,8 +788,7 @@ class ChatbotViewModel @Inject constructor(
     private val exchangeRateProvider: ExchangeRateProvider,
     private val currencyPreference: CurrencyPreference,
     private val commandOperations: com.gastos.storage.CommandOperationStore,
-    private val automation: AutomationCommands? = null,
-    private val bankImports: com.gastos.storage.BankImportStore? = null
+    private val automation: AutomationCommands? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatbotUiState(isProcessing = true))
@@ -970,27 +969,6 @@ class ChatbotViewModel @Inject constructor(
             if (responseIndex >= 0) removeAt(responseIndex)
         } else it.messages + ChatMessage.User(text),
             isProcessing = true, canRetryIncomplete = false) }
-
-        val bankQuery = com.gastos.domain.model.BankQuery.detect(text)
-        if (bankQuery != null && bankImports != null) {
-            viewModelScope.launch {
-                try {
-                    val uuid = requireNotNull(activeOperationUuid)
-                    commandOperations.begin(uuid, text)
-                    val selected = bankQuery.select(bankImports.transactions(), bankImports.movements())
-                    val answer = buildString {
-                        append(context.getString(R.string.bank_query_count, selected.size))
-                        selected.take(20).forEach { row -> append("\n• ${row.description} · ${row.amount} ${row.currency} · ${java.text.DateFormat.getDateInstance().format(java.util.Date(row.date))}") }
-                        append("\n\n" + context.getString(R.string.bank_query_hint))
-                    }
-                    commandOperations.completeLocal(uuid, answer)
-                    _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(answer)) }
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(context.getString(R.string.bank_query_failed))) } }
-                finally { _uiState.update { it.copy(isProcessing = false) } }
-            }
-            return
-        }
 
         // Sin API key: mensaje guía en lugar de llamar al servicio.
         if (!aiService.isConfigured()) {

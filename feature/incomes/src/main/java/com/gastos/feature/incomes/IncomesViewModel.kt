@@ -49,6 +49,8 @@ data class IncomesUiState(
     /** Total convertido a la moneda por defecto (null = sin tasas cargadas). */
     val totalIngresosConvertido: Double? = null,
     val defaultCurrency: String = "EUR",
+    /** Tasas de cambio vigentes; se usan para convertir cada movimiento a la moneda de visualización. */
+    val rates: Map<String, Double> = emptyMap(),
     val isLoading: Boolean = true,
     val error: String? = null
 )
@@ -97,16 +99,16 @@ class IncomesViewModel @Inject constructor(
                     IncomesListData(filtered, filter, categories, subcategories, rows.isNotEmpty())
                 }
                 .combine(currencyPreference.defaultCurrency) { data, target -> data to target }
-                .combine(exchangeRateProvider.rates) { (data, target), _ ->
-                    Triple(data, target, exchangeRateProvider.summarize(data.rows.map { it.moneyRecord() }, target))
+                .combine(exchangeRateProvider.rates) { (data, target), rates ->
+                    Triple(data, target, exchangeRateProvider.summarize(data.rows.map { it.moneyRecord() }, target) to rates)
                 }
                 .combine(visibleLimit) { (data, target, conversion), limit ->
                     IncomesUiState(incomes = data.rows.take(limit), query = data.filter.query, matchingCount = data.rows.size,
                         hasMore = data.rows.size > limit, periodStart = data.filter.start, periodEnd = data.filter.end,
                         hasAnyIncomes = data.hasAny, selectedCategoryFilter = data.filter.category,
                         selectedSubcategoryFilter = data.filter.subcategory, availableCategories = data.categories,
-                        availableSubcategories = data.subcategories, totalIngresosConvertido = conversion.amount,
-                        conversion = conversion, defaultCurrency = target, isLoading = false)
+                        availableSubcategories = data.subcategories, totalIngresosConvertido = conversion.first.amount,
+                        conversion = conversion.first, defaultCurrency = target, rates = conversion.second, isLoading = false)
                 }
                 .flowOn(Dispatchers.Default)
                 .catch { failure -> _uiState.update { it.copy(error = failure.message ?: context.getString(R.string.load_income_error), isLoading = false) } }

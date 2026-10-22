@@ -60,7 +60,6 @@ fun ChatbotScreen(
     onOpenDocument: (com.gastos.domain.model.DocumentIdentity) -> Unit = {},
     onOpenReceipt: (String, String?) -> Unit = { _, _ -> },
     onManualEntry: (Boolean) -> Unit = {},
-    onNavigateToBank: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     captureModel: DocumentCaptureViewModel = hiltViewModel(),
     viewModel: ChatbotViewModel = hiltViewModel()
@@ -267,7 +266,6 @@ fun ChatbotScreen(
                                 }
                             )
                             HorizontalDivider()
-                            DropdownMenuItem(text = { Text(stringResource(com.gastos.common.R.string.bank_statements_title)) }, onClick = { showScanMenu = false; onNavigateToBank() })
                             DropdownMenuItem(text = { Text(stringResource(R.string.manual_expense)) }, onClick = { showScanMenu = false; onManualEntry(false) })
                             DropdownMenuItem(text = { Text(stringResource(R.string.manual_income)) }, onClick = { showScanMenu = false; onManualEntry(true) })
                         }
