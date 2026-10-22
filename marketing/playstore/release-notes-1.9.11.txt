@@ -1,0 +1,21 @@
+<es-ES>
+• Si cambias la moneda, ahora se convierte todo: cada movimiento muestra su importe en tu moneda y debajo el original del documento.
+• Los totales y las filas hablan el mismo idioma, así que la lista ya cuadra de un vistazo.
+• Si falta el tipo de cambio de una moneda, se ve el importe original en lugar de una cifra inventada.
+• Se retira la importación de extractos bancarios: la app ya no la ofrece.
+• El resumen de IVA, el multi-país y el cambio de país y moneda siguen como estaban.
+</es-ES>
+<en-US>
+• Change the currency and everything converts: each movement shows its amount in your currency, with the document's original amount underneath.
+• Totals and rows now speak the same language, so the list adds up at a glance.
+• If an exchange rate is missing, you see the original amount instead of a made-up figure.
+• Bank statement import is gone: the app no longer offers it.
+• The VAT summary, multi-country support and country/currency settings are unchanged.
+</en-US>
+<es-419>
+• Si cambiás la moneda, ahora se convierte todo: cada movimiento muestra su importe en tu moneda y abajo el original del documento.
+• Los totales y las filas hablan el mismo idioma, así que la lista ya cuadra de un vistazo.
+• Si falta el tipo de cambio de una moneda, se ve el importe original en lugar de una cifra inventada.
+• Se retira la importación de extractos bancarios: la app ya no la ofrece.
+• El resumen de IVA, el multi-país y el cambio de país y moneda siguen igual.
+</es-419>
