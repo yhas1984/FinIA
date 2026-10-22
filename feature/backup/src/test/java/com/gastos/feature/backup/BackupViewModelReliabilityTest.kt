@@ -32,7 +32,7 @@ class BackupViewModelReliabilityTest {
             every { sync.operations } returns MutableStateFlow(emptyList())
             val model = BackupViewModel(context,mockk(relaxed=true),cloud,mockk(relaxed=true),preferences,
                 BackupRestoreCoordinator(),export,sync,mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),
-                mockk { every { isPremium } returns MutableStateFlow(false) }, mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true))
+                mockk { every { isPremium } returns MutableStateFlow(false) }, mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true))
             advanceUntilIdle()
             model.createCloudBackupNow()
             advanceUntilIdle()
@@ -64,7 +64,7 @@ class BackupViewModelReliabilityTest {
             }
             val model = BackupViewModel(mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),prefs,
                 BackupRestoreCoordinator(),export,sync,mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),
-                mockk { every { isPremium } returns MutableStateFlow(false) },mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true))
+                mockk { every { isPremium } returns MutableStateFlow(false) },mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true),mockk(relaxed=true))
             advanceUntilIdle()
             model.clearSheetsResult()
             assertEquals("https://docs.google.com/spreadsheets/d/existing-book/edit",model.uiState.value.sheetsUrl)

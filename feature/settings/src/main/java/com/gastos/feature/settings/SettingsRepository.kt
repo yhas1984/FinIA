@@ -43,7 +43,8 @@ data class AppSettings(
 class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secureStorage: SecureStorage
-) : CurrencyPreference, com.gastos.repository.ManualEntryDefaultsProvider,
+) : CurrencyPreference, com.gastos.repository.FiscalCountryPreference,
+    com.gastos.repository.ManualEntryDefaultsProvider,
     BackupSettingsProvider,
     DashboardLayoutPreference,
     FloatingButtonPositionPreference {
@@ -100,6 +101,14 @@ class SettingsRepository @Inject constructor(
     override val defaultCurrency: kotlinx.coroutines.flow.StateFlow<String> =
         settings.map { it.defaultCurrency }
             .stateIn(repoScope, SharingStarted.Eagerly, "EUR")
+
+    /**
+     * País fiscal por defecto como StateFlow, por el mismo motivo que la moneda: el informe de IVA
+     * debe recalcularse solo cuando el usuario cambia de país, sin salir y volver a entrar.
+     */
+    override val defaultCountry: kotlinx.coroutines.flow.StateFlow<String> =
+        settings.map { it.defaultCountry }
+            .stateIn(repoScope, SharingStarted.Eagerly, "ES")
 
     suspend fun updateGeminiApiKey(apiKey: String) {
         secureStorage.putString(SecureStorage.KEY_GEMINI_API_KEY, apiKey)

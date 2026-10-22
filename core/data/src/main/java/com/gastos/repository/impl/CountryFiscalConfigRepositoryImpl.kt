@@ -4,6 +4,7 @@ import com.gastos.data.local.entity.toDomain
 import com.gastos.data.local.entity.toEntity
 import com.gastos.local.dao.CountryFiscalConfigDao
 import com.gastos.domain.model.CountryFiscalConfig
+import com.gastos.domain.model.TaxPeriodType
 import com.gastos.repository.CountryFiscalConfigRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -36,14 +37,30 @@ class CountryFiscalConfigRepositoryImpl @Inject constructor(
     }
 
     private fun createDefaultConfigs(): List<CountryFiscalConfig> = listOf(
+        // España: periodo, plazos y retenciones verificados en la sede de la AEAT.
+        // Tipos: general 21 %, reducidos 10 % y 4 %, y 0 % en determinadas operaciones.
+        // Periodo general: trimestral. Plazos: 1-20 del mes siguiente (abril, julio, octubre) y
+        // 1-30 de enero para el cuarto trimestre. Retención de actividades profesionales: 15 %.
         CountryFiscalConfig(
             paisCodigo = "ES",
             nombrePais = "España",
-            ivaRates = listOf(4.0, 10.0, 21.0),
+            ivaRates = listOf(0.0, 4.0, 10.0, 21.0),
             irpfRate = 15.0,
             nifFormat = "X-XXXXXXXX-X",
-            nombreLeyFiscal = "IVA"
+            nombreLeyFiscal = "IVA",
+            tipoPeriodo = TaxPeriodType.QUARTERLY,
+            nombreDeclaracion = "modelo 303",
+            plazos = mapOf(
+                "1T" to "1-20 abril",
+                "2T" to "1-20 julio",
+                "3T" to "1-20 octubre",
+                "4T" to "1-30 enero"
+            ),
+            tiposRetencion = listOf(7.0)
         ),
+        // Los demás países NO llevan nombre de declaración: su periodo y sus plazos no están
+        // verificados en fuente oficial y el informe se presenta como «Resumen de IVA» genérico.
+        // El usuario elige cada cuánto declara (USER_DEFINED).
         CountryFiscalConfig(
             paisCodigo = "MX",
             nombrePais = "México",

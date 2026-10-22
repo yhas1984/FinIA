@@ -24,6 +24,8 @@
     <string name="currency">Moneda</string>
     <string name="default_tax_country">País fiscal por defecto</string>
     <string name="settings_country_help">Se usa solo si el país no puede detectarse en el documento.</string>
+    <string name="settings_currency_suggestion">Lo habitual en %1$s es %2$s, pero puedes usar la moneda que quieras.</string>
+    <string name="settings_currency_suggestion_apply">Usar %1$s</string>
     <string name="exchange_rates">Tipos de cambio</string>
     <string name="updating">Actualizando…</string>
     <string name="exchange_rates_status">%1$d monedas · actualizado %2$s</string>
@@ -32,7 +34,7 @@
     <string name="premium">Premium</string>
     <string name="pro">Pro</string>
     <string name="premium_active">Funciones premium activadas ✓</string>
-    <string name="premium_pitch">Desbloquea exportación a Google Sheets y chat IA avanzado.</string>
+    <string name="premium_pitch">Desbloquea la salida de tus datos: Sheets, Drive, backup automático y chat IA con memoria.</string>
     <string name="see_premium">Ver Premium</string>
     <string name="floating_buttons">Botones flotantes</string>
     <string name="floating_buttons_help">Mantén pulsado un botón flotante para moverlo. Cada pantalla recuerda su posición.</string>
@@ -61,12 +63,16 @@
     <string name="delete">Eliminar</string>
     <string name="invalid_link">El enlace solicitado no es válido o ya no es seguro abrirlo.</string>
     <string name="could_not_open_link">No se pudo abrir el enlace solicitado.</string>
+    <string name="premium_features_vat_title">Resumen de IVA para tu gestor</string>
+    <string name="premium_features_vat_desc">Base, cuota y diferencia por trimestre, en PDF o CSV, listo para enviar a tu gestoría.</string>
     <string name="premium_features_sheets_title">Exportación a Google Sheets</string>
     <string name="premium_features_sheets_desc">Exporta y sincroniza tus datos con un Google Sheet organizado por hojas.</string>
     <string name="premium_features_drive_title">Fotos de facturas en Drive</string>
     <string name="premium_features_drive_desc">Guarda automáticamente cada justificante nuevo en tu carpeta FinAI.</string>
     <string name="premium_features_chat_title">Chat IA avanzado</string>
     <string name="premium_features_chat_desc">Memoria de 10 turnos y respuestas en streaming.</string>
+    <string name="premium_features_backup_title">Backup automático en Drive</string>
+    <string name="premium_features_backup_desc">Copia completa y cifrada de tu base de datos en tu propio Drive, sola y sin intervenir.</string>
     <string name="settings_appearance_section">Apariencia</string>
     <string name="settings_theme_label">Tema</string>
     <string name="settings_regional_section">Regional</string>
@@ -78,7 +84,7 @@
     <string name="settings_premium_title">Premium</string>
     <string name="settings_premium_chip">Pro</string>
     <string name="settings_premium_enabled">Funciones premium activadas ✓</string>
-    <string name="settings_premium_pitch">Desbloquea exportación a Google Sheets y chat IA avanzado.</string>
+    <string name="settings_premium_pitch">Desbloquea la salida de tus datos: Sheets, Drive, backup automático y chat IA con memoria.</string>
     <string name="settings_floating_buttons_title">Botones flotantes</string>
     <string name="settings_data_title">Datos</string>
     <string name="settings_debug_title">Debug</string>

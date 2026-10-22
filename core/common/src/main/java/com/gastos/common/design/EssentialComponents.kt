@@ -65,8 +65,13 @@ fun MovementRow(
     currency: String,
     isIncome: Boolean,
     onEdit: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    /** Importe ya convertido a la moneda de visualización; null si no hay tasa disponible. */
+    displayAmount: Double? = null,
+    displayCurrency: String = ""
 ) {
+    // Solo se muestra convertido cuando hay tasa y la moneda es distinta; si falta, queda el original.
+    val converted: Double? = displayAmount?.takeIf { displayCurrency.isNotBlank() && !displayCurrency.equals(currency, true) }
     val locale = LocalLocale.current.platformLocale
     val subtitle = "$category · ${DateFormat.getDateInstance(DateFormat.SHORT, locale).format(Date(date))}"
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -77,12 +82,12 @@ fun MovementRow(
             if (maxWidth < 260.dp || LocalDensity.current.fontScale >= 1.3f) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     MovementLabels(title, subtitle)
-                    MovementAmount(amount, currency, isIncome)
+                    MovementAmount(amount, currency, isIncome, converted, displayCurrency)
                 }
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     MovementLabels(title, subtitle, Modifier.weight(1f))
-                    MovementAmount(amount, currency, isIncome, Modifier.widthIn(max = 150.dp))
+                    MovementAmount(amount, currency, isIncome, converted, displayCurrency, Modifier.widthIn(max = 160.dp))
                 }
             }
         }
@@ -104,11 +109,23 @@ private fun MovementLabels(title: String, subtitle: String, modifier: Modifier =
 }
 
 @Composable
-private fun MovementAmount(amount: Double, currency: String, isIncome: Boolean, modifier: Modifier = Modifier) {
-    Text((if (isIncome) "+" else "−") + formatMoney(amount, currency, LocalLocale.current.platformLocale),
-        style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-        color = if (isIncome) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface,
-        modifier = modifier)
+private fun MovementAmount(amount: Double, currency: String, isIncome: Boolean,
+    converted: Double? = null, displayCurrency: String = "", modifier: Modifier = Modifier) {
+    val locale = LocalLocale.current.platformLocale
+    val sign = if (isIncome) "+" else "−"
+    val color = if (isIncome) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurface
+    if (converted == null) {
+        Text(sign + formatMoney(amount, currency, locale), style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold, color = color, modifier = modifier)
+    } else {
+        // Convertido en grande (lo que suma en los totales) y el importe real del documento debajo.
+        Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(sign + formatMoney(converted, displayCurrency, locale), style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold, color = color)
+            Text(sign + formatMoney(amount, currency, locale), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
+    }
 }
 
 @Composable

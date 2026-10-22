@@ -99,7 +99,14 @@ fun SettingsScreen(
                     EssentialRow(stringResource(com.gastos.common.R.string.essential_data), stringResource(com.gastos.common.R.string.essential_data_hint), Icons.Outlined.Storage, onNavigateToBackup)
                     HorizontalDivider()
                     EssentialRow(stringResource(com.gastos.common.R.string.essential_personalize), stringResource(com.gastos.common.R.string.essential_personalize_hint), Icons.Outlined.DashboardCustomize, onNavigateToPersonalize)
-                    EssentialRow(stringResource(com.gastos.common.R.string.essential_preferences), stringResource(com.gastos.common.R.string.essential_preferences_hint), Icons.Outlined.Tune, { onNavigateToSection(SettingsPage.PREFERENCES) })
+                    // Se muestran los valores actuales en la propia fila: así no hay que entrar
+                    // para saber con qué país y moneda está calculando la app.
+                    EssentialRow(
+                        stringResource(com.gastos.common.R.string.essential_preferences),
+                        uiState.settings.defaultCurrency + " · " + com.gastos.domain.model.fiscalCountryLabel(uiState.settings.defaultCountry),
+                        Icons.Outlined.Tune,
+                        { onNavigateToSection(SettingsPage.PREFERENCES) }
+                    )
                     HorizontalDivider()
                     EssentialRow(stringResource(R.string.settings_premium_title), if (uiState.isPremium) stringResource(R.string.settings_premium_enabled) else stringResource(R.string.settings_premium_pitch), Icons.Outlined.StarBorder, onNavigateToPremium)
                     EssentialRow(stringResource(com.gastos.common.R.string.essential_help), stringResource(com.gastos.common.R.string.essential_help_hint), Icons.Outlined.HelpOutline, { onNavigateToSection(SettingsPage.HELP) })
@@ -312,6 +319,29 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
                 )
+
+                // Sugerencia, nunca imposición: país y moneda siguen siendo ajustes distintos.
+                val usualCurrency = com.gastos.domain.model.usualCurrencyForCountry(uiState.settings.defaultCountry)
+                if (usualCurrency != null && usualCurrency != uiState.settings.defaultCurrency) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.settings_currency_suggestion,
+                                com.gastos.domain.model.fiscalCountryLabel(uiState.settings.defaultCountry),
+                                usualCurrency
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { viewModel.updateDefaultCurrency(usualCurrency) }) {
+                            Text(stringResource(R.string.settings_currency_suggestion_apply, usualCurrency))
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(12.dp))
 

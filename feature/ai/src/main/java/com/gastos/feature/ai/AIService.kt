@@ -307,16 +307,22 @@ class AIService @Inject constructor(
 
     suspend fun queryData(query: String): AIResult {
         if (!isConfigured()) return notConfiguredResult()
+        val hoy = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date())
         return try {
-            val responseText = geminiRestClient.generateContent(
-                GeminiGenerateRequest(
-                    apiKey = currentApiKey,
-                    systemInstruction = buildSystemPrompt(systemInstructions),
-                    contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(queryExtractionPrompt(query))))),
-                    generationConfig = GeminiGenerationConfig(thinkingLevel = QUERY_THINKING_LEVEL)
-                )
-            )
+            var responseText = pedirConsulta(query, hoy)
             check(responseText.isNotBlank()) { "Gemini devolvió una respuesta vacía." }
+            // Validación local: si la consulta viene mal formada se le devuelve el error al modelo
+            // UNA vez para que la corrija (mejor eso que contestar con el periodo equivocado).
+            val errores = QuerySpecValidator.validate(responseText, hoy)
+            if (errores.isNotEmpty()) {
+                SafeLog.w(TAG, "Consulta inválida (" + errores.joinToString() + "); se pide corrección")
+                val corregida = pedirConsulta(query, hoy, errores)
+                if (corregida.isNotBlank() && QuerySpecValidator.validate(corregida, hoy).isEmpty()) {
+                    responseText = corregida
+                } else {
+                    SafeLog.w(TAG, "La corrección tampoco fue válida; se resuelve localmente")
+                }
+            }
             AIResult(success = true, message = context.getString(R.string.ai_query_processed), queryResult = responseText)
         } catch (error: CancellationException) {
             throw error
@@ -324,6 +330,52 @@ class AIService @Inject constructor(
             SafeLog.w(TAG, "Error en queryData (${error::class.java.simpleName})")
             AIResult(success = false, message = friendlyError(error))
         }
+    }
+
+    /** Pide al modelo el JSON de la consulta, ya con esquema cerrado (sin texto libre). */
+    private suspend fun pedirConsulta(query: String, hoy: String, errores: List<String> = emptyList()): String {
+        val instruccion = queryExtractionPrompt(query, hoy) + if (errores.isEmpty()) "" else
+            "\n\nLa respuesta anterior no es válida: " + errores.joinToString() +
+                "\nDevuelve SOLO el JSON corregido."
+        return geminiRestClient.generateContent(
+            GeminiGenerateRequest(
+                apiKey = currentApiKey,
+                systemInstruction = buildSystemPrompt(systemInstructions),
+                contents = listOf(GeminiContent(role = ROLE_USER, textParts = listOf(GeminiTextPart(instruccion)))),
+                generationConfig = GeminiGenerationConfig(
+                    thinkingLevel = QUERY_THINKING_LEVEL,
+                    responseMimeType = QUERY_RESPONSE_MIME_TYPE,
+                    responseSchema = queryResponseSchema()
+                )
+            )
+        )
+    }
+
+    /** Esquema de la consulta financiera: el modelo no puede devolver otra forma que esta. */
+    private fun queryResponseSchema(): JSONObject = JSONObject().apply {
+        put("type", "OBJECT")
+        put("properties", JSONObject().apply {
+            put("action", JSONObject().put("type", "STRING").put("enum", JSONArray(listOf("query"))))
+            put("query_type", JSONObject().put("type", "STRING")
+                .put("enum", JSONArray(listOf("gastos", "ingresos", "balance", "productos", "productos_por_comercio"))))
+            put("periodo", JSONObject().put("type", "STRING").put("nullable", true))
+            put("desde", JSONObject().put("type", "STRING").put("nullable", true))
+            put("hasta", JSONObject().put("type", "STRING").put("nullable", true))
+            put("categoria", JSONObject().put("type", "STRING").put("nullable", true))
+            put("subcategoria", JSONObject().put("type", "STRING").put("nullable", true))
+            put("proveedor", JSONObject().put("type", "STRING").put("nullable", true))
+            put("item", JSONObject().put("type", "STRING").put("nullable", true))
+            put("match_mode", JSONObject().put("type", "STRING")
+                .put("enum", JSONArray(listOf("exact", "group", "auto"))).put("nullable", true))
+            put("operacion", JSONObject().put("type", "STRING")
+                .put("enum", JSONArray(listOf("total", "resumen_mensual", "ranking", "comparar", "mayor", "ultimo")))
+                .put("nullable", true))
+            put("agrupar_por", JSONObject().put("type", "STRING")
+                .put("enum", JSONArray(listOf("mes", "categoria", "comercio", "producto"))).put("nullable", true))
+            put("excluir", JSONObject().put("type", "STRING").put("nullable", true))
+            put("comparar_con", JSONObject().put("type", "STRING").put("nullable", true))
+        })
+        put("required", JSONArray(listOf("action", "query_type")))
     }
 
     private fun notConfiguredResult(): AIResult = AIResult(success = false, message = context.getString(R.string.ai_no_api_key))
@@ -405,7 +457,7 @@ class AIService @Inject constructor(
             Reglas de acción:
             1. CONSULTA FINANCIERA: si pregunta cuánto gastó, sus ingresos, balance, totales,
                comercios, proveedores, productos comprados, etc.:
-                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|todo|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","operacion":"total|resumen_mensual|ranking|comparar|mayor|ultimo","agrupar_por":"mes|categoria|comercio|producto o null","excluir":"comercios a excluir separados por comas o null","comparar_con":"periodo con el que comparar (p. ej. mes anterior) o null","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
                Diferencia siempre estos filtros:
                 - COMERCIO/PROVEEDOR: Mercadona, Lidl, Amazon, Repsol, etc. Usa
                   query_type="gastos", proveedor="nombre", categoria=null e item=null.
@@ -427,6 +479,27 @@ class AIService @Inject constructor(
                - "ingresado", "cobrado", "recibido", "salario" o "nómina"
                  significan ingresos, no balance.
                - "lo que va de mes", "este mes" y "mes actual" usan periodo="mes".
+               - PERIODO CONCRETO: si el usuario nombra un mes, aunque sea pasado, usa
+                 periodo="YYYY-MM" con el año que corresponda a la fecha de hoy:
+                 * "en agosto" (hoy 2026-10-17) => periodo="2026-08".
+                 * "en el mes de agosto de 2025" => periodo="2025-08".
+                 * "el mes pasado" => periodo="mes anterior".
+                 * "del 1 al 15 de agosto" => periodo="2026-08-01..2026-08-15".
+                 NUNCA devuelvas periodo="mes" si el usuario ha nombrado un mes o unas fechas.
+               - CORRECCIÓN DE PERIODO: si el usuario rectifica ("dije agosto, no este mes"),
+                 repite la consulta con el periodo corregido; no repitas la respuesta anterior.
+               - OPERACIONES ESPECIALES (hazlas siempre que encajen; el cálculo es local):
+                 * «¿cuánto gasto al mes en X?», «¿cuánto me gasto de media en X?» => operacion="resumen_mensual",
+                   periodo="todo" (histórico completo) e item/proveedor/categoria según X.
+                 * «¿en qué categoría gasto más?» => operacion="ranking", agrupar_por="categoria".
+                   «¿en qué comercio gasto más?» => operacion="ranking", agrupar_por="comercio".
+                 * «¿he gastado más este mes que el pasado?» => operacion="comparar", periodo="mes", comparar_con="mes anterior".
+                 * «sin contar X», «excepto X» => excluir="X".
+                 * «el mayor ingreso/movimiento» => operacion="mayor"; «el último movimiento/ingreso» => operacion="ultimo".
+                 * «en total», «en todo el histórico» => periodo="todo".
+               - FECHAS EXACTAS: si el usuario da un rango de fechas ("del 1 al 15 de agosto",
+                 "entre el 3 y el 10 de septiembre", "desde el 1 de julio"), rellena desde y hasta en
+                 formato YYYY-MM-DD y deja periodo=null. Si solo da un día, desde=hasta ese día.
                - En seguimientos como "ese comercio", "esa tienda" o "ahí", conserva
                  el proveedor mencionado en la conversación anterior.
                Reglas extra para productos:
@@ -480,7 +553,7 @@ class AIService @Inject constructor(
             Action rules:
             1. FINANCIAL QUERY: if the user asks how much was spent, income, balance, totals,
                stores, providers, purchased products, etc.:
-                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
+                {"action":"query","query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|todo|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","operacion":"total|resumen_mensual|ranking|comparar|mayor|ultimo","agrupar_por":"mes|categoria|comercio|producto o null","excluir":"comercios a excluir separados por comas o null","comparar_con":"periodo con el que comparar (p. ej. mes anterior) o null","categoria":null,"subcategoria":null,"proveedor":null,"item":null,"match_mode":"exact|group|auto|null"}
                Distinguish these filters:
                 - STORE/PROVIDER: Mercadona, Lidl, Amazon, Repsol, etc. Use query_type="gastos",
                    proveedor="name", categoria=null and item=null.
@@ -495,6 +568,22 @@ class AIService @Inject constructor(
                 - "earned", "profit", "net", or "what's left" mean balance (income minus expenses).
                 - "received", "paid", "salary" mean income, not balance.
                 - "this month" and similar map to periodo="mes".
+                - SPECIFIC PERIOD: if the user names a month, even a past one, use
+                  periodo="YYYY-MM" with the year matching today's date ("in August" with today
+                  2026-10-17 => periodo="2026-08"; "last month" => periodo="mes anterior";
+                  "August 1 to 15" => periodo="2026-08-01..2026-08-15"). NEVER return periodo="mes"
+                  when a month or a date range was named.
+                - PERIOD CORRECTION: if the user corrects the period ("I said August, not this
+                  month"), run the query again with the corrected period; never repeat the answer.
+                - SPECIAL OPERATIONS (always use them when they fit; the maths is local):
+                  * "how much do I spend per month on X?" => operacion="resumen_mensual", periodo="todo".
+                  * "where do I spend the most?" => operacion="ranking", agrupar_por="categoria|comercio".
+                  * "did I spend more this month than last?" => operacion="comparar", comparar_con="mes anterior".
+                  * "not counting X" => excluir="X".
+                  * "the biggest / the last movement" => operacion="mayor" / operacion="ultimo".
+                  * "all time" => periodo="todo".
+                - EXACT DATES: if the user gives a date range ("August 1 to 15", "between the 3rd
+                  and the 10th of September"), fill desde and hasta as YYYY-MM-DD and set periodo=null.
                 - In follow-ups like "that store" or "there", keep the previous provider.
                 Product rules: generic names use match_mode="group"; exact line descriptions use match_mode="exact".
                 Do not use balance for product questions.
@@ -630,9 +719,10 @@ class AIService @Inject constructor(
         put("required", JSONArray(listOf("nombre", "porcentaje", "base", "importe", "tratamiento", "efecto")))
     })
 
-    private fun queryExtractionPrompt(query: String): String = """
+    private fun queryExtractionPrompt(query: String, today: String): String = """
+        Hoy es $today.
         Extrae los parámetros de esta consulta financiera y devuelve SOLO el JSON:
-        {"query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año","categoria":"texto o null","subcategoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
+        {"query_type":"gastos|ingresos|balance|productos|productos_por_comercio","periodo":"hoy|semana|mes|año|mes anterior|todo|YYYY-MM|YYYY-MM-DD..YYYY-MM-DD","desde":"YYYY-MM-DD o null","hasta":"YYYY-MM-DD o null","operacion":"total|resumen_mensual|ranking|comparar|mayor|ultimo","agrupar_por":"mes|categoria|comercio|producto o null","excluir":"comercios a excluir separados por comas o null","comparar_con":"periodo con el que comparar (p. ej. mes anterior) o null","categoria":"texto o null","subcategoria":"texto o null","proveedor":"texto o null","item":"texto o null","match_mode":"exact|group|auto|null"}
 
         Reglas:
         - comercio, tienda, supermercado, empresa o proveedor => proveedor, nunca item
@@ -647,6 +737,19 @@ class AIService @Inject constructor(
         - si la consulta es sobre un producto, usa query_type="productos", nunca "balance"
         - "ganado", "ganancia", "beneficio", "neto" o "lo que me queda" => balance
         - "ingresado", "cobrado", "recibido", "salario" o "nómina" => ingresos
+        - mes nombrado por el usuario, aunque sea pasado => periodo="YYYY-MM" con el año correcto
+          según la fecha de hoy ("en agosto" con hoy 2026-10-17 => "2026-08"); "el mes pasado" =>
+          "mes anterior"; un rango de fechas => "YYYY-MM-DD..YYYY-MM-DD"
+        - si el usuario nombra un mes o unas fechas, NUNCA devuelvas periodo="mes"
+        - si el usuario nombra un mes o unas fechas, NUNCA devuelvas periodo="mes"
+        - un rango de días ("del 1 al 15 de agosto") => desde="2026-08-01", hasta="2026-08-15", periodo=null
+        - "al mes", "de media", "por mes", "cada mes" + producto/comercio/categoría =>
+          operacion="resumen_mensual" y periodo="todo", con item si nombra producto
+        - "en qué categoría/comercio gasto más", "dónde gasto más" => operacion="ranking" y
+          agrupar_por="categoria" o "comercio"
+        - "sin contar", "excepto", "quitando" + comercio => excluir="comercio"
+        - "más que el mes pasado", "comparado con" => operacion="comparar" y comparar_con="mes anterior"
+        - "el mayor", "el más caro" => operacion="mayor"; "el último", "lo último" => operacion="ultimo"
 
         Consulta: "$query"
     """.trimIndent()
@@ -840,6 +943,7 @@ class AIService @Inject constructor(
         private const val CHAT_THINKING_LEVEL = "low"
         private const val QUERY_THINKING_LEVEL = "low"
         private const val OCR_RESPONSE_MIME_TYPE = "application/json"
+        private const val QUERY_RESPONSE_MIME_TYPE = "application/json"
         private const val OCR_MEDIA_RESOLUTION = "MEDIA_RESOLUTION_HIGH"
         private const val ROLE_USER = "user"
         private const val ROLE_MODEL = "model"

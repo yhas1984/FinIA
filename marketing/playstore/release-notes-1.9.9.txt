@@ -1,0 +1,18 @@
+<es-ES>
+• Escanea facturas con la cámara de la app: detecta los bordes del papel, recorta y endereza la foto antes de leerla, así el IVA y los importes salen mejor.
+• Disparo manual o captura automática cuando el marco está estable.
+• Puedes reportar cualquier respuesta de la IA que esté mal con el botón Reportar.
+• Mejoras de estabilidad y rendimiento.
+</es-ES>
+<en-US>
+• Scan invoices with the app camera: it detects the paper edges, crops and straightens the photo before reading it, so VAT and amounts come out more accurately.
+• Manual shutter or automatic capture once the frame is steady.
+• You can report any AI reply that is wrong with the Report button.
+• Stability and performance improvements.
+</en-US>
+<es-419>
+• Escanea facturas con la cámara de la app: detecta los bordes del papel, recorta y endereza la foto antes de leerla, así el IVA y los importes salen mejor.
+• Disparo manual o captura automática cuando el marco está estable.
+• Puedes reportar cualquier respuesta de la IA que esté mal con el botón Reportar.
+• Mejoras de estabilidad y rendimiento.
+</es-419>

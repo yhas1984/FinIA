@@ -53,6 +53,8 @@ data class InvoicesUiState(
     /** Total convertido a la moneda por defecto (solo gastos). null = sin tasas. */
     val totalGastosConvertido: Double? = null,
     val defaultCurrency: String = "EUR",
+    /** Tasas de cambio vigentes; se usan para convertir cada movimiento a la moneda de visualización. */
+    val rates: Map<String, Double> = emptyMap(),
     val isPremium: Boolean = false,
     val uploadingToDrive: Set<Long> = emptySet(),
     val isLoading: Boolean = true,
@@ -112,16 +114,16 @@ class InvoicesViewModel @Inject constructor(
                     InvoicesListData(filtered, filter, categories, subcategories, rows.isNotEmpty())
                 }
                 .combine(currencyPreference.defaultCurrency) { data, target -> data to target }
-                .combine(exchangeRateProvider.rates) { (data, target), _ ->
-                    Triple(data, target, exchangeRateProvider.summarize(data.rows.filter { !it.isIncome }.map { it.moneyRecord() }, target))
+                .combine(exchangeRateProvider.rates) { (data, target), rates ->
+                    Triple(data, target, exchangeRateProvider.summarize(data.rows.filter { !it.isIncome }.map { it.moneyRecord() }, target) to rates)
                 }
                 .combine(visibleLimit) { (data, target, conversion), limit ->
                     InvoicesUiState(invoices = data.rows.take(limit), query = data.filter.query, matchingCount = data.rows.size,
                         hasMore = data.rows.size > limit, periodStart = data.filter.start, periodEnd = data.filter.end,
                         hasAnyInvoices = data.hasAny, selectedCategoryFilter = data.filter.category,
                         selectedSubcategoryFilter = data.filter.subcategory, availableCategories = data.categories,
-                        availableSubcategories = data.subcategories, totalGastosConvertido = conversion.amount,
-                        conversion = conversion, defaultCurrency = target, isLoading = false)
+                        availableSubcategories = data.subcategories, totalGastosConvertido = conversion.first.amount,
+                        conversion = conversion.first, defaultCurrency = target, rates = conversion.second, isLoading = false)
                 }
                 .flowOn(Dispatchers.Default)
                 .catch { failure -> _uiState.update { it.copy(error = failure.message ?: context.getString(R.string.load_invoice_error), isLoading = false) } }

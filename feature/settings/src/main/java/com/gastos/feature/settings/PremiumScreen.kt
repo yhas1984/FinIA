@@ -207,6 +207,11 @@ enum class PremiumFeature(
     val titleRes: Int,
     val descriptionRes: Int
 ) {
+    VAT_SUMMARY(
+        Icons.Outlined.RequestQuote,
+        R.string.premium_features_vat_title,
+        R.string.premium_features_vat_desc
+    ),
     SHEETS(
         Icons.Outlined.TableChart,
         R.string.premium_features_sheets_title,
@@ -221,5 +226,10 @@ enum class PremiumFeature(
         Icons.Outlined.SmartToy,
         R.string.premium_features_chat_title,
         R.string.premium_features_chat_desc
+    ),
+    CLOUD_BACKUP(
+        Icons.Outlined.CloudSync,
+        R.string.premium_features_backup_title,
+        R.string.premium_features_backup_desc
     )
 }

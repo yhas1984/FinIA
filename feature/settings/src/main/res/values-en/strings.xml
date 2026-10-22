@@ -24,6 +24,8 @@
     <string name="currency">Currency</string>
     <string name="default_tax_country">Default tax country</string>
     <string name="settings_country_help">Used only if the country cannot be detected in the document.</string>
+    <string name="settings_currency_suggestion">%2$s is the usual currency in %1$s, but you can use any currency you like.</string>
+    <string name="settings_currency_suggestion_apply">Use %1$s</string>
     <string name="exchange_rates">Exchange rates</string>
     <string name="updating">Updating…</string>
     <string name="exchange_rates_status">%1$d currencies · updated %2$s</string>
@@ -32,7 +34,7 @@
     <string name="premium">Premium</string>
     <string name="pro">Pro</string>
     <string name="premium_active">Premium features enabled ✓</string>
-    <string name="premium_pitch">Unlock Google Sheets export and advanced AI chat.</string>
+    <string name="premium_pitch">Unlock your data out: Sheets, Drive, automatic backup and AI chat with memory.</string>
     <string name="see_premium">See Premium</string>
     <string name="floating_buttons">Floating buttons</string>
     <string name="floating_buttons_help">Long-press a floating button to move it. Each screen remembers its position.</string>
@@ -61,12 +63,16 @@
     <string name="delete">Delete</string>
     <string name="invalid_link">The requested link is not valid or is no longer safe to open.</string>
     <string name="could_not_open_link">Could not open the requested link.</string>
+    <string name="premium_features_vat_title">VAT summary for your accountant</string>
+    <string name="premium_features_vat_desc">Base, tax and difference per quarter, as PDF or CSV, ready to send to your accountant.</string>
     <string name="premium_features_sheets_title">Google Sheets export</string>
     <string name="premium_features_sheets_desc">Export and sync your data with a Google Sheet organized by tabs.</string>
     <string name="premium_features_drive_title">Invoice photos in Drive</string>
     <string name="premium_features_drive_desc">Automatically store each new receipt in your FinAI folder.</string>
     <string name="premium_features_chat_title">Advanced AI chat</string>
     <string name="premium_features_chat_desc">10-turn memory and streaming responses.</string>
+    <string name="premium_features_backup_title">Automatic Drive backup</string>
+    <string name="premium_features_backup_desc">Full encrypted copy of your database in your own Drive, on its own and unattended.</string>
     <string name="settings_appearance_section">Appearance</string>
     <string name="settings_theme_label">Theme</string>
     <string name="settings_regional_section">Regional</string>
@@ -78,7 +84,7 @@
     <string name="settings_premium_title">Premium</string>
     <string name="settings_premium_chip">Pro</string>
     <string name="settings_premium_enabled">Premium features enabled ✓</string>
-    <string name="settings_premium_pitch">Unlock Google Sheets export and advanced AI chat.</string>
+    <string name="settings_premium_pitch">Unlock your data out: Sheets, Drive, automatic backup and AI chat with memory.</string>
     <string name="settings_floating_buttons_title">Floating buttons</string>
     <string name="settings_data_title">Data</string>
     <string name="settings_debug_title">Debug</string>

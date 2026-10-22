@@ -36,6 +36,9 @@ dependencies {
     // Navigation
     implementation(libs.navigation.compose)
 
+    // Escáner de documentos de ML Kit (detección de bordes, recorte y enderezado)
+    implementation(libs.mlkit.document.scanner)
+
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
@@ -47,6 +50,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.coroutines.android)
+
+    // Petición de reseña con la API oficial de Play (In-App Review)
+    implementation(libs.play.review)
 
     // Sheets sync (desde backup)
     implementation(project(":feature:backup"))

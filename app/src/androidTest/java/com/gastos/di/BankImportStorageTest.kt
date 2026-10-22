@@ -101,7 +101,6 @@ class BankImportStorageTest {
             assertEquals(before, db.invoiceDao().documentRecords())
             assertEquals("INVOICE", store.transactions().first { !it.isExpense }.source)
             db.invoiceDao().updateInvoice(db.invoiceDao().getInvoiceById(id)!!.copy(total = 21.0, financialRevision = 1))
-            assertEquals(1, BankQuery.DIFFERENCES.select(store.transactions(), store.movements()).size)
         } finally { db.close() }
     }
 

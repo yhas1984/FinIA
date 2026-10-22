@@ -87,13 +87,240 @@ internal data class ResolvedProductClarification(
 )
 
 internal object FinancialQueryResolver {
-    fun normalizePeriod(value: String?): String = when (normalizeProductName(value.orEmpty())) {
-        "hoy", "today" -> "hoy"
-        "semana", "esta semana", "semana actual", "lo que va de semana", "week", "this week" -> "semana"
-        "ano", "este ano", "ano actual", "lo que va de ano", "year", "this year" -> "año"
-        "mes", "este mes", "mes actual", "lo que va de mes", "month", "this month" -> "mes"
-        else -> "mes"
+    /** Nombres de mes aceptados (español e inglés) → número de mes. */
+    private val NOMBRES_DE_MES: Map<String, Int> = mapOf(
+        "enero" to 1, "febrero" to 2, "marzo" to 3, "abril" to 4, "mayo" to 5, "junio" to 6,
+        "julio" to 7, "agosto" to 8, "septiembre" to 9, "setiembre" to 9, "octubre" to 10,
+        "noviembre" to 11, "diciembre" to 12,
+        "january" to 1, "february" to 2, "march" to 3, "april" to 4, "may" to 5, "june" to 6,
+        "july" to 7, "august" to 8, "september" to 9, "october" to 10, "november" to 11,
+        "december" to 12
+    )
+    private val MESES_ES = listOf(
+        "enero", "febrero", "marzo", "abril", "mayo", "junio",
+        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+    )
+    private val MESES_EN = listOf(
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    )
+    private val MES_ISO = Regex("""^(\d{4})[-/](\d{1,2})$""")
+    private val MES_ISO_INVERSO = Regex("""^(\d{1,2})[-/](\d{4})$""")
+    private val RANGO_ISO = Regex("""^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$""")
+    private val RANGO_FECHAS = Regex("""(\d{4}-\d{2}-\d{2})[^0-9]{1,12}(\d{4}-\d{2}-\d{2})""")
+
+    private fun claveDeMes(anio: Int, mes: Int): String = "mes:$anio-" + mes.toString().padStart(2, '0')
+
+    private fun desglosarMes(clave: String): Pair<Int, Int>? {
+        val partes = clave.removePrefix("mes:").split("-")
+        val anio = partes.getOrNull(0)?.toIntOrNull() ?: return null
+        val mes = partes.getOrNull(1)?.toIntOrNull() ?: return null
+        return if (mes in 1..12) anio to mes else null
     }
+
+    private fun calendario(hoy: Long, zona: TimeZone): Calendar =
+        Calendar.getInstance(zona).apply { timeInMillis = hoy }
+
+    private fun instante(zona: TimeZone, anio: Int, mes: Int, dia: Int, hora: Int, minuto: Int, segundo: Int, milis: Int): Long =
+        Calendar.getInstance(zona).apply {
+            clear()
+            set(anio, mes - 1, dia, hora, minuto, segundo)
+            set(Calendar.MILLISECOND, milis)
+        }.timeInMillis
+
+    private fun primerDiaDelMes(zona: TimeZone, anio: Int, mes: Int): Long =
+        instante(zona, anio, mes, 1, 0, 0, 0, 0)
+
+    private fun ultimoDiaDelMes(zona: TimeZone, anio: Int, mes: Int): Long {
+        val cal = Calendar.getInstance(zona).apply { timeInMillis = primerDiaDelMes(zona, anio, mes) }
+        cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
+        cal.set(Calendar.HOUR_OF_DAY, 23)
+        cal.set(Calendar.MINUTE, 59)
+        cal.set(Calendar.SECOND, 59)
+        cal.set(Calendar.MILLISECOND, 999)
+        return cal.timeInMillis
+    }
+
+    private fun fechaIso(texto: String, zona: TimeZone, finDelDia: Boolean): Long? {
+        val partes = texto.split("-")
+        val anio = partes.getOrNull(0)?.toIntOrNull() ?: return null
+        val mes = partes.getOrNull(1)?.toIntOrNull() ?: return null
+        val dia = partes.getOrNull(2)?.toIntOrNull() ?: return null
+        if (mes !in 1..12 || dia !in 1..31) return null
+        return if (finDelDia) instante(zona, anio, mes, dia, 23, 59, 59, 999)
+        else instante(zona, anio, mes, dia, 0, 0, 0, 0)
+    }
+
+    /**
+     * Convierte lo que pide el usuario (o el modelo) en un periodo canónico:
+     * `hoy`, `semana`, `mes`, `año`, `mes:2026-08` (un mes concreto) o
+     * `rango:2026-08-01:2026-08-15` (fechas explícitas).
+     *
+     * Importante: si reconoce un mes concreto NO lo sustituye por el mes actual; y si no
+     * reconoce nada devuelve `mes` (comportamiento de siempre), nunca un mes inventado.
+     */
+    fun normalizePeriod(
+        value: String?,
+        hoy: Long = System.currentTimeMillis(),
+        zona: TimeZone = TimeZone.getDefault()
+    ): String {
+        val texto = value?.trim().orEmpty()
+        if (texto.isEmpty() || texto.equals("null", ignoreCase = true)) return "mes"
+        if (texto.startsWith("mes:") || texto.startsWith("rango:")) return texto
+
+        // 1) formas con dígitos (se leen del texto original, que conserva guiones y barras)
+        MES_ISO.find(texto)?.let { m ->
+            val anio = m.groupValues[1].toInt()
+            val mes = m.groupValues[2].toInt()
+            if (mes in 1..12) return claveDeMes(anio, mes)
+        }
+        MES_ISO_INVERSO.find(texto)?.let { m ->
+            val mes = m.groupValues[1].toInt()
+            val anio = m.groupValues[2].toInt()
+            if (mes in 1..12) return claveDeMes(anio, mes)
+        }
+        RANGO_ISO.find(texto.replace(" ", ""))?.let { m ->
+            return "rango:${m.groupValues[1]}:${m.groupValues[2]}"
+        }
+        RANGO_FECHAS.find(texto)?.let { m ->
+            return "rango:${m.groupValues[1]}:${m.groupValues[2]}"
+        }
+
+        val cal = calendario(hoy, zona)
+        val norm = normalizeProductName(texto)
+
+        // 2) expresiones relativas (exactas o dentro de una frase)
+        when (norm) {
+            "hoy", "today" -> return "hoy"
+            "semana", "esta semana", "semana actual", "lo que va de semana", "week", "this week" -> return "semana"
+            "ano", "este ano", "ano actual", "lo que va de ano", "year", "this year" -> return "año"
+            "mes", "este mes", "mes actual", "lo que va de mes", "month", "this month" -> return "mes"
+            "todo", "todo el historico", "historico", "en total", "todos los periodos", "all time", "all", "ever" -> return "todo"
+        }
+        if (norm.contains("mes pasado") || norm.contains("mes anterior") || norm.contains("last month")) {
+            val anterior = cal.clone() as Calendar
+            anterior.add(Calendar.MONTH, -1)
+            return claveDeMes(anterior.get(Calendar.YEAR), anterior.get(Calendar.MONTH) + 1)
+        }
+        if (norm.contains("mes que viene") || norm.contains("proximo mes") || norm.contains("next month")) {
+            val siguiente = cal.clone() as Calendar
+            siguiente.add(Calendar.MONTH, 1)
+            return claveDeMes(siguiente.get(Calendar.YEAR), siguiente.get(Calendar.MONTH) + 1)
+        }
+
+        // 3) nombre de mes con año opcional: «agosto», «en agosto», «agosto de 2026», «mes de agosto»
+        val tokens = norm.split(" ").filter { it.isNotBlank() }
+        val numeroDeMes = tokens.firstNotNullOfOrNull { NOMBRES_DE_MES[it] }
+        if (numeroDeMes != null) {
+            val anioExplicito = tokens.firstOrNull { it.length == 4 && it.all { c -> c.isDigit() } }?.toInt()
+            val anio = anioExplicito ?: run {
+                // el año más reciente que no sea futuro
+                val anioActual = cal.get(Calendar.YEAR)
+                val mesActual = cal.get(Calendar.MONTH) + 1
+                if (numeroDeMes <= mesActual) anioActual else anioActual - 1
+            }
+            return claveDeMes(anio, numeroDeMes)
+        }
+
+        return "mes"
+    }
+
+    /** Devuelve el periodo canónico solo si la expresión es reconocible; si no, null. */
+    fun periodOrNull(
+        value: String?,
+        hoy: Long = System.currentTimeMillis(),
+        zona: TimeZone = TimeZone.getDefault()
+    ): String? {
+        val texto = value?.trim().orEmpty()
+        if (texto.isEmpty() || texto.equals("null", ignoreCase = true)) return null
+        val canon = normalizePeriod(texto, hoy, zona)
+        // normalizePeriod devuelve «mes» tanto para «este mes» como para algo que no entiende:
+        // aquí distingo los dos casos comprobando si el texto encaja con las formas conocidas.
+        if (canon != "mes") return canon
+        val norm = normalizeProductName(texto)
+        val esMesActual = norm == "mes" || norm.contains("este mes") || norm.contains("mes actual") ||
+            norm.contains("lo que va de mes") || norm == "month" || norm.contains("this month")
+        return if (esMesActual) "mes" else null
+    }
+
+    /** Convierte dos fechas ISO (desde/hasta) en un periodo canónico de rango, si son válidas. */
+    fun rangeFromIso(
+        desde: String?,
+        hasta: String?,
+        zona: TimeZone = TimeZone.getDefault()
+    ): String? {
+        fun valida(f: String?): String? {
+            val limpio = f?.trim().orEmpty()
+            if (!Regex("""^\d{4}-\d{2}-\d{2}$""").matches(limpio)) return null
+            val p = limpio.split("-")
+            val anio = p[0].toIntOrNull() ?: return null
+            val mes = p[1].toIntOrNull() ?: return null
+            val dia = p[2].toIntOrNull() ?: return null
+            if (mes !in 1..12 || dia !in 1..31) return null
+            return limpio
+        }
+        val d = valida(desde)
+        val h = valida(hasta)
+        return when {
+            d != null && h != null && d <= h -> "rango:$d:$h"
+            d != null && h == null -> "rango:$d:$d"
+            d == null && h != null -> "rango:$h:$h"
+            else -> null
+        }
+    }
+
+    /** Si la pregunta nombra un periodo concreto (mes, rango, «el mes pasado»), lo devuelve. */
+    fun periodFromQuestion(
+        question: String?,
+        hoy: Long = System.currentTimeMillis(),
+        zona: TimeZone = TimeZone.getDefault()
+    ): String? {
+        if (question.isNullOrBlank()) return null
+        val periodo = normalizePeriod(question, hoy, zona)
+        return periodo.takeIf { it != "mes" && it != "semana" && it != "año" && it != "hoy" && it != "todo" }
+    }
+
+    /** Rango [inicio, fin] en milisegundos del periodo pedido. */
+    fun periodRange(
+        periodo: String?,
+        hoy: Long = System.currentTimeMillis(),
+        zona: TimeZone = TimeZone.getDefault()
+    ): Pair<Long, Long> {
+        val canon = normalizePeriod(periodo, hoy, zona)
+        val cal = calendario(hoy, zona)
+        val anio = cal.get(Calendar.YEAR)
+        val mes = cal.get(Calendar.MONTH) + 1
+        return when {
+            canon == "hoy" -> {
+                val dia = cal.get(Calendar.DAY_OF_MONTH)
+                instante(zona, anio, mes, dia, 0, 0, 0, 0) to instante(zona, anio, mes, dia, 23, 59, 59, 999)
+            }
+            canon == "semana" -> {
+                val lunes = cal.clone() as Calendar
+                lunes.firstDayOfWeek = Calendar.MONDAY
+                lunes.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+                val inicio = instante(
+                    zona, lunes.get(Calendar.YEAR), lunes.get(Calendar.MONTH) + 1,
+                    lunes.get(Calendar.DAY_OF_MONTH), 0, 0, 0, 0
+                )
+                inicio to (inicio + 7L * 24 * 60 * 60 * 1000 - 1)
+            }
+            canon == "año" -> instante(zona, anio, 1, 1, 0, 0, 0, 0) to instante(zona, anio, 12, 31, 23, 59, 59, 999)
+            canon == "todo" -> 0L to instante(zona, anio, 12, 31, 23, 59, 59, 999)
+            canon.startsWith("mes:") -> {
+                val (a, m) = desglosarMes(canon) ?: (anio to mes)
+                primerDiaDelMes(zona, a, m) to ultimoDiaDelMes(zona, a, m)
+            }
+            canon.startsWith("rango:") -> {
+                val partes = canon.removePrefix("rango:").split(":")
+                val desde = partes.getOrNull(0)?.let { fechaIso(it, zona, finDelDia = false) }
+                val hasta = partes.getOrNull(1)?.let { fechaIso(it, zona, finDelDia = true) }
+                if (desde != null && hasta != null) desde to hasta else primerDiaDelMes(zona, anio, mes) to ultimoDiaDelMes(zona, anio, mes)
+            }
+            else -> primerDiaDelMes(zona, anio, mes) to ultimoDiaDelMes(zona, anio, mes)
+        }
+    }
+
 
     fun normalizeQueryType(value: String?): String? = when (normalizeProductName(value.orEmpty())) {
         "gastos", "expense", "expenses" -> "gastos"
@@ -104,11 +331,26 @@ internal object FinancialQueryResolver {
         else -> value?.takeIf { it.isNotBlank() }
     }
 
-    fun periodLabel(periodo: String, language: String = Locale.getDefault().language): String = when (normalizePeriod(periodo)) {
-        "hoy" -> if (isEnglishLanguage(language)) "today" else "hoy"
-        "semana" -> if (isEnglishLanguage(language)) "this week" else "esta semana"
-        "año" -> if (isEnglishLanguage(language)) "this year" else "este año"
-        else -> if (isEnglishLanguage(language)) "this month" else "este mes"
+    fun periodLabel(periodo: String, language: String = Locale.getDefault().language): String {
+        val en = isEnglishLanguage(language)
+        val canon = normalizePeriod(periodo)
+        return when {
+            canon == "hoy" -> if (en) "today" else "hoy"
+            canon == "semana" -> if (en) "this week" else "esta semana"
+            canon == "año" -> if (en) "this year" else "este año"
+            canon == "todo" -> if (en) "all time" else "todo el histórico"
+            canon.startsWith("mes:") -> {
+                val (anio, mes) = desglosarMes(canon) ?: return if (en) "this month" else "este mes"
+                if (en) "${MESES_EN[mes - 1]} $anio" else "${MESES_ES[mes - 1]} de $anio"
+            }
+            canon.startsWith("rango:") -> {
+                val partes = canon.removePrefix("rango:").split(":")
+                val desde = partes.getOrNull(0).orEmpty()
+                val hasta = partes.getOrNull(1) ?: desde
+                if (en) "$desde – $hasta" else "del $desde al $hasta"
+            }
+            else -> if (en) "this month" else "este mes"
+        }
     }
 
     private fun isEnglishLanguage(language: String): Boolean = language.equals("en", ignoreCase = true)
@@ -241,6 +483,139 @@ internal object FinancialQueryResolver {
                 else -> ProductMatchResult(emptyList(), emptyList(), false, false)
             }
         }
+    }
+
+    /** ¿La pregunta pide comparar contra el periodo anterior? («más que el mes pasado») */
+    fun comparaContraElPeriodoAnterior(pregunta: String): Boolean {
+        val p = pregunta.lowercase(Locale.ROOT)
+        val mencionaAnterior = listOf("mes pasado", "mes anterior", "pasado", "anterior", "last month")
+            .any { it in p }
+        val mencionaActual = listOf("este mes", "este año", "esta semana", "este periodo", "this month")
+            .any { it in p }
+        return mencionaAnterior && mencionaActual
+    }
+
+    /**
+     * Periodo con el que se compara, RELATIVO al periodo consultado: si se pregunta por agosto y se
+     * compara con «el mes anterior», el otro periodo es julio (no el mes anterior a hoy).
+     */
+    fun periodoComparable(
+        peticion: String,
+        inicioActual: Long,
+        finActual: Long = inicioActual,
+        ahora: Long = System.currentTimeMillis(),
+        zona: java.util.TimeZone = java.util.TimeZone.getDefault()
+    ): Pair<Long, Long> {
+        val p = peticion.lowercase(Locale.ROOT)
+        val calendario = java.util.Calendar.getInstance(zona).apply { timeInMillis = inicioActual }
+        return when {
+            "año" in p || "year" in p -> {
+                val inicio = java.util.Calendar.getInstance(zona).apply {
+                    timeInMillis = inicioActual
+                    set(java.util.Calendar.YEAR, get(java.util.Calendar.YEAR) - 1)
+                    set(java.util.Calendar.DAY_OF_YEAR, 1)
+                    set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                val fin = java.util.Calendar.getInstance(zona).apply {
+                    timeInMillis = inicio
+                    set(java.util.Calendar.MONTH, java.util.Calendar.DECEMBER)
+                    set(java.util.Calendar.DAY_OF_MONTH, 31)
+                    set(java.util.Calendar.HOUR_OF_DAY, 23); set(java.util.Calendar.MINUTE, 59)
+                    set(java.util.Calendar.SECOND, 59); set(java.util.Calendar.MILLISECOND, 999)
+                }.timeInMillis
+                inicio to fin
+            }
+            "semana" in p || "week" in p -> (inicioActual - 7L * 24 * 3600 * 1000) to (inicioActual - 1)
+            "mes" in p || "month" in p -> {
+                val inicio = java.util.Calendar.getInstance(zona).apply {
+                    timeInMillis = inicioActual
+                    add(java.util.Calendar.MONTH, -1)
+                    set(java.util.Calendar.DAY_OF_MONTH, 1)
+                    set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                val fin = java.util.Calendar.getInstance(zona).apply {
+                    timeInMillis = inicio
+                    set(java.util.Calendar.DAY_OF_MONTH, getActualMaximum(java.util.Calendar.DAY_OF_MONTH))
+                    set(java.util.Calendar.HOUR_OF_DAY, 23); set(java.util.Calendar.MINUTE, 59)
+                    set(java.util.Calendar.SECOND, 59); set(java.util.Calendar.MILLISECOND, 999)
+                }.timeInMillis
+                inicio to fin
+            }
+            else -> periodRange(normalizePeriod(peticion, ahora, zona), ahora, zona)
+        }
+    }
+
+    /**
+     * ¿La pregunta pide comparar de verdad? Sin lenguaje de comparación, `operacion="comparar"`
+     * es un error del modelo: una corrección («dije agosto, no este mes») solo rehace la consulta.
+     */
+    fun pideComparacion(pregunta: String?): Boolean {
+        if (pregunta.isNullOrBlank()) return false
+        val p = pregunta.lowercase(Locale.ROOT)
+        return listOf(
+            "mas que", "más que", "menos que", "comparad", "comparar", "en comparacion", "en comparación",
+            "diferencia", "respecto a", "frente a", "que el mes pasado", "que el mes anterior",
+            "que el ano pasado", "que el año pasado", "que la semana pasada", "more than", "less than",
+            "compared", "versus", " vs "
+        ).any { it in p }
+    }
+
+    /**
+     * ¿La pregunta pide de verdad el histórico completo? Sin una palabra que lo diga
+     * («en total», «histórico», «alguna vez», «desde siempre»), el periodo por defecto
+     * sigue siendo el mes en curso, como siempre ha hecho la app.
+     */
+    fun pideTodoElHistorico(pregunta: String?): Boolean {
+        if (pregunta.isNullOrBlank()) return false
+        val p = pregunta.lowercase(Locale.ROOT)
+        return listOf(
+            "en total", "total", "todo el historico", "todo el histórico", "historico", "histórico",
+            "todos los periodos", "todas las veces", "alguna vez", "desde siempre", "desde el principio",
+            "all time", "overall", "ever", "sin contar", "sin incluir", "excepto"
+        ).any { it in p }
+    }
+
+    /**
+     * Producto mencionado en la pregunta, buscado entre los productos que existen de verdad.
+     * Red de seguridad para cuando el modelo no rellena `item`: si el usuario dice «bananas»
+     * y hay un producto «BANANA», se usa ese. Se exige palabra completa para no confundir
+     * «pan» con «paneles» ni «sal» con «salario».
+     */
+    fun productoMencionado(pregunta: String?, productos: List<String>): String? {
+        if (pregunta.isNullOrBlank() || productos.isEmpty()) return null
+        val palabras = normalizeProductName(pregunta).split(" ").filter { it.length >= 3 }.toSet()
+        if (palabras.isEmpty()) return null
+        // candidatos: productos cuyo nombre completo está en la pregunta (el más largo primero)
+        val candidatos = productos
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sortedByDescending { it.length }
+            .filter { nombre ->
+                val normalizado = normalizeProductName(nombre)
+                normalizado.isNotBlank() && (
+                    (" " + normalizeProductName(pregunta) + " ").contains(" " + normalizado + " ") ||
+                        // singular/plural: «bananas» contiene «banana»
+                        normalizado.split(" ").all { palabra ->
+                            palabras.any { p -> p == palabra || p == palabra + "s" || p + "s" == palabra }
+                        }
+                    )
+            }
+        return candidatos.firstOrNull()
+    }
+
+    /** Comercios a excluir deducidos de la propia pregunta, cuando el modelo no los devuelve. */
+    fun exclusionesDeLaPregunta(pregunta: String?): List<String> {
+        if (pregunta.isNullOrBlank()) return emptyList()
+        val patron = Regex(
+            "(?:sin contar|sin incluir|excepto|quitando|menos|not counting|excluding)\\s+([\\p{L}0-9 .,\\-']{2,40})",
+            RegexOption.IGNORE_CASE
+        )
+        val bruto = patron.find(pregunta)?.groupValues?.get(1) ?: return emptyList()
+        val limpio = bruto.split(",", " y ", " en ", "?", ".", ";").first().trim()
+        return if (limpio.length >= 2) listOf(limpio) else emptyList()
     }
 
     fun matchesProvider(candidate: String, requestedProvider: String): Boolean {
@@ -390,7 +765,8 @@ data class ChatbotUiState(
     val isListening: Boolean = false,
     val correction: PendingCorrection? = null,
     val undoMutationId: String? = null,
-    val suggestedRule: com.gastos.domain.model.CategoryRule? = null
+    val suggestedRule: com.gastos.domain.model.CategoryRule? = null,
+    val needsApiKey: Boolean = false
 )
 
 @HiltViewModel
@@ -412,8 +788,7 @@ class ChatbotViewModel @Inject constructor(
     private val exchangeRateProvider: ExchangeRateProvider,
     private val currencyPreference: CurrencyPreference,
     private val commandOperations: com.gastos.storage.CommandOperationStore,
-    private val automation: AutomationCommands? = null,
-    private val bankImports: com.gastos.storage.BankImportStore? = null
+    private val automation: AutomationCommands? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatbotUiState(isProcessing = true))
@@ -425,6 +800,11 @@ class ChatbotViewModel @Inject constructor(
     private var activeOperationUuid: String? = null
     private var retryOperationUuid: String? = null
     private var lastFinancialQuery: (suspend () -> ExecutedFinancialQuery)? = null
+
+    /** Recalcula si falta la clave. Se llama al entrar en el chat, para no dejar el aviso pegado. */
+    fun refreshApiKeyState() {
+        _uiState.update { it.copy(needsApiKey = !aiService.isConfigured()) }
+    }
 
     init {
         observeCapturedDocuments()
@@ -590,33 +970,13 @@ class ChatbotViewModel @Inject constructor(
         } else it.messages + ChatMessage.User(text),
             isProcessing = true, canRetryIncomplete = false) }
 
-        val bankQuery = com.gastos.domain.model.BankQuery.detect(text)
-        if (bankQuery != null && bankImports != null) {
-            viewModelScope.launch {
-                try {
-                    val uuid = requireNotNull(activeOperationUuid)
-                    commandOperations.begin(uuid, text)
-                    val selected = bankQuery.select(bankImports.transactions(), bankImports.movements())
-                    val answer = buildString {
-                        append(context.getString(R.string.bank_query_count, selected.size))
-                        selected.take(20).forEach { row -> append("\n• ${row.description} · ${row.amount} ${row.currency} · ${java.text.DateFormat.getDateInstance().format(java.util.Date(row.date))}") }
-                        append("\n\n" + context.getString(R.string.bank_query_hint))
-                    }
-                    commandOperations.completeLocal(uuid, answer)
-                    _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(answer)) }
-                } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { _uiState.update { it.copy(messages = it.messages + ChatMessage.AI(context.getString(R.string.bank_query_failed))) } }
-                finally { _uiState.update { it.copy(isProcessing = false) } }
-            }
-            return
-        }
-
         // Sin API key: mensaje guía en lugar de llamar al servicio.
         if (!aiService.isConfigured()) {
             _uiState.update {
                 it.copy(
                     messages = it.messages + ChatMessage.AI(context.getString(R.string.chatbot_no_api_key)),
-                    isProcessing = false
+                    isProcessing = false,
+                    needsApiKey = true
                 )
             }
             return
@@ -859,14 +1219,39 @@ class ChatbotViewModel @Inject constructor(
                     val json = JSONObject(result.queryResult!!)
                     if (json.optString("action") == "query") {
                         val queryType = json.optString("query_type", json.optString("queryType"))
-                        val periodo = FinancialQueryResolver.normalizePeriod(
-                            json.optString("periodo", json.optString("period", "mes"))
+                        // Periodo: 1) lo que diga la pregunta del usuario, 2) las fechas ISO que
+                        // mande el modelo (desde/hasta), 3) el periodo que mande el modelo.
+                        val periodoDelModelo = FinancialQueryResolver.periodOrNull(
+                            json.optString("periodo", json.optString("period", ""))
                         )
+                        val rangoDelModelo = FinancialQueryResolver.rangeFromIso(
+                            json.optString("desde", json.optString("from", "")),
+                            json.optString("hasta", json.optString("to", ""))
+                        )
+                        val periodoDeLaPregunta = FinancialQueryResolver.periodFromQuestion(originalQuestion)
+                        val periodo = periodoDeLaPregunta ?: rangoDelModelo ?: periodoDelModelo ?: "mes"
+                        if (periodoDeLaPregunta == null && rangoDelModelo == null && periodoDelModelo == null) {
+                            SafeLog.w(TAG, "Periodo no reconocido en la consulta; se usa el mes en curso")
+                        } else if (periodo != periodoDelModelo) {
+                            SafeLog.w(TAG, "Periodo resuelto localmente: ${periodoDelModelo ?: "?"} -> $periodo")
+                        }
                         val categoria = json.optString("categoria", json.optString("category", "")).takeIf { it.isNotEmpty() && it != "null" }
                         val subcategoria = json.optString("subcategoria", json.optString("subcategory", "")).takeIf { it.isNotEmpty() && it != "null" }
                         val provider = json.optString("proveedor", json.optString("provider", "")).takeIf { it.isNotEmpty() && it != "null" }
                         val item = json.optString("item", "").takeIf { it.isNotEmpty() && it != "null" }
                         val matchMode = json.optString("match_mode", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val operacion = json.optString("operacion", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val agruparPor = json.optString("agrupar_por", "").takeIf { it.isNotEmpty() && it != "null" }
+                        val excluir = json.optString("excluir", "")
+                            .split(",", ";", " y ")
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() && it != "null" }
+                        val compararCon = json.optString("comparar_con", "").takeIf { it.isNotEmpty() && it != "null" }
+                        // «sin contar X», «excepto X»: si el modelo no lo devolvió, se aplica en local
+                        val excluirFinal = (excluir + FinancialQueryResolver.exclusionesDeLaPregunta(originalQuestion))
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .distinct()
                         val response = executeQuery(
                             queryType = queryType,
                             periodo = periodo,
@@ -875,7 +1260,11 @@ class ChatbotViewModel @Inject constructor(
                             provider = provider,
                             item = item,
                             matchMode = matchMode,
-                            originalQuestion = originalQuestion
+                            originalQuestion = originalQuestion,
+                            operacion = operacion,
+                            agruparPor = agruparPor,
+                            excluir = excluirFinal,
+                            compararCon = compararCon
                         )
                         showResult(
                             text = response.text,
@@ -975,74 +1364,8 @@ class ChatbotViewModel @Inject constructor(
         return null
     }
 
-    private fun getDateRange(periodo: String): Pair<Long, Long> {
-        val hoyCal = Calendar.getInstance()
-        hoyCal.set(Calendar.HOUR_OF_DAY, 0)
-        hoyCal.set(Calendar.MINUTE, 0)
-        hoyCal.set(Calendar.SECOND, 0)
-        hoyCal.set(Calendar.MILLISECOND, 0)
-        val hoyStart = hoyCal.timeInMillis
-        hoyCal.set(Calendar.HOUR_OF_DAY, 23)
-        hoyCal.set(Calendar.MINUTE, 59)
-        hoyCal.set(Calendar.SECOND, 59)
-        hoyCal.set(Calendar.MILLISECOND, 999)
-        val hoyEnd = hoyCal.timeInMillis
-
-        val semCal = Calendar.getInstance()
-        semCal.firstDayOfWeek = Calendar.MONDAY
-        semCal.set(Calendar.DAY_OF_WEEK, semCal.firstDayOfWeek)
-        semCal.set(Calendar.HOUR_OF_DAY, 0)
-        semCal.set(Calendar.MINUTE, 0)
-        semCal.set(Calendar.SECOND, 0)
-        semCal.set(Calendar.MILLISECOND, 0)
-        val semanaStart = semCal.timeInMillis
-        val semanaFinCal = semCal.clone() as Calendar
-        semanaFinCal.add(Calendar.DAY_OF_YEAR, 7)
-        val semanaEnd = semanaFinCal.timeInMillis - 1
-
-        val mesCal = Calendar.getInstance()
-        mesCal.set(Calendar.DAY_OF_MONTH, 1)
-        mesCal.set(Calendar.HOUR_OF_DAY, 0)
-        mesCal.set(Calendar.MINUTE, 0)
-        mesCal.set(Calendar.SECOND, 0)
-        mesCal.set(Calendar.MILLISECOND, 0)
-        val mesStart = mesCal.timeInMillis
-        mesCal.set(Calendar.DAY_OF_MONTH, mesCal.getActualMaximum(Calendar.DAY_OF_MONTH))
-        mesCal.set(Calendar.HOUR_OF_DAY, 23)
-        mesCal.set(Calendar.MINUTE, 59)
-        mesCal.set(Calendar.SECOND, 59)
-        mesCal.set(Calendar.MILLISECOND, 999)
-        val mesEnd = mesCal.timeInMillis
-
-        val anoCal = Calendar.getInstance()
-        anoCal.set(Calendar.DAY_OF_YEAR, 1)
-        anoCal.set(Calendar.HOUR_OF_DAY, 0)
-        anoCal.set(Calendar.MINUTE, 0)
-        anoCal.set(Calendar.SECOND, 0)
-        anoCal.set(Calendar.MILLISECOND, 0)
-        val anoStart = anoCal.timeInMillis
-        anoCal.set(Calendar.DAY_OF_YEAR, anoCal.getActualMaximum(Calendar.DAY_OF_YEAR))
-        anoCal.set(Calendar.HOUR_OF_DAY, 23)
-        anoCal.set(Calendar.MINUTE, 59)
-        anoCal.set(Calendar.SECOND, 59)
-        anoCal.set(Calendar.MILLISECOND, 999)
-        val anoEnd = anoCal.timeInMillis
-
-        return when (normalizePeriodLabel(periodo)) {
-            "hoy" -> hoyStart to hoyEnd
-            "semana" -> semanaStart to semanaEnd
-            "mes" -> mesStart to mesEnd
-            "año" -> anoStart to anoEnd
-            else -> mesStart to mesEnd
-        }
-    }
-
-    private fun normalizePeriodLabel(periodo: String): String = when (periodo.lowercase(Locale.ROOT)) {
-        "today", "hoy" -> "hoy"
-        "week", "this week", "semana", "esta semana" -> "semana"
-        "year", "this year", "año", "ano", "este año", "este ano" -> "año"
-        else -> "mes"
-    }
+    private fun getDateRange(periodo: String): Pair<Long, Long> =
+        FinancialQueryResolver.periodRange(periodo)
 
     private fun isEnglishLocale(): Boolean = activeLanguage().equals("en", ignoreCase = true)
 
@@ -1054,9 +1377,22 @@ class ChatbotViewModel @Inject constructor(
         provider: String?,
         item: String?,
         matchMode: String?,
-        originalQuestion: String?
+        originalQuestion: String?,
+        operacion: String? = null,
+        agruparPor: String? = null,
+        excluir: List<String> = emptyList(),
+        compararCon: String? = null
     ): ExecutedFinancialQuery {
-        lastFinancialQuery = { executeQuery(queryType, periodo, categoria, subcategoria, provider, item, matchMode, originalQuestion) }
+        // «todo el histórico» solo si la pregunta lo pide (o si la operación lo exige por definición:
+        // un «al mes de media» sin histórico no tiene sentido); si no, el mes en curso
+        val exigeHistorico = operacion == "resumen_mensual" || operacion == "mayor" || operacion == "ultimo"
+        val periodo = if (periodo == "todo" && !exigeHistorico &&
+            !FinancialQueryResolver.pideTodoElHistorico(originalQuestion)
+        ) "mes" else periodo
+        lastFinancialQuery = {
+            executeQuery(queryType, periodo, categoria, subcategoria, provider, item, matchMode, originalQuestion,
+                operacion, agruparPor, excluir, compararCon)
+        }
         val (start, end) = getDateRange(periodo)
         val target = currencyPreference.defaultCurrency.value
         val fmt = java.text.NumberFormat.getCurrencyInstance(activeLocale()).apply {
@@ -1087,20 +1423,161 @@ class ChatbotViewModel @Inject constructor(
         val resolvedProvider = resolvedQuery.provider
         val periodInvoices = invoices.filter { it.fecha in start..end }
         val periodIncomes = incomes.filter { it.fecha in start..end }
-        val filteredInvoices = periodInvoices.filter {
+        val filteredInvoicesBase = periodInvoices.filter {
             TransactionCategories.matchesCategory(it.categoria, normalizedCategory) &&
                 TransactionCategories.matchesCategory(it.subcategoria, normalizedSubcategory) &&
                 (resolvedProvider == null || FinancialQueryResolver.matchesProvider(it.proveedor, resolvedProvider))
         }
-        val filteredIncomes = periodIncomes.filter {
+        val filteredIncomesBase = periodIncomes.filter {
             TransactionCategories.matchesCategory(it.categoria, normalizedCategory) &&
                 TransactionCategories.matchesCategory(it.subcategoria, normalizedSubcategory)
+        }
+        // Exclusiones («sin contar Mercadona»): afectan a todo lo que se calcula después
+        val exclusiones = excluir.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val filteredInvoices = if (exclusiones.isEmpty()) filteredInvoicesBase else filteredInvoicesBase.filter { inv ->
+            exclusiones.none { FinancialQueryResolver.matchesProvider(inv.proveedor, it) }
+        }
+        val filteredIncomes = if (exclusiones.isEmpty()) filteredIncomesBase else filteredIncomesBase.filter { inc ->
+            exclusiones.none { FinancialQueryResolver.matchesProvider(inc.concepto, it) }
         }
         val filteredInvoiceIds = filteredInvoices.map { it.id }.toSet()
         val periodProducts = allProducts.filter { it.invoiceId in filteredInvoiceIds }
         val invoiceById = filteredInvoices.associateBy { it.id }
         val language = activeLanguage()
         val periodLabelText = FinancialQueryResolver.periodLabel(periodo, language)
+        // ── Operaciones que hacen el cálculo en local (fase 2) ──────────────────
+        // «comparar» solo si la pregunta compara de verdad; si no, se trata como consulta normal
+        val operacion = if (operacion == "comparar" && !FinancialQueryResolver.pideComparacion(originalQuestion)) {
+            "total"
+        } else operacion
+        if (operacion == "comparar" && !originalQuestion.isNullOrBlank() &&
+            FinancialQueryResolver.comparaContraElPeriodoAnterior(originalQuestion) &&
+            periodo != "mes"
+        ) {
+            // «¿he gastado más este mes que el pasado?»: el periodo consultado es ESTE mes
+            return executeQuery(queryType, "mes", categoria, subcategoria, provider, item, matchMode, originalQuestion,
+                operacion, agruparPor, excluir, compararCon)
+        }
+        if (!operacion.isNullOrBlank() && operacion != "total") {
+            // Si la pregunta nombra un producto, manda el producto (aunque el modelo diga «gastos»
+            // o no lo haya rellenado: se busca en los productos que existen de verdad)
+            val itemLocal = resolvedQuery.item?.takeIf { it.isNotBlank() }
+                ?: FinancialQueryResolver.productoMencionado(originalQuestion, allProducts.map { it.descripcion })
+            val tipoEfectivo = when {
+                resolvedQueryType == "ingresos" -> "ingresos"
+                itemLocal != null -> "productos"
+                else -> resolvedQueryType ?: "gastos"
+            }
+            val movimientos: List<ConsultasAvanzadas.Movimiento> = when (tipoEfectivo) {
+                "ingresos" -> filteredIncomes.map {
+                    ConsultasAvanzadas.Movimiento(it.fecha, it.monto, it.concepto, it.categoria.orEmpty(), "")
+                }
+                "producto", "productos", "productos_por_comercio" -> {
+                    val itemTexto = itemLocal
+                    val base = if (itemTexto.isNullOrBlank()) {
+                        periodProducts
+                    } else {
+                        val primero = FinancialQueryResolver.matchProducts(periodProducts, itemTexto, resolvedQuery.matchMode).matches
+                        // «bananas» → «BANANA»: segundo intento en singular si no hubo coincidencias
+                        if (primero.isEmpty() && itemTexto.endsWith("s", ignoreCase = true)) {
+                            // «bananas» → «banana»
+                            FinancialQueryResolver.matchProducts(periodProducts, itemTexto.dropLast(1), resolvedQuery.matchMode).matches
+                        } else primero
+                    }
+                    base.mapNotNull { producto ->
+                        val factura = invoiceById[producto.invoiceId] ?: return@mapNotNull null
+                        ConsultasAvanzadas.Movimiento(
+                            factura.fecha, producto.subtotal, factura.proveedor,
+                            factura.categoria.orEmpty(), producto.descripcion
+                        )
+                    }
+                }
+                else -> filteredInvoices.map {
+                    ConsultasAvanzadas.Movimiento(it.fecha, it.total, it.proveedor, it.categoria.orEmpty(), "")
+                }
+            }
+            val avisoSinDatos = if (movimientos.isEmpty()) {
+                context.getString(R.string.chatbot_no_movements_period, periodLabelText)
+            } else null
+            val texto = when {
+                avisoSinDatos != null -> avisoSinDatos
+                operacion == "resumen_mensual" -> {
+                    val resumen = ConsultasAvanzadas.resumenMensual(movimientos)
+                    val titulo = itemLocal
+                        ?: resolvedProvider ?: normalizedCategory?.let { TransactionCategories.displayCategory(it, language) }
+                        ?: tipoEfectivo
+                    buildString {
+                        appendLine(context.getString(
+                            R.string.chatbot_monthly_summary, titulo, fmt.money(resumen.mediaPorMes),
+                            fmt.money(resumen.total), resumen.compras, resumen.mesesConDatos
+                        ))
+                        resumen.meses.take(12).forEach { fila ->
+                            appendLine(context.getString(R.string.chatbot_monthly_line, fila.etiqueta, fmt.money(fila.importe)))
+                        }
+                    }.trimEnd()
+                }
+                operacion == "ranking" -> {
+                    val por = agruparPor ?: "categoria"
+                    val filas = ConsultasAvanzadas.ranking(movimientos, { movimiento -> when (por) {
+                        "comercio" -> movimiento.comercio
+                        "producto" -> movimiento.producto
+                        else -> movimiento.categoria
+                    } })
+                    val nombre = when (por) {
+                        "comercio" -> context.getString(R.string.chatbot_ranking_by_store)
+                        "producto" -> context.getString(R.string.chatbot_ranking_by_product)
+                        else -> context.getString(R.string.chatbot_ranking_by_category)
+                    }
+                    buildString {
+                        appendLine(context.getString(R.string.chatbot_ranking_title, nombre, periodLabelText))
+                        filas.forEachIndexed { indice, fila ->
+                            appendLine(context.getString(R.string.chatbot_ranking_line, indice + 1, fila.etiqueta, fmt.money(fila.importe), fila.movimientos))
+                        }
+                    }.trimEnd()
+                }
+                operacion == "comparar" -> {
+                    val otro = compararCon ?: "mes anterior"
+                    val (otroInicio, otroFin) = FinancialQueryResolver.periodoComparable(
+                        otro, start, end, System.currentTimeMillis()
+                    )
+                    val otroTotal = when (resolvedQueryType) {
+                        "ingresos" -> incomeRepository.getAllIncomes().first()
+                            .filter { it.fecha in otroInicio..otroFin }
+                            .sumAvailable { exchangeRateProvider.convert(it.monto, it.moneda, target) }
+                        else -> invoiceRepository.getAllInvoices().first()
+                            .filter { it.fecha in otroInicio..otroFin && it.tipo == InvoiceType.GASTO }
+                            .sumAvailable { exchangeRateProvider.convert(it.total, it.moneda, target) }
+                    }
+                    val actual = ConsultasAvanzadas.total(movimientos)
+                    val comparacion = ConsultasAvanzadas.comparar(actual, otroTotal ?: 0.0)
+                    val signo = if (comparacion.diferencia >= 0) "+" else "−"
+                    val porcentaje = comparacion.porcentaje?.let { String.format(activeLocale(), "%+.0f%%", it) }
+                        ?: context.getString(R.string.chatbot_compare_no_baseline)
+                    buildString {
+                        appendLine(context.getString(R.string.chatbot_compare_line, periodLabelText, fmt.money(actual)))
+                        appendLine(context.getString(R.string.chatbot_compare_line, FinancialQueryResolver.periodLabel(otro), fmt.money(comparacion.anterior)))
+                        append(context.getString(R.string.chatbot_compare_result, "$signo${fmt.money(kotlin.math.abs(comparacion.diferencia))}", porcentaje))
+                    }
+                }
+                operacion == "mayor" -> ConsultasAvanzadas.mayor(movimientos)?.let { m ->
+                    context.getString(R.string.chatbot_movement_line, "🔝 " + context.getString(R.string.chatbot_biggest_movement),
+                        m.comercio, fmt.money(m.importe), monthOf(m.fecha))
+                } ?: avisoSinDatos
+                operacion == "ultimo" -> ConsultasAvanzadas.ultimo(movimientos)?.let { m ->
+                    context.getString(R.string.chatbot_movement_line, "🧾 " + context.getString(R.string.chatbot_last_movement),
+                        m.comercio, fmt.money(m.importe), monthOf(m.fecha))
+                } ?: avisoSinDatos
+                else -> null
+            }
+            if (texto != null) {
+                return ExecutedFinancialQuery(
+                    texto,
+                    "Consulta financiera ejecutada: operacion=${operacion}; periodo=$periodo; " +
+                        "proveedor=${resolvedProvider ?: "ninguno"}; item=${resolvedQuery.item ?: "ninguno"}."
+                )
+            }
+        }
+
         val scopeLabel = buildString {
             append(periodLabelText)
             resolvedProvider?.let { append(context.getString(R.string.chatbot_scope_provider, it)) }

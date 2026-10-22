@@ -41,6 +41,22 @@ fun fiscalCountryLabel(code: String): String {
     return "$name ($normalizedCode)"
 }
 
+/**
+ * Moneda de uso habitual en cada país fiscal. Es SOLO una sugerencia para el selector:
+ * el país decide las reglas fiscales y la moneda solo cómo se muestran los importes, así que
+ * el usuario puede elegir cualquier otra. Venezuela queda fuera a propósito: allí se factura
+ * tanto en bolívares como en dólares y ninguna de las dos es «la» habitual.
+ */
+private val USUAL_CURRENCY_BY_COUNTRY: Map<String, String> = mapOf(
+    "ES" to "EUR", "US" to "USD", "MX" to "MXN", "AR" to "ARS", "CO" to "COP",
+    "CL" to "CLP", "PE" to "PEN", "EC" to "USD", "BO" to "BOB", "GT" to "GTQ",
+    "NI" to "NIO", "PY" to "PYG", "UY" to "UYU"
+)
+
+/** Moneda habitual del país, o null si no hay una sugerencia clara. */
+fun usualCurrencyForCountry(code: String): String? =
+    USUAL_CURRENCY_BY_COUNTRY[code.uppercase(Locale.ROOT)]
+
 /** Devuelve un símbolo legible para el código de moneda. */
 fun currencySymbol(code: String): String = when (code.uppercase()) {
     "EUR" -> "€"

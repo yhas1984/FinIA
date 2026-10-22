@@ -2,8 +2,12 @@ package com.gastos.feature.chatbot
 
 import com.gastos.domain.model.Product
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Calendar
+import java.util.TimeZone
 
 class FinancialQueryResolverTest {
     @Test
@@ -26,6 +30,112 @@ class FinancialQueryResolverTest {
         assertEquals("semana", FinancialQueryResolver.normalizePeriod("esta semana"))
         assertEquals("mes", FinancialQueryResolver.normalizePeriod("este mes"))
         assertEquals("año", FinancialQueryResolver.normalizePeriod("año"))
+    }
+
+    private val zona = TimeZone.getTimeZone("Europe/Madrid")
+
+    private fun momento(anio: Int, mes: Int, dia: Int): Long =
+        Calendar.getInstance(zona).apply {
+            clear()
+            set(anio, mes - 1, dia, 12, 0, 0)
+        }.timeInMillis
+
+    private fun limite(anio: Int, mes: Int, dia: Int, hora: Int, minuto: Int, segundo: Int, ms: Int): Long =
+        Calendar.getInstance(zona).apply {
+            clear()
+            set(anio, mes - 1, dia, hora, minuto, segundo)
+            set(Calendar.MILLISECOND, ms)
+        }.timeInMillis
+
+    @Test
+    fun `a named month is kept instead of falling back to the current month`() {
+        val hoy = momento(2026, 10, 17)
+        assertEquals("mes:2026-08", FinancialQueryResolver.normalizePeriod("agosto", hoy, zona))
+        assertEquals("mes:2026-08", FinancialQueryResolver.normalizePeriod("en el mes de agosto", hoy, zona))
+        assertEquals("mes:2026-08", FinancialQueryResolver.normalizePeriod("agosto de 2026", hoy, zona))
+        assertEquals("mes:2025-08", FinancialQueryResolver.normalizePeriod("agosto de 2025", hoy, zona))
+        assertEquals("mes:2026-09", FinancialQueryResolver.normalizePeriod("septiembre", hoy, zona))
+        assertEquals("mes:2026-08", FinancialQueryResolver.normalizePeriod("2026-08", hoy, zona))
+        assertEquals("mes:2026-08", FinancialQueryResolver.normalizePeriod("08/2026", hoy, zona))
+    }
+
+    @Test
+    fun `month names resolve to the most recent past year`() {
+        val enero = momento(2026, 1, 10)
+        assertEquals("mes:2025-12", FinancialQueryResolver.normalizePeriod("diciembre", enero, zona))
+        assertEquals("mes:2026-01", FinancialQueryResolver.normalizePeriod("enero", enero, zona))
+    }
+
+    @Test
+    fun `relative months and explicit ranges`() {
+        val hoy = momento(2026, 10, 17)
+        assertEquals("mes:2026-09", FinancialQueryResolver.normalizePeriod("el mes pasado", hoy, zona))
+        assertEquals("mes:2026-09", FinancialQueryResolver.normalizePeriod("mes anterior", hoy, zona))
+        assertEquals("mes:2026-11", FinancialQueryResolver.normalizePeriod("el mes que viene", hoy, zona))
+        assertEquals(
+            "rango:2026-08-01:2026-08-15",
+            FinancialQueryResolver.normalizePeriod("2026-08-01..2026-08-15", hoy, zona)
+        )
+    }
+
+    @Test
+    fun `the period named in the question wins over the model`() {
+        val hoy = momento(2026, 10, 17)
+        assertEquals(
+            "mes:2026-08",
+            FinancialQueryResolver.periodFromQuestion("cuando gaste en Mercadona en el mes de agosto?", hoy, zona)
+        )
+        assertNull(FinancialQueryResolver.periodFromQuestion("y este mes?", hoy, zona))
+        assertNull(FinancialQueryResolver.periodFromQuestion("cuanto he gastado", hoy, zona))
+    }
+
+    @Test
+    fun `period range covers the whole requested month`() {
+        val hoy = momento(2026, 10, 17)
+        val (inicio, fin) = FinancialQueryResolver.periodRange("mes:2026-08", hoy, zona)
+        assertEquals(limite(2026, 8, 1, 0, 0, 0, 0), inicio)
+        assertEquals(limite(2026, 8, 31, 23, 59, 59, 999), fin)
+        assertEquals(31L * 24 * 60 * 60 * 1000, fin - inicio + 1)
+    }
+
+    @Test
+    fun `period range for explicit dates`() {
+        val hoy = momento(2026, 10, 17)
+        val (inicio, fin) = FinancialQueryResolver.periodRange("rango:2026-08-01:2026-08-15", hoy, zona)
+        assertEquals(limite(2026, 8, 1, 0, 0, 0, 0), inicio)
+        assertEquals(limite(2026, 8, 15, 23, 59, 59, 999), fin)
+    }
+
+    @Test
+    fun `periodOrNull distinguishes a real period from an unknown expression`() {
+        val hoy = momento(2026, 10, 17)
+        assertEquals("mes:2026-08", FinancialQueryResolver.periodOrNull("agosto", hoy, zona))
+        assertEquals("mes:2026-09", FinancialQueryResolver.periodOrNull("mes anterior", hoy, zona))
+        assertEquals("mes", FinancialQueryResolver.periodOrNull("este mes", hoy, zona))
+        assertEquals("mes:2026-08", FinancialQueryResolver.periodOrNull("2026-08", hoy, zona))
+        assertNull(FinancialQueryResolver.periodOrNull("el verano pasado", hoy, zona))
+        assertNull(FinancialQueryResolver.periodOrNull("", hoy, zona))
+        assertNull(FinancialQueryResolver.periodOrNull(null, hoy, zona))
+    }
+
+    @Test
+    fun `rangeFromIso builds a range from explicit dates`() {
+        assertEquals("rango:2026-08-01:2026-08-15",
+            FinancialQueryResolver.rangeFromIso("2026-08-01", "2026-08-15", zona))
+        assertEquals("rango:2026-08-01:2026-08-01",
+            FinancialQueryResolver.rangeFromIso("2026-08-01", null, zona))
+        assertEquals("rango:2026-08-15:2026-08-15",
+            FinancialQueryResolver.rangeFromIso(null, "2026-08-15", zona))
+        assertNull(FinancialQueryResolver.rangeFromIso("01/08/2026", "15/08/2026", zona))
+        assertNull(FinancialQueryResolver.rangeFromIso("2026-08-31", "2026-08-01", zona))
+        assertNull(FinancialQueryResolver.rangeFromIso(null, null, zona))
+    }
+
+    @Test
+    fun `period label names the specific month`() {
+        assertEquals("agosto de 2026", FinancialQueryResolver.periodLabel("mes:2026-08", "es"))
+        assertEquals("August 2026", FinancialQueryResolver.periodLabel("mes:2026-08", "en"))
+        assertEquals("este mes", FinancialQueryResolver.periodLabel("mes", "es"))
     }
 
     @Test
@@ -422,5 +532,85 @@ class FinancialQueryResolverTest {
             "group",
             FinancialQueryResolver.resolveClarification("todas", "café", variants)?.matchMode
         )
+    }
+
+    // ── fase 2: exclusiones y comparaciones ──────────────────────────────────
+
+    @Test
+    fun `una exclusion se detecta en la pregunta`() {
+        assertEquals(listOf("Mercadona"), FinancialQueryResolver.exclusionesDeLaPregunta("¿Cuánto he gastado sin contar Mercadona?"))
+        assertEquals(listOf("Repsol"), FinancialQueryResolver.exclusionesDeLaPregunta("gastos en total excepto Repsol"))
+        assertEquals(emptyList<String>(), FinancialQueryResolver.exclusionesDeLaPregunta("¿cuánto gasté en agosto?"))
+        assertEquals(emptyList<String>(), FinancialQueryResolver.exclusionesDeLaPregunta(null))
+    }
+
+    @Test
+    fun `la exclusion no se traga la parte del periodo`() {
+        assertEquals(listOf("Mercadona"), FinancialQueryResolver.exclusionesDeLaPregunta("total sin contar Mercadona en agosto"))
+    }
+
+    @Test
+    fun `se detecta cuando la pregunta compara con el periodo anterior`() {
+        assertTrue(FinancialQueryResolver.comparaContraElPeriodoAnterior("¿he gastado más este mes que el mes pasado?"))
+        assertTrue(FinancialQueryResolver.comparaContraElPeriodoAnterior("este mes he gastado más que el anterior"))
+        assertFalse(FinancialQueryResolver.comparaContraElPeriodoAnterior("¿cuánto gasté el mes pasado?"))
+    }
+
+    @Test
+    fun `el periodo a comparar es el anterior al consultado, no el anterior a hoy`() {
+        val zona = java.util.TimeZone.getTimeZone("Europe/Madrid")
+        val agosto = FinancialQueryResolver.periodRange("2026-08", ahora(zona, 2026, 8, 10), zona).first
+        val (ini, fin) = FinancialQueryResolver.periodoComparable("mes anterior", agosto, agosto, ahora(zona, 2026, 10, 18), zona)
+        val julio = FinancialQueryResolver.periodRange("2026-07", ahora(zona, 2026, 8, 10), zona)
+        assertEquals(julio.first, ini)
+        assertEquals(julio.second, fin)
+    }
+
+    @Test
+    fun `comparar con el ano anterior da el ano previo`() {
+        val zona = java.util.TimeZone.getTimeZone("Europe/Madrid")
+        val esteAno = FinancialQueryResolver.periodRange("año", ahora(zona, 2026, 10, 18), zona).first
+        val (ini, _) = FinancialQueryResolver.periodoComparable("año anterior", esteAno, esteAno, ahora(zona, 2026, 10, 18), zona)
+        val dosMil25 = FinancialQueryResolver.periodRange("2025-01", ahora(zona, 2026, 10, 18), zona)
+        assertEquals(dosMil25.first, ini)
+    }
+
+    private fun ahora(zona: java.util.TimeZone, anio: Int, mes: Int, dia: Int): Long =
+        java.util.Calendar.getInstance(zona).apply {
+            clear(); set(anio, mes - 1, dia, 12, 0, 0)
+        }.timeInMillis
+
+    @Test
+    fun `solo se usa el historico cuando la pregunta lo pide`() {
+        assertTrue(FinancialQueryResolver.pideTodoElHistorico("¿cuánto he gastado en total?"))
+        assertTrue(FinancialQueryResolver.pideTodoElHistorico("gastos en todo el histórico"))
+        assertTrue(FinancialQueryResolver.pideTodoElHistorico("¿alguna vez he comprado en Lidl?"))
+        assertTrue(FinancialQueryResolver.pideTodoElHistorico("total sin contar Mercadona"))
+        assertFalse(FinancialQueryResolver.pideTodoElHistorico("¿cuánto he gastado en Alimentación?"))
+        assertFalse(FinancialQueryResolver.pideTodoElHistorico("gastos de esta semana"))
+        assertFalse(FinancialQueryResolver.pideTodoElHistorico(null))
+    }
+
+    @Test
+    fun `el producto se detecta en la pregunta aunque el modelo no lo rellene`() {
+        val productos = listOf("BANANA", "LECHE ENTERA", "AGUA CONSUM 8L", "PAN", "SAL")
+        assertEquals("BANANA", FinancialQueryResolver.productoMencionado("¿cuánto gasto al mes en bananas?", productos))
+        assertEquals("BANANA", FinancialQueryResolver.productoMencionado("y en banana?", productos))
+        assertEquals("LECHE ENTERA", FinancialQueryResolver.productoMencionado("cuánto gasto en leche entera", productos))
+        assertEquals("AGUA CONSUM 8L", FinancialQueryResolver.productoMencionado("agua Consum 8L al mes", productos))
+        assertNull(FinancialQueryResolver.productoMencionado("¿cuánto gasto en salario?", productos))
+        assertNull(FinancialQueryResolver.productoMencionado("¿cuánto gasté en agosto?", productos))
+        assertNull(FinancialQueryResolver.productoMencionado(null, productos))
+    }
+
+    @Test
+    fun `solo se compara cuando la pregunta compara`() {
+        assertTrue(FinancialQueryResolver.pideComparacion("¿he gastado más este mes que el mes pasado?"))
+        assertTrue(FinancialQueryResolver.pideComparacion("gastos comparados con agosto"))
+        assertTrue(FinancialQueryResolver.pideComparacion("¿cuál es la diferencia con julio?"))
+        assertFalse(FinancialQueryResolver.pideComparacion("Dije agosto, no este mes"))
+        assertFalse(FinancialQueryResolver.pideComparacion("¿Y solo de alimentación?"))
+        assertFalse(FinancialQueryResolver.pideComparacion("¿cuánto gasté en agosto?"))
+        assertFalse(FinancialQueryResolver.pideComparacion(null))
     }
 }
