@@ -18,7 +18,7 @@ import com.gastos.local.dao.*
         CommandOperationEntity::class,
         CategoryEntity::class, AutomationRecordEntity::class, MonthlyLimitEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -39,6 +39,6 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DATABASE_NAME = "gastos_ingresos_db"
-        const val DATABASE_VERSION = 17
+        const val DATABASE_VERSION = 18
     }
 }

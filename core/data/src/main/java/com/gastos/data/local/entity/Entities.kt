@@ -121,7 +121,15 @@ data class CountryFiscalConfigEntity(
     val ivaRates: String = "21",
     val irpfRate: Double? = null,
     val nifFormat: String = "",
-    val nombreLeyFiscal: String = "IVA"
+    val nombreLeyFiscal: String = "IVA",
+    /** MONTHLY / QUARTERLY / ANNUAL / USER_DEFINED. Ver TaxPeriodType. */
+    @ColumnInfo(defaultValue = "USER_DEFINED") val tipoPeriodo: String = "USER_DEFINED",
+    /** Nombre oficial de la declaración, vacío si no está verificado. */
+    @ColumnInfo(defaultValue = "") val nombreDeclaracion: String = "",
+    /** Plazos por periodo, en formato «1T=1-20 abril;2T=1-20 julio». */
+    @ColumnInfo(defaultValue = "") val plazos: String = "",
+    /** Tipos de retención, separados por coma. */
+    @ColumnInfo(defaultValue = "") val tiposRetencion: String = ""
 )
 
 @Entity(tableName = "chat_messages")

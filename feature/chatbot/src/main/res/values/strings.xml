@@ -51,6 +51,9 @@
     <string name="chatbot_scanning_image">📷 Escaneando imagen...</string>
     <string name="chatbot_scan_error">❌ Error al escanear: %1$s</string>
     <string name="chatbot_no_api_key">Aún no has configurado tu API key de Gemini. Ve a Configuración &gt; IA para añadir la tuya.</string>
+    <string name="chatbot_api_key_card_title">Falta un paso para usar la IA</string>
+    <string name="chatbot_api_key_card_body">La IA de FinAI funciona con tu propia clave de Google, gratis. Son dos minutos y solo se hace una vez.</string>
+    <string name="chatbot_api_key_card_action">Configurar mi clave</string>
     <string name="chatbot_report_spending_title">🛒 Gastos en %1$s %2$s:</string>
     <string name="chatbot_report_spending_scope_title">💰 Gastos de %1$s:</string>
     <string name="chatbot_report_count_purchases">• Cantidad: %1$s compras</string>

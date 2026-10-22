@@ -53,3 +53,24 @@ val MIGRATION_16_17: Migration = object : Migration(16, 17) {
         db.execSQL("CREATE UNIQUE INDEX index_monthly_limits_categoryId_month ON monthly_limits(categoryId,month)")
     }
 }
+
+/**
+ * Añade a la configuración fiscal de cada país CUÁNDO se declara, CÓMO se llama la declaración y
+ * sus plazos, para que el resumen de IVA sirva fuera de España sin tocar el motor de cálculo.
+ *
+ * Los valores por defecto son deliberadamente conservadores: periodo «USER_DEFINED» (lo elige el
+ * usuario) y sin nombre de declaración. España se rellena con las reglas verificadas en la AEAT.
+ */
+val MIGRATION_17_18: Migration = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE country_fiscal_config ADD COLUMN tipoPeriodo TEXT NOT NULL DEFAULT 'USER_DEFINED'")
+        db.execSQL("ALTER TABLE country_fiscal_config ADD COLUMN nombreDeclaracion TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE country_fiscal_config ADD COLUMN plazos TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE country_fiscal_config ADD COLUMN tiposRetencion TEXT NOT NULL DEFAULT ''")
+        db.execSQL(
+            "UPDATE country_fiscal_config SET tipoPeriodo='QUARTERLY', nombreDeclaracion='modelo 303', " +
+                "plazos='1T=1-20 abril;2T=1-20 julio;3T=1-20 octubre;4T=1-30 enero', tiposRetencion='7' " +
+                "WHERE paisCodigo='ES'"
+        )
+    }
+}

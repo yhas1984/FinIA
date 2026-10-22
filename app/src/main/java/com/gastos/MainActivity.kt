@@ -315,6 +315,7 @@ fun FinAIApp(
                     onOpenReceipt = ::openByUuid,
                     onManualEntry = { income -> navController.navigate(if (income) "edit_income/0" else "edit_invoice/0") },
                     onNavigateToBank = { navController.navigate(Routes.BANK) },
+                    onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
@@ -366,7 +367,10 @@ fun FinAIApp(
                         page = com.gastos.feature.backup.DataPage.OVERVIEW,
                         onNavigateToBank = { navController.navigate(Routes.BANK) },
                         onNavigateToSection = { navController.navigate("backup/${it.name}") },
-                        onNavigateToPremium = { navController.navigate(Routes.PREMIUM) })
+                        onNavigateToPremium = { navController.navigate(Routes.PREMIUM) },
+                        onNavigateToRegionalSettings = {
+                            navController.navigate("settings/${com.gastos.feature.settings.SettingsPage.PREFERENCES.name}")
+                        })
                 }
                 composable(Routes.DATA_PAGE) { entry ->
                     val parent = remember(entry) { navController.getBackStackEntry("data_graph") }
@@ -374,7 +378,10 @@ fun FinAIApp(
                     val page = entry.arguments?.getString("section")?.let { runCatching { com.gastos.feature.backup.DataPage.valueOf(it) }.getOrNull() }
                         ?: com.gastos.feature.backup.DataPage.OVERVIEW
                     BackupScreen(onNavigateBack = { navController.popBackStack() }, viewModel = backupModel, page = page,
-                        onNavigateToPremium = { navController.navigate(Routes.PREMIUM) })
+                        onNavigateToPremium = { navController.navigate(Routes.PREMIUM) },
+                        onNavigateToRegionalSettings = {
+                            navController.navigate("settings/${com.gastos.feature.settings.SettingsPage.PREFERENCES.name}")
+                        })
                 }
             }
             composable("edit_invoice/{invoiceId}") { backStackEntry ->

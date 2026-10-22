@@ -20,13 +20,17 @@ import com.gastos.repository.CurrencyPreference
 import com.gastos.repository.ExchangeRateProvider
 import com.gastos.repository.IncomeRepository
 import com.gastos.repository.InvoiceRepository
+import com.gastos.repository.CountryFiscalConfigRepository
 import com.gastos.repository.PremiumStatusProvider
 import com.gastos.repository.ProductRepository
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.common.api.ApiException
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -72,7 +76,14 @@ data class BackupUiState(
     val pendingRestore: PendingBackupRestore? = null,
     val restoreSheetsImpact: RestoreSheetsImpact? = null,
     val restoreState: BackupRestoreState = BackupRestoreState.Idle,
-    val error: String? = null
+    val error: String? = null,
+    val fiscalSummary: FiscalSummary? = null,
+    val fiscalYear: Int = 0,
+    /** Mes o trimestre según el periodo del país; en un país mensual es el mes. */
+    val fiscalMonthOrQuarter: Int = 0,
+    val fiscalConfig: com.gastos.domain.model.CountryFiscalConfig? = null,
+    /** Periodo de declaración elegido por el usuario cuando el país no lo tiene verificado. */
+    val fiscalRequestedPeriod: VatPeriodType = VatPeriodType.MONTHLY
 ) {
     val isRestoring: Boolean
         get() = restoreState is BackupRestoreState.Running
@@ -112,7 +123,12 @@ class BackupViewModel @Inject constructor(
     private val exchangeRateProvider: ExchangeRateProvider,
     private val currencyPreference: CurrencyPreference,
     private val reportWriter: FinancialReportWriter,
-    private val snapshots: com.gastos.repository.BackupDataRepository
+    private val fiscalSummaryWriter: FiscalSummaryWriter,
+    private val fiscalConfigRepository: CountryFiscalConfigRepository,
+    private val manualEntryDefaults: com.gastos.repository.ManualEntryDefaultsProvider,
+    private val snapshots: com.gastos.repository.BackupDataRepository,
+    /** Flujo del país fiscal elegido; al final y opcional para no romper construcciones existentes. */
+    private val fiscalCountryPreference: com.gastos.repository.FiscalCountryPreference? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(BackupUiState())
@@ -120,6 +136,15 @@ class BackupViewModel @Inject constructor(
     private var observedCloudSuccessAt: Long? = cloudBackupPreferences.status().lastSuccessAt
 
     init {
+        refreshFiscalSummary()
+        // Si el usuario cambia el país fiscal o la moneda, el informe se recalcula solo. Antes se
+        // quedaba con el país y la moneda anteriores hasta salir de la pantalla y volver a entrar.
+        viewModelScope.launch {
+            val countryFlow = fiscalCountryPreference?.defaultCountry ?: flowOf("")
+            combine(currencyPreference.defaultCurrency, countryFlow) { _, _ -> Unit }
+                .drop(1)
+                .collect { refreshFiscalSummary() }
+        }
         viewModelScope.launch {
             sheetsExportService.appearance.collect { state ->
                 val account = sheetsExportService.getLastSignedInAccount()
@@ -650,6 +675,133 @@ class BackupViewModel @Inject constructor(
                 _uiState.update { it.copy(exportResult = BackupResult(false, context.getString(R.string.share_error, error.message.orEmpty()))) }
             } finally {
                 if (destination != null || !(_uiState.value.exportResult?.success ?: false)) temporary?.delete()
+                _uiState.update { it.copy(isExporting = false) }
+            }
+        }
+    }
+
+    // ---- Resumen de IVA ----
+
+    /**
+     * El usuario decide cada cuánto declara. Solo se usa cuando el país no tiene sus reglas
+     * verificadas (USER_DEFINED); si las tiene, manda el país.
+     */
+    fun setRequestedFiscalPeriod(period: VatPeriodType) {
+        _uiState.update { it.copy(fiscalRequestedPeriod = period) }
+        refreshFiscalSummary()
+    }
+
+    fun setFiscalPeriod(year: Int, monthOrQuarter: Int) {
+        _uiState.update { it.copy(fiscalYear = year, fiscalMonthOrQuarter = monthOrQuarter) }
+        refreshFiscalSummary()
+    }
+
+    fun refreshFiscalSummary() {
+        viewModelScope.launch {
+            try {
+                val calendar = Calendar.getInstance()
+                val year = _uiState.value.fiscalYear.takeIf { it > 0 } ?: calendar.get(Calendar.YEAR)
+                val month = calendar.get(Calendar.MONTH) + 1
+                val stored = _uiState.value.fiscalMonthOrQuarter
+                val selector = if (stored in 1..12) stored else month
+                val data = snapshots.financialSnapshot()
+                val currency = currencyPreference.defaultCurrency.value
+                // Manda el país elegido por el usuario en Ajustes; si no hay, se deduce de los
+                // documentos y, en último caso, España. Así una app usada en México no se comporta
+                // como si estuviera en España solo porque las facturas de ejemplo sean españolas.
+                val configuredCountry: String = manualEntryDefaults.manualEntryDefaults().country
+                val countryCode = configuredCountry.takeIf { it.isNotBlank() }
+                    ?: predominantCountry(data.invoices, year)
+                val config = fiscalConfigRepository.getConfigByCountry(countryCode)
+                val requested = config.vatPeriodTypeOrNull() ?: _uiState.value.fiscalRequestedPeriod
+                val period = VatPeriodCalculator.forCountry(config, year, selector, requested)
+                val summary = VatSummaryCalculator.summary(
+                    period = period,
+                    currency = currency,
+                    invoices = data.invoices,
+                    incomes = data.incomes,
+                    fiscalConfig = config
+                )
+                _uiState.update {
+                    it.copy(
+                        fiscalSummary = summary,
+                        fiscalYear = year,
+                        fiscalMonthOrQuarter = selector,
+                        fiscalConfig = config,
+                        fiscalRequestedPeriod = requested
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // El resumen es informativo: si no se puede calcular, se deja vacío sin romper la pantalla.
+                _uiState.update { it.copy(fiscalSummary = null) }
+            }
+        }
+    }
+
+    /** País predominante entre los documentos del año; si no hay datos, España. */
+    private fun predominantCountry(invoices: List<Invoice>, year: Int): String {
+        val annual = VatPeriodCalculator.yearOf(year)
+        val codes = invoices
+            .filter { it.fecha >= annual.startInclusive && it.fecha < annual.endExclusive }
+            .map { it.paisCodigo.uppercase() }
+            .filter { it.isNotBlank() }
+            .groupingBy { it }.eachCount()
+        return codes.maxByOrNull { it.value }?.key ?: "ES"
+    }
+
+    fun shareFiscalSummary(format: ReportFormat) = exportFiscalSummary(null, format)
+
+    fun exportFiscalSummary(uri: Uri?, format: ReportFormat) {
+        if (_uiState.value.isExporting) return
+        if (!premiumStatus.isPremium.value) {
+            _uiState.update { it.copy(exportResult = BackupResult(false, context.getString(R.string.fiscal_premium_required))) }
+            return
+        }
+        _uiState.update { it.copy(isExporting = true, exportResult = null) }
+        reportJob = viewModelScope.launch {
+            var temporary: File? = null
+            try {
+                val summary = _uiState.value.fiscalSummary ?: run {
+                    refreshFiscalSummary()
+                    _uiState.value.fiscalSummary
+                } ?: throw IllegalStateException(context.getString(R.string.fiscal_empty))
+                val file = fiscalSummaryWriter.generate(
+                    summary = summary,
+                    labels = FiscalSummaryWriter.labelsOf(context),
+                    format = format,
+                    fiscalConfig = _uiState.value.fiscalConfig
+                )
+                temporary = file
+                if (uri != null) {
+                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                            context.contentResolver.openOutputStream(uri, "wt").use { output ->
+                                requireNotNull(output) { context.getString(R.string.destination_open_error) }
+                                file.inputStream().use { it.copyTo(output) }
+                            }
+                        }
+                    }
+                } else {
+                    val content = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = format.mime
+                        putExtra(Intent.EXTRA_STREAM, content)
+                        clipData = android.content.ClipData.newRawUri("FinAI IVA", content)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_chooser)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                _uiState.update { it.copy(exportResult = BackupResult(true, context.getString(R.string.report_ready))) }
+            } catch (cancelled: CancellationException) {
+                _uiState.update { it.copy(exportResult = null) }
+                throw cancelled
+            } catch (error: Exception) {
+                _uiState.update { it.copy(exportResult = BackupResult(false, context.getString(R.string.share_error, error.message.orEmpty()))) }
+            } finally {
+                if (uri != null || !(_uiState.value.exportResult?.success ?: false)) temporary?.delete()
                 _uiState.update { it.copy(isExporting = false) }
             }
         }

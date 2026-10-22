@@ -25,5 +25,7 @@ object PremiumStatusModule {
     @Provides
     fun provideCurrencyPreference(repo: SettingsRepository): CurrencyPreference = repo
     @Provides
+    fun provideFiscalCountryPreference(repo: SettingsRepository): com.gastos.repository.FiscalCountryPreference = repo
+    @Provides
     fun provideManualEntryDefaults(repo: SettingsRepository): com.gastos.repository.ManualEntryDefaultsProvider = repo
 }

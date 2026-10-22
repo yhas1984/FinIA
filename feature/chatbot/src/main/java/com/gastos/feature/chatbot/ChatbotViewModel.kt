@@ -765,7 +765,8 @@ data class ChatbotUiState(
     val isListening: Boolean = false,
     val correction: PendingCorrection? = null,
     val undoMutationId: String? = null,
-    val suggestedRule: com.gastos.domain.model.CategoryRule? = null
+    val suggestedRule: com.gastos.domain.model.CategoryRule? = null,
+    val needsApiKey: Boolean = false
 )
 
 @HiltViewModel
@@ -800,6 +801,11 @@ class ChatbotViewModel @Inject constructor(
     private var activeOperationUuid: String? = null
     private var retryOperationUuid: String? = null
     private var lastFinancialQuery: (suspend () -> ExecutedFinancialQuery)? = null
+
+    /** Recalcula si falta la clave. Se llama al entrar en el chat, para no dejar el aviso pegado. */
+    fun refreshApiKeyState() {
+        _uiState.update { it.copy(needsApiKey = !aiService.isConfigured()) }
+    }
 
     init {
         observeCapturedDocuments()
@@ -991,7 +997,8 @@ class ChatbotViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     messages = it.messages + ChatMessage.AI(context.getString(R.string.chatbot_no_api_key)),
-                    isProcessing = false
+                    isProcessing = false,
+                    needsApiKey = true
                 )
             }
             return

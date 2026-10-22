@@ -131,11 +131,55 @@ data class Income(
     val taxes: List<DocumentTax> = emptyList()
 )
 
+/**
+ * Reglas fiscales de un país.
+ *
+ * El motor de cálculo (repercutido - soportado) es idéntico en todos los países con IVA; lo que
+ * cambia de uno a otro es CUÁNDO se declara, CÓMO se llama la declaración y QUÉ plazos tiene.
+ * Eso vive aquí, para que añadir un país sea rellenar datos y no tocar el motor.
+ *
+ * Ojo: [nombreDeclaracion] solo se rellena cuando las reglas del país (periodo y plazos) están
+ * verificadas en su fuente oficial. Si no, se deja vacío y el informe se presenta como «Resumen de
+ * IVA» sin nombrar ningún formulario: inventar el nombre de una declaración ajena es peor que no
+ * ponerlo.
+ */
+@kotlinx.serialization.Serializable
+enum class TaxPeriodType {
+    MONTHLY, QUARTERLY, ANNUAL,
+    /** El usuario decide cada cuánto declara (país sin reglas verificadas todavía). */
+    USER_DEFINED;
+
+    companion object {
+        fun parse(value: String?): TaxPeriodType? = when (value?.uppercase()) {
+            "MONTHLY" -> MONTHLY
+            "QUARTERLY" -> QUARTERLY
+            "ANNUAL" -> ANNUAL
+            "USER_DEFINED" -> USER_DEFINED
+            else -> null
+        }
+    }
+}
+
+@kotlinx.serialization.Serializable
 data class CountryFiscalConfig(
     val paisCodigo: String,
     val nombrePais: String,
     val ivaRates: List<Double> = listOf(21.0),
     val irpfRate: Double? = null,
     val nifFormat: String = "",
-    val nombreLeyFiscal: String = "IVA"
-)
+    val nombreLeyFiscal: String = "IVA",
+    /** Cada cuánto se presenta la declaración del impuesto. */
+    val tipoPeriodo: TaxPeriodType = TaxPeriodType.USER_DEFINED,
+    /** Nombre oficial de la declaración, SOLO si está verificado en la fuente del país. */
+    val nombreDeclaracion: String? = null,
+    /** Plazo orientativo por periodo, ya formateado para mostrar. */
+    val plazos: Map<String, String> = emptyMap(),
+    /** Tipos de retención habituales del país, además del principal. */
+    val tiposRetencion: List<Double> = emptyList()
+) {
+    /** Etiqueta del plazo para un periodo concreto, si se conoce. */
+    fun plazoDe(periodLabel: String): String? = plazos[periodLabel]
+
+    /** El catálogo de tipos, sin repetir y ordenado de mayor a menor. */
+    val tiposOrdenados: List<Double> get() = (ivaRates + tiposRetencion).distinct().sortedDescending()
+}

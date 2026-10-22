@@ -43,6 +43,8 @@ fun BackupScreen(
     page: DataPage = DataPage.OVERVIEW,
     onNavigateToSection: (DataPage) -> Unit = {},
     onNavigateToBank: () -> Unit = {},
+    /** Atajo a Ajustes → Preferencias, donde se eligen el país fiscal y la moneda. */
+    onNavigateToRegionalSettings: () -> Unit = {},
     viewModel: BackupViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -548,6 +550,171 @@ fun BackupScreen(
             }
 
             if (page == DataPage.REPORTS) {
+            // Resumen de IVA
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = stringResource(R.string.fiscal_section),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = when (uiState.fiscalRequestedPeriod) {
+                            VatPeriodType.MONTHLY -> stringResource(R.string.fiscal_section_desc_monthly)
+                            VatPeriodType.ANNUAL -> stringResource(R.string.fiscal_section_desc_annual)
+                            else -> stringResource(R.string.fiscal_section_desc)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    val calendar = java.util.Calendar.getInstance()
+                    val year = if (uiState.fiscalYear > 0) uiState.fiscalYear else calendar.get(java.util.Calendar.YEAR)
+                    val currentMonth = calendar.get(java.util.Calendar.MONTH) + 1
+                    val selector = if (uiState.fiscalMonthOrQuarter in 1..12) uiState.fiscalMonthOrQuarter else currentMonth
+                    val countryPeriod = uiState.fiscalRequestedPeriod
+                    val isQuarterly = countryPeriod == VatPeriodType.QUARTERLY
+                    val isAnnual = countryPeriod == VatPeriodType.ANNUAL
+                    // El idioma del informe lo pone el país; si no tiene reglas, lo elige el usuario.
+                    val countryUnverified = uiState.fiscalConfig?.tipoPeriodo == com.gastos.domain.model.TaxPeriodType.USER_DEFINED
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = {
+                            when {
+                                isAnnual -> viewModel.setFiscalPeriod(year - 1, selector)
+                                isQuarterly -> {
+                                    val q = (selector - 1) / 3 + 1
+                                    if (q == 1) viewModel.setFiscalPeriod(year - 1, 10) else viewModel.setFiscalPeriod(year, (q - 2) * 3 + 1)
+                                }
+                                else -> if (selector == 1) viewModel.setFiscalPeriod(year - 1, 12) else viewModel.setFiscalPeriod(year, selector - 1)
+                            }
+                        }) { Text("‹") }
+                        Text(
+                            text = when {
+                                isAnnual -> "$year"
+                                isQuarterly -> (((selector - 1) / 3) + 1).toString() + "T " + year
+                                else -> selector.toString().padStart(2, '0') + "/" + year
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        TextButton(onClick = {
+                            when {
+                                isAnnual -> viewModel.setFiscalPeriod(year + 1, selector)
+                                isQuarterly -> {
+                                    val q = (selector - 1) / 3 + 1
+                                    if (q == 4) viewModel.setFiscalPeriod(year + 1, 1) else viewModel.setFiscalPeriod(year, q * 3 + 1)
+                                }
+                                else -> if (selector == 12) viewModel.setFiscalPeriod(year + 1, 1) else viewModel.setFiscalPeriod(year, selector + 1)
+                            }
+                        }) { Text("›") }
+                    }
+                    TextButton(
+                        onClick = onNavigateToRegionalSettings,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    ) { Text(stringResource(R.string.fiscal_change_country_currency)) }
+                    if (countryUnverified) {
+                        Text(
+                            text = stringResource(R.string.fiscal_declaration_period) + ":",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row {
+                            listOf(
+                                VatPeriodType.MONTHLY to stringResource(R.string.fiscal_period_monthly),
+                                VatPeriodType.QUARTERLY to stringResource(R.string.fiscal_period_quarterly),
+                                VatPeriodType.ANNUAL to stringResource(R.string.fiscal_period_annual)
+                            ).forEach { (type, label) ->
+                                TextButton(onClick = { viewModel.setRequestedFiscalPeriod(type) }) {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (type == countryPeriod) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    uiState.fiscalSummary?.let { summary ->
+                        summary.output.lines.forEach { line ->
+                            Text(
+                                text = stringResource(R.string.fiscal_output_block) + " · " + FiscalSummaryText.rate(line.rate) +
+                                    " · " + FiscalSummaryText.money(line.base, summary.currency) +
+                                    " / " + FiscalSummaryText.money(line.quota, summary.currency),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        summary.input.lines.forEach { line ->
+                            Text(
+                                text = stringResource(R.string.fiscal_input_block) + " · " + FiscalSummaryText.rate(line.rate) +
+                                    " · " + FiscalSummaryText.money(line.base, summary.currency) +
+                                    " / " + FiscalSummaryText.money(line.quota, summary.currency),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = (if (summary.isPayable) stringResource(R.string.fiscal_result_to_pay) else stringResource(R.string.fiscal_result_to_offset)) +
+                                ": " + FiscalSummaryText.money(summary.result.abs(), summary.currency),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (summary.totalExcluded > 0) {
+                            Text(
+                                text = stringResource(R.string.fiscal_excluded_title) + ": " + summary.totalExcluded,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            // El motivo importa: «en otra moneda» se arregla cambiando la moneda del
+                            // informe, «sin datos de IVA» abriendo el documento. Sin el detalle, el
+                            // usuario solo ve un número y no sabe qué hacer.
+                            listOf(
+                                VatExclusion.FOREIGN_CURRENCY to R.string.fiscal_excluded_currency,
+                                VatExclusion.MISSING_TAX_DATA to R.string.fiscal_excluded_missing,
+                                VatExclusion.MISSING_RATE to R.string.fiscal_excluded_rate,
+                                VatExclusion.EXEMPT to R.string.fiscal_excluded_exempt
+                            ).forEach { (reason, labelRes) ->
+                                summary.excluded[reason]?.let { count ->
+                                    Text(
+                                        text = "· " + stringResource(labelRes) + ": " + count,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (uiState.isPremium) {
+                        Button(
+                            onClick = { viewModel.shareFiscalSummary(ReportFormat.PDF) },
+                            enabled = !uiState.isExporting,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(stringResource(R.string.fiscal_export_pdf)) }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.shareFiscalSummary(ReportFormat.CSV) },
+                            enabled = !uiState.isExporting,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(stringResource(R.string.fiscal_export_csv)) }
+                    } else {
+                        Text(
+                            text = stringResource(R.string.fiscal_premium_required),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(onClick = onNavigateToPremium, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.unlock_premium_backup))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.fiscal_disclaimer),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             // Exportar datos
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {

@@ -185,7 +185,11 @@ fun CountryFiscalConfigEntity.toDomain(): CountryFiscalConfig = CountryFiscalCon
     ivaRates = parseIvaRates(ivaRates),
     irpfRate = irpfRate,
     nifFormat = nifFormat,
-    nombreLeyFiscal = nombreLeyFiscal
+    nombreLeyFiscal = nombreLeyFiscal,
+    tipoPeriodo = TaxPeriodType.parse(tipoPeriodo) ?: TaxPeriodType.USER_DEFINED,
+    nombreDeclaracion = nombreDeclaracion.takeIf { it.isNotBlank() },
+    plazos = parsePlazos(plazos),
+    tiposRetencion = parseIvaRates(tiposRetencion)
 )
 
 fun CountryFiscalConfig.toEntity(): CountryFiscalConfigEntity = CountryFiscalConfigEntity(
@@ -194,5 +198,16 @@ fun CountryFiscalConfig.toEntity(): CountryFiscalConfigEntity = CountryFiscalCon
     ivaRates = ivaRates.joinToString(","),
     irpfRate = irpfRate,
     nifFormat = nifFormat,
-    nombreLeyFiscal = nombreLeyFiscal
+    nombreLeyFiscal = nombreLeyFiscal,
+    tipoPeriodo = tipoPeriodo.name,
+    nombreDeclaracion = nombreDeclaracion.orEmpty(),
+    plazos = plazos.entries.joinToString(";") { "${it.key}=${it.value}" },
+    tiposRetencion = tiposRetencion.joinToString(",")
 )
+
+/** «1T=1-20 abril;2T=1-20 julio» → mapa. Ignora entradas sin «=». */
+private fun parsePlazos(raw: String): Map<String, String> =
+    raw.split(';').mapNotNull { entry ->
+        val index = entry.indexOf('=')
+        if (index <= 0) null else entry.substring(0, index).trim() to entry.substring(index + 1).trim()
+    }.toMap()

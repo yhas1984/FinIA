@@ -61,6 +61,7 @@ fun ChatbotScreen(
     onOpenReceipt: (String, String?) -> Unit = { _, _ -> },
     onManualEntry: (Boolean) -> Unit = {},
     onNavigateToBank: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     captureModel: DocumentCaptureViewModel = hiltViewModel(),
     viewModel: ChatbotViewModel = hiltViewModel()
 ) {
@@ -327,6 +328,32 @@ fun ChatbotScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            LaunchedEffect(Unit) { viewModel.refreshApiKeyState() }
+            if (uiState.needsApiKey) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = stringResource(R.string.chatbot_api_key_card_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = stringResource(R.string.chatbot_api_key_card_body),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(onClick = onNavigateToSettings) {
+                            Text(stringResource(R.string.chatbot_api_key_card_action))
+                        }
+                    }
+                }
+            }
             if (uiState.messages.isEmpty() && !hasCaptureContent) {
                 Column(
                     modifier = Modifier

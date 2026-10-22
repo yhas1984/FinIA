@@ -50,7 +50,10 @@
     <string name="chatbot_voice_error_generic">⚠️ Voice error: %1$s</string>
     <string name="chatbot_scanning_image">📷 Scanning image...</string>
     <string name="chatbot_scan_error">❌ Scan error: %1$s</string>
-    <string name="chatbot_no_api_key">You have not configured your Gemini API key yet. Go to Settings &gt; AI to add yours.</string>
+    <string name="chatbot_no_api_key">You have not set up your Gemini API key yet. Go to Settings &gt; AI to add yours.</string>
+    <string name="chatbot_api_key_card_title">One step left to use the AI</string>
+    <string name="chatbot_api_key_card_body">FinAI\'s AI runs on your own Google key, for free. It takes two minutes and only once.</string>
+    <string name="chatbot_api_key_card_action">Set up my key</string>
     <string name="chatbot_report_spending_title">🛒 Expenses in %1$s %2$s:</string>
     <string name="chatbot_report_spending_scope_title">💰 Expenses for %1$s:</string>
     <string name="chatbot_report_count_purchases">• Count: %1$s purchases</string>
