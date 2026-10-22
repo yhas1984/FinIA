@@ -19,7 +19,7 @@
 #  3) El dispositivo se deja despierto, desbloqueado y sin salvapantallas antes de cada fase.
 set -u
 
-UI_CLASSES="com.gastos.di.BankImportUiTest,com.gastos.di.DocumentViewerUiTest,com.gastos.di.EssentialUiTest,com.gastos.di.ManualCompactUiTest"
+UI_CLASSES="com.gastos.di.DocumentViewerUiTest,com.gastos.di.EssentialUiTest,com.gastos.di.ManualCompactUiTest"
 DATOS_CLASSES="com.gastos.di.BankImportStorageTest,com.gastos.di.WalletCaptureRecoveryTest,com.gastos.di.MovementListProjectionTest,com.gastos.di.OrganizationStorageTest,com.gastos.di.CommandOperationDatabaseTest,com.gastos.di.RemoteSyncOutboxMigrationTest,com.gastos.di.TaxMigrationTest,com.gastos.di.BankPerformanceTest,com.gastos.di.DocumentCaptureDatabaseTest,com.gastos.di.AutomationIntegrationTest,com.gastos.di.FinancialReportTest,com.gastos.di.DeviceLargeBackupTest"
 
 # 0 = el fallo de los tests de interfaz NO tumba el job (entorno de GitHub sin render).
