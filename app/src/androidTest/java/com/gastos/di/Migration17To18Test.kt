@@ -72,7 +72,7 @@ class Migration17To18Test {
 
     private fun abrirMigrada(): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
-            .addMigrations(MIGRATION_17_18)
+            .addMigrations(*MIGRACIONES_DE_APP)
             .build()
 
     private fun filaEspana() =

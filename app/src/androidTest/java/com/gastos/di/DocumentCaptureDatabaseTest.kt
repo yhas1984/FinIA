@@ -48,7 +48,7 @@ class DocumentCaptureDatabaseTest {
             db.execSQL("INSERT INTO products (id,invoiceId,descripcion,cantidad,precioUnitario,subtotal,ivaPercent,ivaAmount,createdAt) VALUES (1,1,'Zero rate',1,10,10,0,0,1)")
             db.version = 12
         }
-        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17).build()
+        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(*MIGRACIONES_DE_APP).build()
         try {
             assertEquals(2, database.invoiceDao().getInvoiceCount())
             assertEquals(10.0, database.invoiceDao().getInvoiceById(1)!!.ivaPercent!!, 0.0)

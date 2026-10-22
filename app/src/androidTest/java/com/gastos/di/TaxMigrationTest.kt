@@ -44,7 +44,7 @@ class TaxMigrationTest {
             }
             db.version = 13
         }
-        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17).build()
+        val database = Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(*MIGRACIONES_DE_APP).build()
         try {
             val db = database.openHelper.writableDatabase
             for (table in before.keys) db.query("SELECT * FROM $table").use { cursor ->
