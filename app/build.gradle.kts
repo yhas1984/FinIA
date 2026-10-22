@@ -15,8 +15,14 @@ android {
         applicationId = "com.gastos.ingresos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 39
+        versionCode = 40
         versionName = "1.9.10"
+
+        // La app solo está traducida a español e inglés. Sin esta línea el bundle hereda los
+        // idiomas que traen las librerías (pt, fr, ar, de, it, …) y Play intenta traducir
+        // automáticamente las cadenas de la app a esos idiomas, falla y BLOQUEA la publicación
+        // («Falló la traducción de estos idiomas»). Además el bundle pesa menos.
+        resourceConfigurations += listOf("es", "en")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
