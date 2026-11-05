@@ -1,0 +1,34 @@
+# FinAI
+
+> Aplicación Android de finanzas personales con IA: registra gastos, ingresos y facturas hablando, escribiendo o con una foto del ticket, y opcionalmente lo sincroniza con Google Sheets y Drive usando la cuenta del propio usuario.
+
+## Qué es
+FinAI es una app de finanzas personales para Android. El asistente de IA (Gemini) interpreta lenguaje natural: se le dice «gasté 23 euros en gasolina» y lo registra con su categoría. También acepta comandos por voz y fotos de tickets, de las que extrae base, IVA, IRPF y NIF. Está pensada para particulares y autónomos en España, con soporte de varias monedas y facturas de varios países.
+
+## Hechos clave
+- Plataforma: Android. Se descarga gratis en Google Play (paquete com.gastos.ingresos).
+- Precio: la app es gratuita. El plan Premium añade más turnos de memoria del asistente y copias de seguridad cifradas en Drive.
+- Idiomas: español e inglés.
+- Registro de gastos: por voz, por texto o con foto del ticket (OCR con base, IVA, IRPF y NIF).
+- Exportación: sincronización opcional con Google Sheets (hojas de Facturas Recibidas, Ingresos, Productos y Resumen multimoneda).
+- Copias de seguridad: opcionales, en el Drive del usuario, cifradas con AES-256.
+- Privacidad: no hay servidores propios donde se copien los datos, no se venden datos y no se usan para publicidad. La API key de Gemini se guarda cifrada en el dispositivo.
+- Permisos de Google: solo si el usuario activa la sincronización; se puede revocar en cualquier momento desde su cuenta.
+
+## Preguntas frecuentes
+- ¿Es gratis? Sí. Premium añade memoria ampliada del asistente y backups cifrados.
+- ¿Necesito cuenta de Google? Solo para sincronizar con Sheets o Drive; es opcional y revocable.
+- ¿Dónde están mis datos? En el dispositivo; las copias a Drive son opcionales y cifradas.
+- ¿Cómo registro un gasto? Hablando, escribiendo o con foto del ticket.
+- ¿Qué necesita la IA? Una API key de Gemini, guardada cifrada en el dispositivo.
+- ¿Idiomas? Español e inglés.
+
+## Enlaces
+- Web: https://finai.leadpilot.es/
+- Google Play: https://play.google.com/store/apps/details?id=com.gastos.ingresos
+- Privacidad: https://finai.leadpilot.es/privacy.html
+- Términos: https://finai.leadpilot.es/terms.html
+- Eliminación de datos: https://finai.leadpilot.es/data-deletion.html
+
+## Contacto
+Desarrollador: Yhas1984 · ymi2021@gmail.com
