@@ -97,6 +97,8 @@ fun InvoiceDetailContent(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var deleteRemoteImage by remember { mutableStateOf(false) }
     val language = LocalLocale.current.platformLocale.language
+    val moneyLocale = LocalLocale.current.platformLocale
+    val fiscalLine = invoiceFiscalLine(invoice)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -132,25 +134,22 @@ fun InvoiceDetailContent(
                 }
             }
 
-            if (invoice.numeroFactura != null || invoice.baseImponible != null || invoice.cuotaIva != null) {
+            if (invoice.numeroFactura != null || fiscalLine != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     invoice.numeroFactura?.let {
                         Text(stringResource(R.string.invoice_number_label, it), style = MaterialTheme.typography.bodySmall)
                     }
-                    if (invoice.baseImponible != null || invoice.cuotaIva != null) {
-                        Text(
-                            text = buildString {
-                                invoice.baseImponible?.let {
-                                    append(stringResource(R.string.base_vat, com.gastos.domain.model.formatMoney(it, invoice.moneda, LocalLocale.current.platformLocale)))
-                                }
-                                invoice.cuotaIva?.let {
-                                    if (isNotEmpty()) append(" · ")
-                                    append(stringResource(com.gastos.common.R.string.taxes_total, com.gastos.domain.model.formatMoney(it, invoice.moneda, LocalLocale.current.platformLocale), ""))
-                                }
-                            },
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                    fiscalLine?.let { line ->
+                        val parts = buildList {
+                            line.base?.let { add(stringResource(R.string.invoice_fiscal_base, com.gastos.domain.model.formatMoney(it, invoice.moneda, moneyLocale))) }
+                            line.vat?.let { add(stringResource(R.string.invoice_fiscal_vat, com.gastos.domain.model.formatMoney(it, invoice.moneda, moneyLocale))) }
+                            line.withheld?.let { add(stringResource(R.string.invoice_fiscal_withholding, com.gastos.domain.model.formatMoney(it, invoice.moneda, moneyLocale))) }
+                            line.nonTaxable?.let {
+                                add(stringResource(if (it == TaxTreatment.OUT_OF_SCOPE) R.string.invoice_fiscal_out_of_scope else R.string.invoice_fiscal_exempt))
+                            }
+                        }
+                        if (parts.isNotEmpty()) Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

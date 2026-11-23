@@ -33,6 +33,11 @@
     <string name="irpf_percent" formatted="false">IRPF %</string>
     <string name="base_vat">Base: %1$s</string>
     <string name="vat_line">VAT: %1$s</string>
+    <string name="invoice_fiscal_base">Base %1$s</string>
+    <string name="invoice_fiscal_vat">VAT %1$s</string>
+    <string name="invoice_fiscal_withholding">Withholding −%1$s</string>
+    <string name="invoice_fiscal_exempt">Exempt</string>
+    <string name="invoice_fiscal_out_of_scope">Out of scope</string>
     <string name="base_vat_irpf_breakdown">Tax base: %1$s %2$s</string>
     <string name="vat_breakdown">VAT amount: +%1$s %2$s</string>
     <string name="irpf_breakdown">IRPF withholding: -%1$s %2$s</string>
