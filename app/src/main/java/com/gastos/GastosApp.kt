@@ -66,5 +66,8 @@ class AppStartup @Inject constructor() {
         cloudBackupScheduler.reconcile()
         remoteSyncQueue.schedule()
         applicationScope.launch { runCatching { dailyReminderScheduler.reconcile() } }
+        // Atribución de instalación: se lanza desde el Application (nunca desde un ViewModel) y
+        // persiste en disco en cuanto Play responde. Ver InstallAttribution.
+        runCatching { com.gastos.attribution.InstallAttribution.capture(context) }
     }
 }
