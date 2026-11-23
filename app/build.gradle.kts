@@ -15,8 +15,8 @@ android {
         applicationId = "com.gastos.ingresos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 41
-        versionName = "1.9.11"
+        versionCode = 42
+        versionName = "1.9.12"
 
         // La app solo está traducida a español e inglés. Sin esta línea el bundle hereda los
         // idiomas que traen las librerías (pt, fr, ar, de, it, …) y Play intenta traducir
@@ -151,6 +151,9 @@ dependencies {
     implementation(project(":feature:settings"))
     implementation(project(":feature:backup"))
     implementation(project(":feature:chatbot"))
+
+    // Atribución de instalación (Play Install Referrer): mide qué instalaciones vienen de finkit.eu
+    implementation(libs.installreferrer)
 
     // Testing
     testImplementation(libs.junit)
