@@ -24,6 +24,8 @@ data class FiscalSummaryLabels(
     val result: String,
     val resultToPay: String,
     val resultToOffset: String,
+    val resultZero: String,
+    val resultZeroWithExcluded: String,
     val irpfWithheld: String,
     val irpfPaid: String,
     val excludedTitle: String,
@@ -39,6 +41,13 @@ data class FiscalSummaryLabels(
     /** Aviso para países cuyas reglas todavía no están verificadas. */
     val unverifiedCountry: String = ""
 )
+
+/** Etiqueta del resultado según el signo y la cobertura: el cero con excluidos no es «sin cuota». */
+fun summaryResultLabel(summary: FiscalSummary, labels: FiscalSummaryLabels): String = when (summary.resultKind) {
+    VatResultKind.PAYABLE -> labels.resultToPay
+    VatResultKind.REFUNDABLE -> labels.resultToOffset
+    VatResultKind.ZERO -> if (summary.totalExcluded > 0) labels.resultZeroWithExcluded else labels.resultZero
+}
 
 /** Convierte el resumen en líneas de texto (para el PDF) y en filas de CSV. Sin Android. */
 object FiscalSummaryText {
@@ -95,7 +104,7 @@ object FiscalSummaryText {
         block(summary.taxName + " — " + labels.outputBlock, summary.output, labels.outputTotal)
         block(summary.taxName + " — " + labels.inputBlock, summary.input, labels.inputTotal)
 
-        val resultLabel = if (summary.isPayable) labels.resultToPay else labels.resultToOffset
+        val resultLabel = summaryResultLabel(summary, labels)
         out += "$resultLabel: ${money(summary.result.abs(), summary.currency)}"
         if (summary.irpfWithheld.signum() != 0) {
             out += "${labels.irpfWithheld}: ${money(summary.irpfWithheld, summary.currency)}"
@@ -144,7 +153,7 @@ object FiscalSummaryText {
         }
         rows += listOf(labels.inputBlock, "TOTAL", summary.input.base.toPlainString(), summary.input.quota.toPlainString(), summary.input.documents.toString())
         rows.add(emptyList())
-        rows += listOf(labels.result, summary.result.toPlainString())
+        rows += listOf(summaryResultLabel(summary, labels), summary.result.toPlainString())
         rows += listOf(labels.irpfWithheld, summary.irpfWithheld.toPlainString())
         rows += listOf(labels.irpfPaid, summary.irpfPaid.toPlainString())
         summary.excluded[VatExclusion.FOREIGN_CURRENCY]?.let { rows += listOf(labels.excludedForeignCurrency, it.toString()) }

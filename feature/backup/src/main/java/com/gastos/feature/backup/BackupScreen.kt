@@ -651,7 +651,14 @@ fun BackupScreen(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = (if (summary.isPayable) stringResource(R.string.fiscal_result_to_pay) else stringResource(R.string.fiscal_result_to_offset)) +
+                            text = (when (summary.resultKind) {
+                                VatResultKind.PAYABLE -> stringResource(R.string.fiscal_result_to_pay)
+                                VatResultKind.REFUNDABLE -> stringResource(R.string.fiscal_result_to_offset)
+                                VatResultKind.ZERO -> stringResource(
+                                    if (summary.totalExcluded > 0) R.string.fiscal_result_zero_with_excluded
+                                    else R.string.fiscal_result_zero
+                                )
+                            }) +
                                 ": " + FiscalSummaryText.money(summary.result.abs(), summary.currency),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold

@@ -250,6 +250,8 @@
     <string name="fiscal_result">Difference</string>
     <string name="fiscal_result_to_pay">To pay</string>
     <string name="fiscal_result_to_offset">To offset or refund</string>
+    <string name="fiscal_result_zero">No amount due</string>
+    <string name="fiscal_result_zero_with_excluded">Result with what is recorded</string>
     <string name="fiscal_irpf_withheld">Income tax withheld from your income</string>
     <string name="fiscal_irpf_paid">Income tax withheld on your expenses</string>
     <string name="fiscal_excluded_title">Documents not included</string>

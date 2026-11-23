@@ -193,7 +193,7 @@ class FiscalSummaryWriter @Inject constructor(
 
             // Caja del resultado
             ensureRoom(110f)
-            val resultText = if (summary.isPayable) labels.resultToPay else labels.resultToOffset
+            val resultText = summaryResultLabel(summary, labels)
             canvas.drawRect(margin, y, right, y + 78f, fill)
             canvas.drawRect(margin, y, margin + 5f, y + 78f, accent)
             canvas.drawText(resultText, margin + 20f, y + 30f, resultLabel)
@@ -263,6 +263,8 @@ class FiscalSummaryWriter @Inject constructor(
             result = context.getString(R.string.fiscal_result),
             resultToPay = context.getString(R.string.fiscal_result_to_pay),
             resultToOffset = context.getString(R.string.fiscal_result_to_offset),
+            resultZero = context.getString(R.string.fiscal_result_zero),
+            resultZeroWithExcluded = context.getString(R.string.fiscal_result_zero_with_excluded),
             irpfWithheld = context.getString(R.string.fiscal_irpf_withheld),
             irpfPaid = context.getString(R.string.fiscal_irpf_paid),
             excludedTitle = context.getString(R.string.fiscal_excluded_title),

@@ -193,9 +193,17 @@ data class FiscalSummary(
     val irpfPaid: BigDecimal,
     val excluded: Map<VatExclusion, Int> = emptyMap()
 ) {
-    val isPayable: Boolean get() = result.signum() > 0
+    /** Tres estados: a ingresar, a compensar/devolver o exactamente cero. */
+    val resultKind: VatResultKind get() = when (result.signum()) {
+        1 -> VatResultKind.PAYABLE
+        -1 -> VatResultKind.REFUNDABLE
+        else -> VatResultKind.ZERO
+    }
+    val isPayable: Boolean get() = resultKind == VatResultKind.PAYABLE
     val totalExcluded: Int get() = excluded.values.sum()
 }
+
+enum class VatResultKind { PAYABLE, REFUNDABLE, ZERO }
 
 /**
  * Calcula el resumen desde los documentos. Sin dependencias de Android para poder probarlo.

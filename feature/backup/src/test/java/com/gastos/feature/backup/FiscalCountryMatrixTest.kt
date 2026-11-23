@@ -487,6 +487,8 @@ class FiscalCountryMatrixTest {
         result = "Resultado",
         resultToPay = "A ingresar",
         resultToOffset = "A compensar o devolver",
+        resultZero = "Sin cuota",
+        resultZeroWithExcluded = "Resultado con lo registrado",
         irpfWithheld = "Retención",
         irpfPaid = "Pagado",
         excludedTitle = "Documentos no incluidos en el cálculo",

@@ -250,6 +250,8 @@
     <string name="fiscal_result">Diferencia</string>
     <string name="fiscal_result_to_pay">A ingresar</string>
     <string name="fiscal_result_to_offset">A compensar o devolver</string>
+    <string name="fiscal_result_zero">Sin cuota</string>
+    <string name="fiscal_result_zero_with_excluded">Resultado con lo registrado</string>
     <string name="fiscal_irpf_withheld">IRPF retenido en tus ingresos</string>
     <string name="fiscal_irpf_paid">IRPF soportado en tus gastos</string>
     <string name="fiscal_excluded_title">Documentos no incluidos en el cálculo</string>

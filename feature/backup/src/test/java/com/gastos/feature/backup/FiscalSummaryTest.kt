@@ -64,6 +64,17 @@ class FiscalSummaryTest {
         tiposRetencion = listOf(7.0)
     )
 
+    private fun labels() = FiscalSummaryLabels(
+        title = "", period = "", country = "", currency = "",
+        outputBlock = "", inputBlock = "", rate = "", base = "", quota = "", documents = "",
+        outputTotal = "", inputTotal = "", result = "",
+        resultToPay = "A ingresar", resultToOffset = "A compensar o devolver",
+        resultZero = "Sin cuota", resultZeroWithExcluded = "Resultado con lo registrado",
+        irpfWithheld = "", irpfPaid = "", excludedTitle = "", excludedForeignCurrency = "",
+        excludedMissingTaxData = "", excludedMissingRate = "", excludedExempt = "",
+        disclaimer = "", deadline = "", empty = ""
+    )
+
     // ---- Periodo ----
 
     @Test
@@ -169,6 +180,39 @@ class FiscalSummaryTest {
         assertEquals(BigDecimal("42.00"), summary.input.quota)
         assertEquals(BigDecimal("-21.00"), summary.result)
         assertFalse(summary.isPayable)
+    }
+
+    @Test
+    fun `un resultado exactamente cero no es a compensar ni a ingresar`() {
+        val period = VatPeriodCalculator.quarter(2026, 1, madrid)
+        val summary = VatSummaryCalculator.summary(
+            period = period, currency = "EUR",
+            invoices = listOf(expense(date(2026, 1, 20), 200.0, 42.0)),
+            incomes = listOf(income(date(2026, 1, 15), 242.0, listOf(tax(21.0, 200.0, 42.0)))),
+            fiscalConfig = esConfig
+        )
+        assertEquals(BigDecimal("0.00"), summary.result)
+        assertEquals(VatResultKind.ZERO, summary.resultKind)
+        assertEquals("Sin cuota", summaryResultLabel(summary, labels()))
+        assertFalse(summary.isPayable)
+    }
+
+    @Test
+    fun `cero con documentos fuera conserva su estado y la cobertura`() {
+        val period = VatPeriodCalculator.quarter(2026, 1, madrid)
+        val summary = VatSummaryCalculator.summary(
+            period = period, currency = "EUR",
+            invoices = listOf(
+                expense(date(2026, 1, 20), 200.0, 42.0),
+                expense(date(2026, 2, 1), 100.0, 21.0, currency = "USD")
+            ),
+            incomes = listOf(income(date(2026, 1, 15), 242.0, listOf(tax(21.0, 200.0, 42.0)))),
+            fiscalConfig = esConfig
+        )
+        assertEquals(BigDecimal("0.00"), summary.result)
+        assertEquals(VatResultKind.ZERO, summary.resultKind)
+        assertEquals(1, summary.totalExcluded)
+        assertEquals("Resultado con lo registrado", summaryResultLabel(summary, labels()))
     }
 
     @Test
