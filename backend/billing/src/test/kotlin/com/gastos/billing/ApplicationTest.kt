@@ -154,6 +154,31 @@ class ApplicationTest {
         assertEquals(1, store.records.size)
     }
 
+    @Test
+    fun `health refleja la dependencia en vez de mentir`() {
+        val healthy: suspend () -> Boolean = { true }
+        val unhealthy: suspend () -> Boolean = { false }
+        val broken: suspend () -> Boolean = { throw java.io.IOException("firestore caido") }
+        listOf(
+            Triple(healthy, HttpStatusCode.OK, "ok"),
+            Triple(unhealthy, HttpStatusCode.ServiceUnavailable, "degraded"),
+            Triple(broken, HttpStatusCode.ServiceUnavailable, "degraded")
+        ).forEach { (probe, status, body) -> testApplication {
+            val config = testConfig()
+            application {
+                billingModule(
+                    config,
+                    BillingService(config, FakePlayApi(), FakeStore(), FakeSigner()),
+                    healthCheck = probe
+                )
+            }
+            client = createClient { install(ContentNegotiation) { json() } }
+            val response = client.get("/health")
+            assertEquals(status, response.status)
+            assertEquals(body, response.body<HealthResponse>().status)
+        } }
+    }
+
     private fun testConfig() = BillingConfig(
         projectId = "finai-501616",
         firestoreDatabaseId = "finai",

@@ -42,14 +42,27 @@ fun Application.module() {
         store = FirestoreEntitlementStore(firestore),
         signer = EntitlementSigner(config)
     )
-    billingModule(config, service, GoogleOidcReconcileAuthenticator(config.reconcileAudience), InstallRegistry(FirestoreInstallStore(firestore)))
+    billingModule(
+        config,
+        service,
+        GoogleOidcReconcileAuthenticator(config.reconcileAudience),
+        InstallRegistry(FirestoreInstallStore(firestore)),
+        healthCheck = {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                firestore.collection("installs").limit(1).get().get()
+            }
+            true
+        }
+    )
 }
 
 fun Application.billingModule(
     config: BillingConfig,
     service: BillingService,
     reconcileAuthenticator: ReconcileAuthenticator = ReconcileAuthenticator { false },
-    installRegistry: InstallRegistry? = null
+    installRegistry: InstallRegistry? = null,
+    /** Comprueba una dependencia real (Firestore). Si falla, `/health` responde 503. */
+    healthCheck: suspend () -> Boolean = { true }
 ) {
     install(CallLogging) { level = Level.INFO }
     install(ContentNegotiation) { json() }
@@ -91,9 +104,22 @@ fun Application.billingModule(
         get("/") {
             call.respond(HealthResponse("ok"))
         }
-        get("/healthz") {
-            call.respond(HealthResponse("ok"))
+        /**
+         * `/healthz` NO existe para Cloud Run: Google Frontend se queda con esa ruta y devuelve su
+         * propia página 404 antes de que la petición llegue al contenedor (comprobado en la revisión
+         * 00007 con `/nope` como control: `/nope` llega a Ktor, `/healthz` no). La ruta que funciona
+         * en `*.run.app` es `/health`; se mantiene `/healthz` solo para uso local.
+         */
+        val health: suspend (io.ktor.server.application.ApplicationCall) -> Unit = { call ->
+            val healthy = runCatching { healthCheck() }.getOrDefault(false)
+            if (healthy) {
+                call.respond(HealthResponse("ok"))
+            } else {
+                call.respond(HttpStatusCode.ServiceUnavailable, HealthResponse("degraded"))
+            }
         }
+        get("/health") { health(call) }
+        get("/healthz") { health(call) }
         post("/v1/entitlements:verify") {
             val request = call.receive<VerifyEntitlementRequest>()
             call.respond(service.verify(request))
