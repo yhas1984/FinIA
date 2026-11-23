@@ -112,7 +112,7 @@ class GooglePlayApiClient(
         httpClient.newCall(builder.build()).execute().use { response ->
             val responseBody = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw ExternalServiceException("Google Play API returned HTTP ${response.code}")
+                throw UpstreamPlayException(response.code, "Google Play API returned HTTP ${response.code}")
             }
             return if (responseBody.isBlank()) json.parseToJsonElement("{}") else json.parseToJsonElement(responseBody)
         }

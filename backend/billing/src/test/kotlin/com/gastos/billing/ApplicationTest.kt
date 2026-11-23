@@ -95,6 +95,65 @@ class ApplicationTest {
         } }
     }
 
+    @Test
+    fun `a rejected Play call is distinguishable from an outage`() {
+        listOf(
+            Triple(404, HttpStatusCode.Forbidden, "PURCHASE_NOT_FOUND"),
+            Triple(410, HttpStatusCode.Forbidden, "PURCHASE_NOT_FOUND"),
+            Triple(401, HttpStatusCode.ServiceUnavailable, "UPSTREAM_AUTH_ERROR"),
+            Triple(403, HttpStatusCode.ServiceUnavailable, "UPSTREAM_AUTH_ERROR"),
+            Triple(500, HttpStatusCode.BadGateway, "UPSTREAM_PLAY_ERROR")
+        ).forEach { (upstream, status, code) -> testApplication {
+            val config = testConfig()
+            val failure = UpstreamPlayException(upstream, "synthetic $upstream")
+            application { billingModule(config, BillingService(config, FakePlayApi(failure), FakeStore(), FakeSigner())) }
+            client = createClient { install(ContentNegotiation) { json() } }
+            val response = client.post("/v1/entitlements:verify") {
+                header("Content-Type", ContentType.Application.Json.toString())
+                setBody(VerifyEntitlementRequest("com.gastos.ingresos", "finai_premium", "synthetic-token"))
+            }
+            assertEquals(status, response.status, "Play HTTP $upstream")
+            val body = response.body<ErrorResponse>()
+            assertEquals(code, body.code, "Play HTTP $upstream")
+            assertTrue(body.error.contains(upstream.toString()), "el mensaje debe citar el HTTP de Play")
+        } }
+    }
+
+    @Test
+    fun `installs register acepta la peticion y rechaza campos fuera del contrato`() = testApplication {
+        val config = testConfig()
+        val store = RecordingInstallStore()
+        val service = BillingService(config, FakePlayApi(), FakeStore(), FakeSigner())
+        application { billingModule(config, service, installRegistry = InstallRegistry(store) { 1_000L }) }
+        client = createClient { install(ContentNegotiation) { json() } }
+
+        val ok = client.post("/v1/installs:register") {
+            header("Content-Type", ContentType.Application.Json.toString())
+            setBody(
+                RegisterInstallRequest(
+                    installId = "0123456789abcdef0123456789abcdef",
+                    utmSource = "finkit",
+                    utmCampaign = "cuota-autonomos"
+                )
+            )
+        }
+        assertEquals(HttpStatusCode.OK, ok.status)
+        assertEquals("install", ok.body<RegisterInstallResponse>().stage)
+
+        // Campo que no está en el DTO: la lista es cerrada y no se guarda nada.
+        val extra = client.post("/v1/installs:register") {
+            header("Content-Type", ContentType.Application.Json.toString())
+            setBody(
+                """
+                {"installId":"0123456789abcdef0123456789abcdef","utmSource":"finkit","importe":1234.56}
+                """.trimIndent()
+            )
+        }
+        assertEquals(HttpStatusCode.BadRequest, extra.status)
+        assertEquals("INVALID_REQUEST", extra.body<ErrorResponse>().code)
+        assertEquals(1, store.records.size)
+    }
+
     private fun testConfig() = BillingConfig(
         projectId = "finai-501616",
         firestoreDatabaseId = "finai",
@@ -115,6 +174,16 @@ class ApplicationTest {
         override suspend fun acknowledge(productId: String, purchaseToken: String) = Unit
         override suspend fun listVoidedPurchaseTokens() = emptyList<String>()
         override suspend fun verifyPlayIntegrity(token: String, expectedNonce: String) = Unit
+    }
+
+    private class RecordingInstallStore : InstallStore {
+        val records = mutableListOf<InstallRecord>()
+
+        override suspend fun upsert(record: InstallRecord): InstallStoreResult {
+            val existed = records.any { it.installId == record.installId }
+            records += record
+            return InstallStoreResult(existed = existed, stage = record.stage)
+        }
     }
 
     private class FakeStore : EntitlementStore {
