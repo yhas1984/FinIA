@@ -1,0 +1,15 @@
+<es-ES>
+• Corregido el desglose fiscal al añadir impuestos a una factura con retención: el IRPF ya no desaparece al crear la fila del IVA.
+• La retención se calcula sobre la base imponible y se guarda su importe, también al volver a abrir la factura.
+• El total de la factura y el neto a cobrar quedan separados y cuadran aunque edites las filas.
+</es-ES>
+<en-US>
+• Fixed the tax breakdown when adding taxes to an invoice with withholding: IRPF no longer disappears when the VAT row is created.
+• Withholding is calculated on the taxable base and its amount is saved, including when you reopen the invoice.
+• The invoice total and the net amount to be paid stay separate and add up even if you edit the rows.
+</en-US>
+<es-419>
+• Corregido el desglose fiscal al agregar impuestos a una factura con retención: el IRPF ya no desaparece al crear la fila del IVA.
+• La retención se calcula sobre la base imponible y se guarda su importe, también al volver a abrir la factura.
+• El total de la factura y el neto a cobrar quedan separados y cuadran aunque edites las filas.
+</es-419>
