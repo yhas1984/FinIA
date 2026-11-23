@@ -87,6 +87,28 @@ class InvoiceFiscalLineTest {
     }
 
     @Test
+    fun `un cero guardado no se sustituye por el porcentaje`() {
+        val line = requireNotNull(invoiceFiscalLine(invoice(
+            base = 100.0,
+            quota = 21.0,
+            irpf = 15.0,
+            withholding = 0.0
+        )))
+        assertNull(line.withheld)
+    }
+
+    @Test
+    fun `una fila de retencion a cero tampoco se sustituye por el porcentaje`() {
+        val line = requireNotNull(invoiceFiscalLine(invoice(
+            base = 100.0,
+            quota = 21.0,
+            irpf = 15.0,
+            taxes = listOf(DocumentTax(name = "IRPF", amount = 0.0, effect = TaxEffect.WITHHOLDING))
+        )))
+        assertNull(line.withheld)
+    }
+
+    @Test
     fun `sin datos fiscales no se inventa una linea`() {
         assertNull(invoiceFiscalLine(invoice()))
     }

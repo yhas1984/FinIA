@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -149,7 +150,18 @@ fun InvoiceDetailContent(
                                 add(stringResource(if (it == TaxTreatment.OUT_OF_SCOPE) R.string.invoice_fiscal_out_of_scope else R.string.invoice_fiscal_exempt))
                             }
                         }
-                        if (parts.isNotEmpty()) Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
+                        if (parts.isNotEmpty()) {
+                            // Sin separadores: a 2,0× cada segmento va en su línea y no queda un «·» huérfano.
+                            if (LocalDensity.current.fontScale >= 1.3f) {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    parts.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                }
+                            } else {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    parts.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                                }
+                            }
+                        }
                     }
                 }
             }
