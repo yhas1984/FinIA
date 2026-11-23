@@ -75,6 +75,63 @@ class EditInvoiceFormTest {
     }
 
     @Test
+    fun `la retencion escrita sobrevive al convertir el IVA en fila manual`() {
+        // Caso exacto de QA: total 121 + IVA 21 % + IRPF 15 %; al pulsar «Añadir impuesto»
+        // el IVA pasa a fila y la base deja de estar escrita. Antes, la retención se perdía.
+        val locale = java.util.Locale.forLanguageTag("es-ES")
+        val base = EditInvoiceForm(total = "121", ivaPercent = "21", irpfPercent = "15")
+        val before = base.recalcFiscal(locale)!!
+        val ivaRow = com.gastos.common.TaxFormRow.from(
+            com.gastos.domain.model.DocumentTax(name = "IVA", rate = before.ivaPercent,
+                base = before.baseImponible, amount = before.ivaAmount), locale)
+        val after = base.copy(taxes = listOf(ivaRow), baseImponible = "", cuotaIva = "").recalcFiscal(locale)!!
+        assertEquals(100.0, after.baseImponible!!, 0.001)
+        assertEquals(21.0, after.ivaAmount!!, 0.001)
+        assertEquals(15.0, after.irpfAmount, 0.001)
+        assertEquals(106.0, after.totalNeto, 0.001)
+    }
+
+    @Test
+    fun `una factura bruta con retencion se reabre sin perder el desglose`() {
+        // Lo que se guarda al arreglar el caso anterior: total 121 (bruto), base 100, IVA 21,
+        // retención 15. Al reabrir, el importe leído no debe reinterpretar el total como neto.
+        val locale = java.util.Locale.forLanguageTag("es-ES")
+        val ivaRow = com.gastos.common.TaxFormRow("IVA", "21", "100", "21")
+        val reloaded = EditInvoiceForm(total = "121", baseImponible = "100", cuotaIva = "21",
+            ivaPercent = "21", irpfPercent = "15", withheldAmountRead = 15.0, withheldRateRead = 15.0,
+            taxes = listOf(ivaRow)).recalcFiscal(locale)!!
+        assertEquals(100.0, reloaded.baseImponible!!, 0.001)
+        assertEquals(21.0, reloaded.ivaAmount!!, 0.001)
+        assertEquals(15.0, reloaded.irpfAmount, 0.001)
+        assertEquals(106.0, reloaded.totalNeto, 0.001)
+    }
+
+    @Test
+    fun `un total neto leido del OCR sigue cuadrando con la retencion y las filas`() {
+        val locale = java.util.Locale.forLanguageTag("es-ES")
+        val ivaRow = com.gastos.common.TaxFormRow("IVA", "21", "100", "21")
+        val net = EditInvoiceForm(total = "106", baseImponible = "100", cuotaIva = "21",
+            ivaPercent = "21", irpfPercent = "15", withheldAmountRead = 15.0, withheldRateRead = 15.0,
+            taxes = listOf(ivaRow)).recalcFiscal(locale)!!
+        assertEquals(100.0, net.baseImponible!!, 0.001)
+        assertEquals(15.0, net.irpfAmount, 0.001)
+        assertEquals(106.0, net.totalNeto, 0.001)
+    }
+
+    @Test
+    fun `una fila de retencion con total bruto no inventa una base mayor`() {
+        val locale = java.util.Locale.forLanguageTag("es-ES")
+        val rows = listOf(com.gastos.common.TaxFormRow("IVA", "21", "100", "21"),
+            com.gastos.common.TaxFormRow("IRPF", "15", "100", "15", effect = com.gastos.domain.model.TaxEffect.WITHHOLDING))
+        val r = EditInvoiceForm(total = "121", baseImponible = "100", ivaPercent = "21", irpfPercent = "15",
+            taxes = rows).recalcFiscal(locale)!!
+        assertEquals(100.0, r.baseImponible!!, 0.001)
+        assertEquals(21.0, r.ivaAmount!!, 0.001)
+        assertEquals(15.0, r.irpfAmount, 0.001)
+        assertEquals(106.0, r.totalNeto, 0.001)
+    }
+
+    @Test
     fun `iva cero deja base igual al total`() {
         val r = form("50", iva = "0.0").recalcFiscal()!!
         assertEquals(50.0, r.baseImponible!!, 0.001)

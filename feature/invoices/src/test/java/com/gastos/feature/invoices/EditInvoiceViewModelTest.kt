@@ -21,7 +21,9 @@ import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Before
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
+import io.mockk.slot
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EditInvoiceViewModelTest {
@@ -348,5 +350,70 @@ class EditInvoiceViewModelTest {
         assertTrue(vm.form.value.taxes.isEmpty())
         stored.complete(7L); advanceUntilIdle()
         coVerify(exactly = 1) { repo.insertInvoice(match { it.proveedor == "Initial" && it.total == 20.0 }) }
+    }
+
+    @Test fun `la retencion escrita se persiste al anadir la fila de IVA y sobrevive a la reapertura`() = runTest(dispatcher) {
+        val locale = java.util.Locale.forLanguageTag("es-ES")
+        val repo = mockk<com.gastos.repository.InvoiceRepository>(relaxed = true)
+        every { repo.getAllInvoices() } returns flowOf(emptyList())
+        val captured = slot<Invoice>()
+        coEvery { repo.insertInvoice(capture(captured)) } returns 11L
+        val products = mockk<com.gastos.repository.ProductRepository>(relaxed = true)
+        every { products.getProductsByInvoiceId(11L) } returns flowOf(emptyList())
+        val sync = mockk<com.gastos.feature.backup.SheetsSyncManager>(relaxed = true)
+
+        val vm = EditInvoiceViewModel(mockContext(), repo, products, sync)
+        vm.updateProveedor("Acme")
+        vm.updateTotal("121")
+        vm.updateIvaPercent("21")
+        vm.updateIrpfPercent("15")
+        assertEquals(15.0, vm.form.value.recalcFiscal(locale)!!.irpfAmount, 0.001)
+        vm.addTax(locale)
+        assertNotNull(vm.form.value.recalcFiscal(locale))
+        assertEquals(15.0, vm.form.value.recalcFiscal(locale)!!.irpfAmount, 0.001)
+        vm.saveInvoice(locale)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repo.insertInvoice(any()) }
+        val saved = captured.captured
+        assertEquals(15.0, saved.irpfPercent, 0.001)
+        assertEquals(15.0, saved.evidence?.document?.withholdingAmount ?: 0.0, 0.001)
+        assertEquals(100.0, saved.baseImponible ?: 0.0, 0.001)
+
+        // Reabrir lo guardado no debe perder la retención ni rechazar el desglose.
+        val stored = saved.copy(id = 11L)
+        val repo2 = mockk<com.gastos.repository.InvoiceRepository>()
+        every { repo2.getAllInvoices() } returns flowOf(listOf(stored))
+        coEvery { repo2.getInvoiceById(11L) } returns stored
+        val reopened = EditInvoiceViewModel(mockContext(), repo2, mockk(relaxed = true), mockk(relaxed = true))
+        reopened.loadInvoice(11L, locale)
+        advanceUntilIdle()
+        val fiscal = reopened.form.value.recalcFiscal(locale)
+        assertNotNull(fiscal)
+        assertEquals(100.0, fiscal!!.baseImponible!!, 0.001)
+        assertEquals(15.0, fiscal.irpfAmount, 0.001)
+    }
+
+    @Test fun `la retencion escrita sin filas tambien se guarda como importe`() = runTest(dispatcher) {
+        val locale = java.util.Locale.forLanguageTag("es-ES")
+        val repo = mockk<com.gastos.repository.InvoiceRepository>(relaxed = true)
+        every { repo.getAllInvoices() } returns flowOf(emptyList())
+        val captured = slot<Invoice>()
+        coEvery { repo.insertInvoice(capture(captured)) } returns 12L
+        val products = mockk<com.gastos.repository.ProductRepository>(relaxed = true)
+        every { products.getProductsByInvoiceId(12L) } returns flowOf(emptyList())
+
+        val vm = EditInvoiceViewModel(mockContext(), repo, products, mockk(relaxed = true))
+        vm.updateProveedor("Acme")
+        vm.updateTotal("121")
+        vm.updateIvaPercent("21")
+        vm.updateIrpfPercent("15")
+        vm.saveInvoice(locale)
+        advanceUntilIdle()
+
+        val saved = captured.captured
+        assertEquals(15.0, saved.irpfPercent, 0.001)
+        assertEquals(15.0, saved.evidence?.document?.withholdingAmount ?: 0.0, 0.001)
+        assertEquals(100.0, saved.baseImponible ?: 0.0, 0.001)
     }
 }

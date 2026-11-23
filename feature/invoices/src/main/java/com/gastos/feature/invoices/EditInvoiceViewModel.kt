@@ -100,6 +100,11 @@ data class EditInvoiceForm(
         val totalNeto: Double
     )
 
+    private companion object {
+        /** Misma tolerancia que valida el guardado; el desglose no debe aceptar lo que el guardado rechaza. */
+        const val FISCAL_TOLERANCE = 0.02
+    }
+
     /**
      * Recalcula el desglose fiscal del formulario a partir de los campos
      * de texto. Es una función PURA (sin Android, sin I/O) para que pueda
@@ -125,9 +130,34 @@ data class EditInvoiceForm(
         }
         if (taxes.isNotEmpty()) {
             val parsed: List<DocumentTax> = TaxFormRow.parseAll(taxes, locale, moneda) ?: return null
-            val withholding: Double? = if (withheldRateRead == irpf) withheldAmountRead else enteredBase?.times(irpf / 100.0)
-            val result = reconcileTaxForm(parsed, total, enteredBase, withholding, moneda) ?: return null
-            return FiscalBreakdown(total, DocumentTaxes.singleRate(parsed), irpf, result.base, result.charges, result.withholding, total)
+            val charges: Double = DocumentTaxes.total(parsed, TaxEffect.CHARGE) ?: return null
+            val hasWithholdingRow: Boolean = parsed.any { it.effect == TaxEffect.WITHHOLDING }
+            val rowWithholding: Double? = DocumentTaxes.total(parsed, TaxEffect.WITHHOLDING)
+            val readWithholding: Double? = withheldAmountRead?.takeIf { it > 0.0 && withheldRateRead == irpf }
+            // ¿El total ya lleva descontada la retención? Solo cuando el dato lo demuestra:
+            // el OCR leyó el importe retenido, o una fila de retención cuadra con la base escrita.
+            // Si no, el total es bruto (base + cuotas) y la retención es informativa: pasarla a
+            // reconcileTaxForm obligaría a un total que ya la llevara restada.
+            val totalCarriesWithholding: Boolean = when {
+                readWithholding != null -> enteredBase == null ||
+                    abs(enteredBase + charges - readWithholding - total) <= FISCAL_TOLERANCE
+                hasWithholdingRow && enteredBase != null && rowWithholding != null ->
+                    abs(enteredBase + charges - rowWithholding - total) <= FISCAL_TOLERANCE
+                else -> false
+            }
+            val result = reconcileTaxForm(
+                parsed, total, enteredBase,
+                readWithholding.takeIf { totalCarriesWithholding }, moneda,
+                totalIncludesWithholding = totalCarriesWithholding
+            ) ?: return null
+            val withheld: Double = when {
+                hasWithholdingRow -> result.withholding
+                totalCarriesWithholding -> result.withholding
+                irpf > 0.0 -> result.base * irpf / 100.0
+                else -> 0.0
+            }
+            val neto: Double = if (totalCarriesWithholding) total else total - withheld
+            return FiscalBreakdown(total, DocumentTaxes.singleRate(parsed), irpf, result.base, result.charges, withheld, neto)
         }
         val withholdingDeducted: Boolean = withheldAmountRead != null
         val base: Double? = enteredBase ?: iva?.let { total / (1.0 + it / 100.0 - if (withholdingDeducted) irpf / 100.0 else 0.0) }
@@ -424,6 +454,11 @@ class EditInvoiceViewModel @Inject constructor(
                 // ocrRawText) del registro original para no perder la foto
                 // ni el texto OCR al guardar.
                 val original = originalInvoice
+                val originalWithholding: Double? = original?.evidence?.document?.withholdingAmount
+                // Una factura antigua sin base guardada conserva base null si el campo sigue vacío;
+                // en ese caso tampoco se inventa un importe de retención: al reabrir se recalcula
+                // desde el porcentaje, que sí queda persistido.
+                val storesBase: Boolean = !(form.taxes.isEmpty() && original != null && form.baseImponible.isBlank())
                 val invoice = Invoice(
                     categoryId = original?.categoryId, subcategoryId = original?.subcategoryId,
                     sourceMimeType = original?.sourceMimeType, sourceName = original?.sourceName,
@@ -439,7 +474,14 @@ class EditInvoiceViewModel @Inject constructor(
                             country = form.paisCodigo, currency = currency, total = if (form.manualAmountAdjusted) original?.evidence?.document?.total else fiscal.total,
                             taxes = parsedTaxes, taxesComplete = if (parsedTaxes.isNotEmpty()) true else null,
                             taxBase = fiscal.baseImponible, vatAmount = fiscal.ivaAmount, vatPercent = fiscal.ivaPercent, withholdingPercent = fiscal.irpfPercent,
-                            withholdingAmount = if (form.taxes.isNotEmpty() || form.withheldAmountRead != null) fiscal.irpfAmount else original?.evidence?.document?.withholdingAmount
+                            withholdingAmount = when {
+                                fiscal.irpfAmount > 0.0 && storesBase -> fiscal.irpfAmount
+                                // Sin retención calculada, conservar solo el importe original si el
+                                // porcentaje no ha cambiado (editar otro campo no debe borrarlo ni
+                                // resucitarlo cuando el usuario pone el IRPF a cero).
+                                originalWithholding != null && original.irpfPercent == fiscal.irpfPercent -> originalWithholding
+                                else -> null
+                            }
                         )
                     ).let { edited -> com.gastos.domain.model.DocumentProvenance.markManual(original?.evidence, edited.document).copy(distinctFrom = distinctFrom) },
                     documentUuid = original?.documentUuid ?: java.util.UUID.randomUUID().toString(),
@@ -455,7 +497,7 @@ class EditInvoiceViewModel @Inject constructor(
                     moneda = currency,
                     total = fiscal.total,
                     numeroFactura = form.numeroFactura.trim().takeIf { it.isNotBlank() },
-                    baseImponible = if (form.taxes.isEmpty() && original != null && form.baseImponible.isBlank()) {
+                    baseImponible = if (!storesBase) {
                         null
                     } else {
                         fiscal.baseImponible

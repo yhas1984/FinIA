@@ -45,13 +45,22 @@ data class TaxFormRow(
 
 data class TaxFormTotals(val base: Double, val charges: Double, val withholding: Double)
 
-/** The document base is entered or derived from its total, never by adding component bases. */
-fun reconcileTaxForm(taxes: List<DocumentTax>, total: Double, base: Double?, withholding: Double?, currency: String): TaxFormTotals? {
+/**
+ * The document base is entered or derived from its total, never by adding component bases.
+ *
+ * [totalIncludesWithholding] distingue las dos convenciones que conviven en la app:
+ *  - `true` (factura/OCR): el total ya lleva descontada la retención → total = base + cuotas - retención.
+ *  - `false` (entrada manual): el total es bruto → total = base + cuotas y la retención es informativa.
+ * Sin este parámetro, un total bruto de 121 con IVA 21 y retención 15 se rechazaba o se
+ * reinterpretaba con una base de 115.
+ */
+fun reconcileTaxForm(taxes: List<DocumentTax>, total: Double, base: Double?, withholding: Double?, currency: String, totalIncludesWithholding: Boolean = true): TaxFormTotals? {
     if (DocumentTaxes.validate(taxes, currency).isNotEmpty()) return null
     val charges: Double = DocumentTaxes.total(taxes, TaxEffect.CHARGE) ?: return null
     val retained: Double = if (taxes.any { it.effect == TaxEffect.WITHHOLDING })
         DocumentTaxes.total(taxes, TaxEffect.WITHHOLDING) ?: return null else withholding ?: 0.0
-    val netBase: BigDecimal = DocumentTaxes.decimal(base) ?: (BigDecimal.valueOf(total) - BigDecimal.valueOf(charges) + BigDecimal.valueOf(retained))
-    if (netBase < BigDecimal.ZERO || (netBase + BigDecimal.valueOf(charges) - BigDecimal.valueOf(retained) - BigDecimal.valueOf(total)).abs() > DocumentTaxes.tolerance(currency)) return null
+    val retainedInTotal: BigDecimal = if (totalIncludesWithholding) BigDecimal.valueOf(retained) else BigDecimal.ZERO
+    val netBase: BigDecimal = DocumentTaxes.decimal(base) ?: (BigDecimal.valueOf(total) - BigDecimal.valueOf(charges) + retainedInTotal)
+    if (netBase < BigDecimal.ZERO || (netBase + BigDecimal.valueOf(charges) - retainedInTotal - BigDecimal.valueOf(total)).abs() > DocumentTaxes.tolerance(currency)) return null
     return TaxFormTotals(netBase.toDouble(), charges, retained)
 }
