@@ -165,6 +165,7 @@
     <string name="csv_header_date">Date</string>
     <string name="csv_header_invoice_number">Invoice number</string>
     <string name="csv_header_concept">Concept</string>
+    <string name="csv_header_supplier">Supplier</string>
     <string name="csv_header_amount">Amount</string>
     <string name="csv_header_currency">Currency</string>
     <string name="csv_header_tax_base">Tax base</string>

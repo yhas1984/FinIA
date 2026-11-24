@@ -165,6 +165,7 @@
     <string name="csv_header_date">Fecha</string>
     <string name="csv_header_invoice_number">Nº Factura</string>
     <string name="csv_header_concept">Concepto</string>
+    <string name="csv_header_supplier">Proveedor</string>
     <string name="csv_header_amount">Monto</string>
     <string name="csv_header_currency">Moneda</string>
     <string name="csv_header_tax_base">Base Imponible</string>

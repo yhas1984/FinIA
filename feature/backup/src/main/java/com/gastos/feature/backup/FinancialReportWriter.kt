@@ -7,17 +7,74 @@ import com.gastos.repository.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import java.io.File
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.ZoneId
 import java.util.*
 import javax.inject.Inject
 
 enum class ReportDetail { SUMMARY, DETAILED }
+
+/** Perfil del CSV: el informe completo o el libro de facturas recibidas. */
+enum class ReportProfile { STANDARD, LEDGER }
+
+data class CsvDialect(
+    val separator: Char = ',',
+    val decimalSeparator: Char = '.'
+)
+
+data class LedgerStats(
+    val includedInvoices: Int,
+    val excludedInvoices: Int,
+    val documentInvoices: Int,
+    val calculatedInvoices: Int,
+    val documentRows: Int,
+    val calculatedRows: Int,
+    val excludedIds: List<Long>
+)
+
+data class LedgerResult(val file: File, val stats: LedgerStats)
+
+private data class LedgerRow(
+    val invoice: Invoice,
+    val base: Double?,
+    val rate: Double?,
+    val quota: Double?,
+    val amount: Double?,
+    val source: String
+)
 
 enum class ReportFormat(val extension: String, val mime: String) { CSV("csv", "text/csv"), PDF("pdf", "application/pdf") }
 
 internal fun Appendable.appendCsvRow(vararg values: Any?) {
     append(values.joinToString(",") { value ->
         val raw = value?.toString().orEmpty()
+        val safe = if (value is String && raw.trimStart { it <= ' ' }.firstOrNull() in setOf('=', '+', '-', '@')) {
+            "'$raw"
+        } else {
+            raw
+        }
+        "\"${safe.replace("\"", "\"\"")}\""
+    })
+    append('\n')
+}
+
+/** Una sola convención numérica por fichero: el dialecto decide separador y decimal. */
+internal fun Appendable.appendCsvRow(dialect: CsvDialect, vararg values: Any?) {
+    append(values.joinToString(dialect.separator.toString()) { value ->
+        val raw = when (value) {
+            is Double -> BigDecimal.valueOf(value)
+                .setScale(2, RoundingMode.HALF_UP)
+                .toPlainString()
+                .replace('.', dialect.decimalSeparator)
+            is Float -> BigDecimal.valueOf(value.toDouble())
+                .setScale(2, RoundingMode.HALF_UP)
+                .toPlainString()
+                .replace('.', dialect.decimalSeparator)
+            else -> value?.toString().orEmpty()
+        }
         val safe = if (value is String && raw.trimStart { it <= ' ' }.firstOrNull() in setOf('=', '+', '-', '@')) {
             "'$raw"
         } else {
@@ -75,6 +132,165 @@ class FinancialReportWriter @Inject constructor(
             file
         } catch (error: Throwable) { file.delete(); throw error }
     }
+    /**
+     * Libro de facturas recibidas: solo GASTO, una fila por tipo de IVA, cabecera en la
+     * primera línea y sin filas de producto, ingresos ni bloque de resumen. Devuelve los
+     * contadores que alimentan el aviso de cobertura de la hoja de compartir.
+     */
+    suspend fun generateLedger(
+        filter: ReportFilter = ReportFilter(),
+        progress: (Float) -> Unit
+    ): LedgerResult = withContext(Dispatchers.IO) {
+        val folder = File(context.cacheDir, "report_exports")
+        check(folder.isDirectory || folder.mkdirs())
+        val exportDir = File(folder, "ledger_${UUID.randomUUID()}").apply { mkdirs() }
+        val file = File(exportDir, ledgerFileName(filter))
+        try {
+            progress(0.05f)
+            val data: BackupDataset = repository.financialSnapshot()
+            val invoices = data.invoices.filter {
+                it.tipo == InvoiceType.GASTO &&
+                    filter.includes(it.fecha, DocumentKind.EXPENSE, it.categoria, it.subcategoria)
+            }
+            val rows = mutableListOf<LedgerRow>()
+            val excluded = mutableListOf<Long>()
+            invoices.forEachIndexed { index, invoice ->
+                currentCoroutineContext().ensureActive()
+                val charges = invoice.taxes.filter { it.effect == TaxEffect.CHARGE }
+                if (charges.isNotEmpty()) {
+                    charges.forEach { tax ->
+                        val taxBase = tax.base
+                        val taxAmount = tax.amount
+                        rows += LedgerRow(
+                            invoice = invoice,
+                            base = taxBase,
+                            rate = tax.rate,
+                            quota = taxAmount,
+                            amount = if (taxBase != null && taxAmount != null) taxBase + taxAmount else invoice.total,
+                            source = SOURCE_DOCUMENT
+                        )
+                    }
+                } else {
+                    val base = invoice.baseImponible
+                    val quota = invoice.cuotaIva
+                    val rate = invoice.ivaPercent
+                    val total = invoice.total
+                    when {
+                        base != null && quota != null -> {
+                            if (kotlin.math.abs(base + quota - total) <= LEDGER_TOLERANCE && rate != null) {
+                                rows += LedgerRow(invoice, base, rate, quota, base + quota, SOURCE_DOCUMENT)
+                            } else {
+                                excluded += invoice.id
+                            }
+                        }
+                        rate != null && total > 0.0 -> {
+                            val calculatedBase = total / (1.0 + rate / 100.0)
+                            rows += LedgerRow(invoice, calculatedBase, rate, total - calculatedBase, total, SOURCE_CALCULATED)
+                        }
+                        else -> excluded += invoice.id
+                    }
+                }
+                progress(0.05f + 0.85f * (index + 1) / invoices.size.coerceAtLeast(1))
+            }
+            file.bufferedWriter(Charsets.UTF_8).use { writer ->
+                writer.append('\uFEFF')
+                writeLedgerCsv(writer, rows)
+            }
+            progress(1f)
+            LedgerResult(
+                file = file,
+                stats = LedgerStats(
+                    includedInvoices = rows.map { it.invoice.id }.distinct().size,
+                    excludedInvoices = excluded.size,
+                    documentInvoices = rows.filter { it.source == SOURCE_DOCUMENT }.map { it.invoice.id }.distinct().size,
+                    calculatedInvoices = rows.filter { it.source == SOURCE_CALCULATED }.map { it.invoice.id }.distinct().size,
+                    documentRows = rows.count { it.source == SOURCE_DOCUMENT },
+                    calculatedRows = rows.count { it.source == SOURCE_CALCULATED },
+                    excludedIds = excluded
+                )
+            )
+        } catch (error: Throwable) {
+            file.delete()
+            exportDir.delete()
+            throw error
+        }
+    }
+
+    private fun writeLedgerCsv(output: Appendable, rows: List<LedgerRow>) = with(output) {
+        val dialect = CsvDialect(separator = ';', decimalSeparator = ',')
+        appendCsvRow(
+            dialect,
+            context.getString(R.string.csv_header_type),
+            context.getString(R.string.csv_header_id),
+            context.getString(R.string.csv_header_date),
+            context.getString(R.string.csv_header_invoice_number),
+            context.getString(R.string.csv_header_supplier),
+            context.getString(R.string.csv_header_amount),
+            context.getString(R.string.csv_header_currency),
+            context.getString(R.string.csv_header_tax_base),
+            context.getString(R.string.csv_header_vat_percent),
+            context.getString(R.string.csv_header_vat_amount),
+            context.getString(R.string.csv_header_irpf_percent),
+            context.getString(R.string.csv_header_category),
+            context.getString(R.string.csv_header_subcategory),
+            context.getString(R.string.csv_header_notes),
+            "taxes_json_original_currency",
+            "document_uuid",
+            "parent_document_uuid",
+            "origin",
+            "manual_amount_adjusted",
+            "dato_fiscal"
+        )
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
+        rows.forEach { row ->
+            appendCsvRow(
+                dialect,
+                context.getString(R.string.csv_type_expense),
+                row.invoice.id,
+                dateFormat.format(Date(row.invoice.fecha)),
+                row.invoice.numeroFactura.orEmpty(),
+                row.invoice.proveedor,
+                row.amount,
+                row.invoice.moneda,
+                row.base,
+                row.rate,
+                row.quota,
+                row.invoice.irpfPercent,
+                row.invoice.categoria.orEmpty(),
+                row.invoice.subcategoria.orEmpty(),
+                row.invoice.notas.orEmpty(),
+                com.gastos.domain.model.DocumentTaxCodec.encode(row.invoice.taxes),
+                row.invoice.documentUuid,
+                "",
+                row.invoice.origin,
+                row.invoice.manualAmountAdjusted,
+                row.source
+            )
+        }
+    }
+
+    private fun ledgerFileName(filter: ReportFilter): String =
+        "FinAI_libro-recibidas_${ledgerPeriod(filter)}.csv"
+
+    private fun ledgerPeriod(filter: ReportFilter): String {
+        val start = filter.startInclusive ?: return "todos"
+        val end = filter.endExclusive ?: return "todos"
+        val zone = ZoneId.systemDefault()
+        val startDate = Instant.ofEpochMilli(start).atZone(zone).toLocalDate()
+        val endDate = Instant.ofEpochMilli(end).atZone(zone).toLocalDate()
+        val quarter = when (startDate.monthValue) {
+            1 -> 1
+            4 -> 2
+            7 -> 3
+            10 -> 4
+            else -> null
+        }
+        if (quarter != null && startDate.dayOfMonth == 1 && endDate == startDate.plusMonths(3)) {
+            return "${startDate.year}-${quarter}T"
+        }
+        return "${startDate}_${endDate.minusDays(1)}"
+    }
+
     private fun filterDescription(filter: ReportFilter): String {
         val dates = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT)
         val end = filter.endExclusive?.let { Calendar.getInstance().apply { timeInMillis = it; add(Calendar.DATE, -1) }.time }
@@ -327,5 +543,10 @@ class FinancialReportWriter @Inject constructor(
             pdf.close()
         }
     }
-    companion object { private const val RETENTION_MILLIS: Long = 7L * 24 * 60 * 60 * 1000 }
+    companion object {
+        private const val RETENTION_MILLIS: Long = 7L * 24 * 60 * 60 * 1000
+        private const val LEDGER_TOLERANCE = 0.02
+        private const val SOURCE_DOCUMENT = "documento"
+        private const val SOURCE_CALCULATED = "calculado"
+    }
 }
