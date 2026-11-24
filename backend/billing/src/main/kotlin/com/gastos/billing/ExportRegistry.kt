@@ -20,11 +20,12 @@ class ExportRegistry(
 ) {
 
     suspend fun record(request: RecordExportRequest): RecordExportResponse {
-        validate(request)
+        val period = resolvePeriod(request)
+        validate(request, period)
         val record = ExportRecord(
             eventId = request.eventId,
             installId = request.installId,
-            period = request.period,
+            period = period,
             format = request.format,
             profile = request.profile,
             referralCode = request.referralCode,
@@ -41,12 +42,26 @@ class ExportRegistry(
         )
     }
 
-    private fun validate(request: RecordExportRequest) {
+    /**
+     * `period` es el nombre bueno; `quarter` es el alias que ya está en la calle. Si llegan los dos
+     * y no coinciden, la petición se rechaza: preferir uno en silencio guardaría un periodo que el
+     * cliente no pidió.
+     */
+    private fun resolvePeriod(request: RecordExportRequest): String {
+        val canonical = request.period?.trim()?.takeIf(String::isNotEmpty)
+        val legacy = request.quarter?.trim()?.takeIf(String::isNotEmpty)
+        if (canonical != null && legacy != null && canonical != legacy) {
+            throw ClientInputException("period and quarter disagree")
+        }
+        return canonical ?: legacy ?: throw ClientInputException("period is required")
+    }
+
+    private fun validate(request: RecordExportRequest, period: String) {
         if (!EVENT_ID.matches(request.eventId)) throw ClientInputException("eventId must be a UUID")
         if (!INSTALL_ID.matches(request.installId)) {
             throw ClientInputException("installId must be 32 lowercase hex characters")
         }
-        if (!PERIOD.matches(request.period)) {
+        if (!PERIOD.matches(period)) {
             throw ClientInputException("period must look like 2026-4T or 2026-01-01_2026-03-31")
         }
         if (request.format !in FORMATS) throw ClientInputException("Unsupported format")

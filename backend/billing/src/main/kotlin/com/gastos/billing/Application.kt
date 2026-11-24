@@ -48,6 +48,8 @@ fun Application.module() {
         GoogleOidcReconcileAuthenticator(config.reconcileAudience),
         InstallRegistry(FirestoreInstallStore(firestore)),
         exportRegistry = ExportRegistry(FirestoreExportStore(firestore)),
+        revenueSource = FirestoreRevenueSource(firestore),
+        referralRegistry = ReferralRegistry(FirestoreReferralStore(firestore)),
         healthCheck = {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 firestore.collection("installs").limit(1).get().get()
@@ -63,6 +65,10 @@ fun Application.billingModule(
     reconcileAuthenticator: ReconcileAuthenticator = ReconcileAuthenticator { false },
     installRegistry: InstallRegistry? = null,
     exportRegistry: ExportRegistry? = null,
+    /** Fuente del informe de ingresos. Si es nula, la ruta responde 503 en vez de inventar cifras. */
+    revenueSource: RevenueSource? = null,
+    /** Emisor de códigos de referido del PDF gratuito. Sin él, la ruta responde 503. */
+    referralRegistry: ReferralRegistry? = null,
     /** Comprueba una dependencia real (Firestore). Si falla, `/health` responde 503. */
     healthCheck: suspend () -> Boolean = { true }
 ) {
@@ -148,6 +154,46 @@ fun Application.billingModule(
                 )
             } else {
                 call.respond(registry.record(call.receive<RecordExportRequest>()))
+            }
+        }
+        /**
+         * Emite el código de referido que va impreso en el PDF gratuito. Idempotente por
+         * `installId`: regenerar el PDF nunca cambia el código. Lo emite el servidor para que el
+         * código sea prueba y no una afirmación del cliente.
+         */
+        post("/v1/referrals:issue") {
+            val registry = referralRegistry
+            if (registry == null) {
+                call.application.log.error("referrals:issue sin almacén configurado")
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    ErrorResponse("Referral registry not configured", "REGISTRY_UNAVAILABLE")
+                )
+            } else {
+                call.respond(registry.issue(call.receive<IssueReferralRequest>()))
+            }
+        }
+        /**
+         * Informe de ingresos: instalaciones por canal, compras pagadas con su neto y exports por
+         * gestoría. Solo con el secreto interno (el mismo de `reconcile`); no publica PII ni importes
+         * por usuario, solo agregados.
+         */
+        get("/v1/metrics:revenue") {
+            val source = revenueSource
+            if (!constantTimeEquals(config.internalReconcileSecret, call.request.headers[INTERNAL_SECRET_HEADER])) {
+                call.respond(HttpStatusCode.Unauthorized, ErrorResponse("Unauthorized", "UNAUTHORIZED"))
+            } else if (source == null) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    ErrorResponse("Revenue source not configured", "REGISTRY_UNAVAILABLE")
+                )
+            } else {
+                val aggregator = RevenueAggregator(
+                    grossPriceCents = config.premiumPriceCents,
+                    playFeeBasisPoints = config.playFeeBasisPoints,
+                    currency = config.currency
+                )
+                call.respond(aggregator.build(source.snapshot()))
             }
         }
         post("/v1/entitlements:reconcile") {

@@ -8,6 +8,10 @@ Cloud Run service for server-side Google Play purchase verification.
 - `GET /healthz` (application health check)
 - `POST /v1/entitlements:verify`
 - `POST /v1/entitlements:reconcile` with Cloud Scheduler OIDC bearer token and `X-Internal-Reconcile-Secret`
+- `GET /v1/metrics:revenue` with `X-Internal-Reconcile-Secret`: informe agregado de instalaciones
+  por canal, compras pagadas (bruto/neto con la comisión de Play) y exports por gestoría. Sin PII.
+- `POST /v1/referrals:issue`: emite el código de 6 caracteres que va impreso en el PDF gratuito.
+  Idempotente por `installId`; lo emite el servidor para que sirva como prueba ante una gestoría.
 
 `/v1/entitlements:verify` checks the package, product and purchase token against
 the Google Play Android Publisher API, acknowledges a valid purchase, stores an
@@ -26,6 +30,9 @@ client must verify that JWT with the matching public key before enabling Premium
 - `INTERNAL_RECONCILE_SECRET=<Secret Manager value>`
 - `RECONCILE_AUDIENCE=<Cloud Run service URL>`
 - `REQUIRE_PLAY_INTEGRITY=false`
+- `PREMIUM_PRICE_CENTS=599` (precio de la compra única; Play no lo devuelve al verificar)
+- `PLAY_FEE_BPS=1500` (comisión de Play en puntos básicos: 15 %)
+- `PREMIUM_CURRENCY=EUR`
 
 Cloud Run must run as `finai-billing-backend@finai-501616.iam.gserviceaccount.com`.
 That account needs access to the Firestore database and the Google Play Android
