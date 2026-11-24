@@ -38,9 +38,10 @@ class FirestoreExportStore(
     private fun ExportRecord.toMap(): Map<String, Any> = buildMap {
         put("eventId", eventId)
         put("installId", installId)
-        put("quarter", quarter)
+        put("period", period)
         put("format", format)
         put("receivedAt", receivedAt)
+        profile?.let { put("profile", it) }
         referralCode?.let { put("referralCode", it) }
         artifactSha256?.let { put("artifactSha256", it) }
         deliveredTo?.let { put("deliveredTo", it) }

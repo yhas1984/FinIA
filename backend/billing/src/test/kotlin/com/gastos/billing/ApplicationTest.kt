@@ -198,7 +198,7 @@ class ApplicationTest {
                 RecordExportRequest(
                     eventId = "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
                     installId = "0123456789abcdef0123456789abcdef",
-                    quarter = "2026-4T",
+                    period = "2026-4T",
                     format = "pdf",
                     referralCode = "gestoriavalencia",
                     deliveredTo = "com.google.android.gm"
@@ -215,7 +215,7 @@ class ApplicationTest {
                 """
                 {"eventId":"3f2504e0-4f89-41d3-9a0c-0305e82c3302",
                  "installId":"0123456789abcdef0123456789abcdef",
-                 "quarter":"2026-4T","format":"pdf","total":1234.56}
+                 "period":"2026-4T","format":"pdf","total":1234.56}
                 """.trimIndent()
             )
         }

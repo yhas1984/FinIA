@@ -15,7 +15,7 @@ class ExportRegistryTest {
         val request = RecordExportRequest(
             eventId = EVENT_ID,
             installId = INSTALL_ID,
-            quarter = "2026-4T",
+            period = "2026-4T",
             format = "pdf",
             referralCode = "gestoriavalencia",
             artifactSha256 = "a".repeat(64),
@@ -41,28 +41,28 @@ class ExportRegistryTest {
         // contrato y no una casualidad de la deserialización.
         assertFailsWith<ClientInputException> {
             registry.record(
-                RecordExportRequest(eventId = "no-es-un-uuid", installId = INSTALL_ID, quarter = "2026-4T", format = "pdf")
+                RecordExportRequest(eventId = "no-es-un-uuid", installId = INSTALL_ID, period = "2026-4T", format = "pdf")
             )
         }
         assertFailsWith<ClientInputException> {
             registry.record(
-                RecordExportRequest(eventId = EVENT_ID, installId = "ABC", quarter = "2026-4T", format = "pdf")
+                RecordExportRequest(eventId = EVENT_ID, installId = "ABC", period = "2026-4T", format = "pdf")
             )
         }
         assertFailsWith<ClientInputException> {
             registry.record(
-                RecordExportRequest(eventId = EVENT_ID, installId = INSTALL_ID, quarter = "4T-2026", format = "pdf")
+                RecordExportRequest(eventId = EVENT_ID, installId = INSTALL_ID, period = "4T-2026", format = "pdf")
             )
         }
         assertFailsWith<ClientInputException> {
             registry.record(
-                RecordExportRequest(eventId = EVENT_ID, installId = INSTALL_ID, quarter = "2026-4T", format = "xlsx")
+                RecordExportRequest(eventId = EVENT_ID, installId = INSTALL_ID, period = "2026-4T", format = "xlsx")
             )
         }
         assertFailsWith<ClientInputException> {
             registry.record(
                 RecordExportRequest(
-                    eventId = EVENT_ID, installId = INSTALL_ID, quarter = "2026-4T",
+                    eventId = EVENT_ID, installId = INSTALL_ID, period = "2026-4T",
                     format = "pdf", referralCode = "con espacio"
                 )
             )
@@ -70,7 +70,7 @@ class ExportRegistryTest {
         assertFailsWith<ClientInputException> {
             registry.record(
                 RecordExportRequest(
-                    eventId = EVENT_ID, installId = INSTALL_ID, quarter = "2026-4T",
+                    eventId = EVENT_ID, installId = INSTALL_ID, period = "2026-4T",
                     format = "pdf", deliveredTo = "WhatsApp"
                 )
             )
@@ -87,7 +87,7 @@ class ExportRegistryTest {
             RecordExportRequest(
                 eventId = EVENT_ID,
                 installId = INSTALL_ID,
-                quarter = "2026-1T",
+                period = "2026-1T",
                 format = "csv"
             )
         )
@@ -96,8 +96,51 @@ class ExportRegistryTest {
         val record = store.saved.getValue(EVENT_ID)
         assertEquals(null, record.deliveredTo)
         assertEquals(null, record.referralCode)
-        assertEquals("2026-1T", record.quarter)
+        assertEquals("2026-1T", record.period)
         assertEquals(1_000L, record.receivedAt)
+    }
+
+    @Test
+    fun `acepta rango de fechas y perfiles, y rechaza uno desconocido`() = runTest {
+        val store = FakeExportStore()
+        val registry = ExportRegistry(store) { 1_000L }
+
+        // El libro puede salir con un filtro que no es un trimestre exacto: el periodo lo admite.
+        val rango = registry.record(
+            RecordExportRequest(
+                eventId = EVENT_ID,
+                installId = INSTALL_ID,
+                period = "2026-01-01_2026-03-31",
+                format = "csv",
+                profile = "ledger"
+            )
+        )
+        assertEquals(false, rango.duplicate)
+        assertEquals("2026-01-01_2026-03-31", store.saved.getValue(EVENT_ID).period)
+        assertEquals("ledger", store.saved.getValue(EVENT_ID).profile)
+
+        // Y un perfil que no existe no se guarda.
+        assertFailsWith<ClientInputException> {
+            registry.record(
+                RecordExportRequest(
+                    eventId = "3f2504e0-4f89-41d3-9a0c-0305e82c3302",
+                    installId = INSTALL_ID,
+                    period = "2026-4T",
+                    format = "csv",
+                    profile = "libro"
+                )
+            )
+        }
+        assertFailsWith<ClientInputException> {
+            registry.record(
+                RecordExportRequest(
+                    eventId = "3f2504e0-4f89-41d3-9a0c-0305e82c3303",
+                    installId = INSTALL_ID,
+                    period = "2026-01-01",
+                    format = "csv"
+                )
+            )
+        }
     }
 
     private class FakeExportStore : ExportStore {
