@@ -162,7 +162,12 @@ data class BillingConfig(
     val entitlementPrivateKeyPem: String,
     val internalReconcileSecret: String,
     val requirePlayIntegrity: Boolean,
-    val reconcileAudience: String = ""
+    val reconcileAudience: String = "",
+    /** Precio de la compra única en céntimos (Play no lo devuelve al verificar). */
+    val premiumPriceCents: Long = 599,
+    /** Comisión de Play en puntos básicos: 1500 = 15 %. */
+    val playFeeBasisPoints: Int = 1500,
+    val currency: String = "EUR"
 ) {
     companion object {
         fun fromEnvironment(env: Map<String, String> = System.getenv()): BillingConfig = BillingConfig(
@@ -175,7 +180,10 @@ data class BillingConfig(
             entitlementPrivateKeyPem = env.required("ENTITLEMENT_PRIVATE_KEY_PEM").replace("\\n", "\n"),
             internalReconcileSecret = env.required("INTERNAL_RECONCILE_SECRET"),
             requirePlayIntegrity = env.getOrDefault("REQUIRE_PLAY_INTEGRITY", "false").toBoolean(),
-            reconcileAudience = env.required("RECONCILE_AUDIENCE")
+            reconcileAudience = env.required("RECONCILE_AUDIENCE"),
+            premiumPriceCents = env.getOrDefault("PREMIUM_PRICE_CENTS", "599").toLong(),
+            playFeeBasisPoints = env.getOrDefault("PLAY_FEE_BPS", "1500").toInt(),
+            currency = env.getOrDefault("PREMIUM_CURRENCY", "EUR")
         )
 
         private fun Map<String, String>.required(name: String): String =
