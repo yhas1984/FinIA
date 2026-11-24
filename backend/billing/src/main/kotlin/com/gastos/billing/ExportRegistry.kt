@@ -24,8 +24,9 @@ class ExportRegistry(
         val record = ExportRecord(
             eventId = request.eventId,
             installId = request.installId,
-            quarter = request.quarter,
+            period = request.period,
             format = request.format,
+            profile = request.profile,
             referralCode = request.referralCode,
             artifactSha256 = request.artifactSha256,
             deliveredTo = request.deliveredTo,
@@ -41,10 +42,13 @@ class ExportRegistry(
         if (!INSTALL_ID.matches(request.installId)) {
             throw ClientInputException("installId must be 32 lowercase hex characters")
         }
-        if (!QUARTER.matches(request.quarter)) {
-            throw ClientInputException("quarter must look like 2026-4T")
+        if (!PERIOD.matches(request.period)) {
+            throw ClientInputException("period must look like 2026-4T or 2026-01-01_2026-03-31")
         }
         if (request.format !in FORMATS) throw ClientInputException("Unsupported format")
+        request.profile?.let {
+            if (it !in PROFILES) throw ClientInputException("Unsupported profile")
+        }
         request.referralCode?.let {
             if (!REFERRAL_CODE.matches(it)) throw ClientInputException("Unsupported referralCode")
         }
@@ -61,10 +65,13 @@ class ExportRegistry(
 
     companion object {
         val FORMATS = setOf("pdf", "csv")
+        val PROFILES = setOf("ledger", "summary", "standard")
 
         private val EVENT_ID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
         private val INSTALL_ID = Regex("^[0-9a-f]{32}$")
-        private val QUARTER = Regex("^[0-9]{4}-[1-4]T$")
+
+        /** Trimestre (`2026-4T`) o rango de fechas (`2026-01-01_2026-03-31`). */
+        private val PERIOD = Regex("^(?:[0-9]{4}-[1-4]T|[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{4}-[0-9]{2}-[0-9]{2})$")
         private val REFERRAL_CODE = Regex("^[a-z0-9]{6,32}$")
         private val SHA256 = Regex("^[0-9a-f]{64}$")
         private val ANDROID_PACKAGE = Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$")

@@ -76,8 +76,15 @@ data class RegisterInstallResponse(
 data class RecordExportRequest(
     val eventId: String,
     val installId: String,
-    val quarter: String,
+    /**
+     * Periodo exportado: trimestre (`2026-4T`) o rango (`2026-01-01_2026-03-31`), porque el libro
+     * puede salir con un filtro que no es un trimestre exacto. Nació llamándose `quarter` y el
+     * nombre era una trampa: un rango de fechas no es un trimestre.
+     */
+    val period: String,
     val format: String,
+    /** Qué fichero se exportó: `ledger` (libro), `summary` (resumen por tipo) o `standard`. */
+    val profile: String? = null,
     val referralCode: String? = null,
     val artifactSha256: String? = null,
     /** Paquete Android de la app elegida (p. ej. `com.whatsapp`); nulo si se guardó en disco. */
@@ -94,8 +101,9 @@ data class RecordExportResponse(
 data class ExportRecord(
     val eventId: String,
     val installId: String,
-    val quarter: String,
+    val period: String,
     val format: String,
+    val profile: String?,
     val referralCode: String?,
     val artifactSha256: String?,
     val deliveredTo: String?,
