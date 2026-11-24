@@ -179,6 +179,50 @@ class ApplicationTest {
         } }
     }
 
+    @Test
+    fun `exports record acepta el evento y no guarda importes`() = testApplication {
+        val config = testConfig()
+        val store = RecordingExportStore()
+        application {
+            billingModule(
+                config,
+                BillingService(config, FakePlayApi(), FakeStore(), FakeSigner()),
+                exportRegistry = ExportRegistry(store) { 1_000L }
+            )
+        }
+        client = createClient { install(ContentNegotiation) { json() } }
+
+        val ok = client.post("/v1/exports:record") {
+            header("Content-Type", ContentType.Application.Json.toString())
+            setBody(
+                RecordExportRequest(
+                    eventId = "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+                    installId = "0123456789abcdef0123456789abcdef",
+                    quarter = "2026-4T",
+                    format = "pdf",
+                    referralCode = "gestoriavalencia",
+                    deliveredTo = "com.google.android.gm"
+                )
+            )
+        }
+        assertEquals(HttpStatusCode.OK, ok.status)
+        assertEquals(false, ok.body<RecordExportResponse>().duplicate)
+
+        // Ni un importe, ni una base, ni un NIF: la lista es cerrada.
+        val extra = client.post("/v1/exports:record") {
+            header("Content-Type", ContentType.Application.Json.toString())
+            setBody(
+                """
+                {"eventId":"3f2504e0-4f89-41d3-9a0c-0305e82c3302",
+                 "installId":"0123456789abcdef0123456789abcdef",
+                 "quarter":"2026-4T","format":"pdf","total":1234.56}
+                """.trimIndent()
+            )
+        }
+        assertEquals(HttpStatusCode.BadRequest, extra.status)
+        assertEquals(1, store.saved.size)
+    }
+
     private fun testConfig() = BillingConfig(
         projectId = "finai-501616",
         firestoreDatabaseId = "finai",
@@ -199,6 +243,16 @@ class ApplicationTest {
         override suspend fun acknowledge(productId: String, purchaseToken: String) = Unit
         override suspend fun listVoidedPurchaseTokens() = emptyList<String>()
         override suspend fun verifyPlayIntegrity(token: String, expectedNonce: String) = Unit
+    }
+
+    private class RecordingExportStore : ExportStore {
+        val saved = mutableMapOf<String, ExportRecord>()
+
+        override suspend fun save(record: ExportRecord): Boolean {
+            val existed = saved.containsKey(record.eventId)
+            if (!existed) saved[record.eventId] = record
+            return existed
+        }
     }
 
     private class RecordingInstallStore : InstallStore {
