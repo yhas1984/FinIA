@@ -288,6 +288,48 @@ class ApplicationTest {
         assertEquals(1, report.installs.fiscalProfiles)
     }
 
+    @Test
+    fun `referrals issue emite un codigo estable y rechaza un installId invalido`() = testApplication {
+        val config = testConfig()
+        val installId = "0123456789abcdef0123456789abcdef"
+        val saved = mutableMapOf<String, ReferralRecord>()
+        val store = object : ReferralStore {
+            override suspend fun findByInstall(installId: String) = saved[installId]
+            override suspend fun create(installId: String, code: String, now: Long): ReferralRecord? =
+                saved[installId] ?: ReferralRecord(code, installId, now).also { saved[installId] = it }
+            override suspend fun findByCode(code: String) = saved.values.firstOrNull { it.code == code }
+        }
+        application {
+            billingModule(
+                config,
+                BillingService(config, FakePlayApi(), FakeStore(), FakeSigner()),
+                referralRegistry = ReferralRegistry(store, now = { 1_000L })
+            )
+        }
+        client = createClient { install(ContentNegotiation) { json() } }
+
+        val first = client.post("/v1/referrals:issue") {
+            header("Content-Type", ContentType.Application.Json.toString())
+            setBody(IssueReferralRequest(installId))
+        }
+        assertEquals(HttpStatusCode.OK, first.status)
+        val code = first.body<IssueReferralResponse>().code
+        assertEquals(6, code.length)
+
+        val again = client.post("/v1/referrals:issue") {
+            header("Content-Type", ContentType.Application.Json.toString())
+            setBody(IssueReferralRequest(installId))
+        }
+        assertEquals(code, again.body<IssueReferralResponse>().code)
+
+        val invalid = client.post("/v1/referrals:issue") {
+            header("Content-Type", ContentType.Application.Json.toString())
+            setBody(IssueReferralRequest("no-hex"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, invalid.status)
+        assertEquals("INVALID_REQUEST", invalid.body<ErrorResponse>().code)
+    }
+
     private fun testConfig() = BillingConfig(
         projectId = "finai-501616",
         firestoreDatabaseId = "finai",

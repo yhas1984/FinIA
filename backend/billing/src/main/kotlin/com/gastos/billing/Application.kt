@@ -49,6 +49,7 @@ fun Application.module() {
         InstallRegistry(FirestoreInstallStore(firestore)),
         exportRegistry = ExportRegistry(FirestoreExportStore(firestore)),
         revenueSource = FirestoreRevenueSource(firestore),
+        referralRegistry = ReferralRegistry(FirestoreReferralStore(firestore)),
         healthCheck = {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 firestore.collection("installs").limit(1).get().get()
@@ -66,6 +67,8 @@ fun Application.billingModule(
     exportRegistry: ExportRegistry? = null,
     /** Fuente del informe de ingresos. Si es nula, la ruta responde 503 en vez de inventar cifras. */
     revenueSource: RevenueSource? = null,
+    /** Emisor de códigos de referido del PDF gratuito. Sin él, la ruta responde 503. */
+    referralRegistry: ReferralRegistry? = null,
     /** Comprueba una dependencia real (Firestore). Si falla, `/health` responde 503. */
     healthCheck: suspend () -> Boolean = { true }
 ) {
@@ -151,6 +154,23 @@ fun Application.billingModule(
                 )
             } else {
                 call.respond(registry.record(call.receive<RecordExportRequest>()))
+            }
+        }
+        /**
+         * Emite el código de referido que va impreso en el PDF gratuito. Idempotente por
+         * `installId`: regenerar el PDF nunca cambia el código. Lo emite el servidor para que el
+         * código sea prueba y no una afirmación del cliente.
+         */
+        post("/v1/referrals:issue") {
+            val registry = referralRegistry
+            if (registry == null) {
+                call.application.log.error("referrals:issue sin almacén configurado")
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    ErrorResponse("Referral registry not configured", "REGISTRY_UNAVAILABLE")
+                )
+            } else {
+                call.respond(registry.issue(call.receive<IssueReferralRequest>()))
             }
         }
         /**
