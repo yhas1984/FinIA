@@ -1,6 +1,23 @@
+# finai.leadpilot.es
+# Buscadores y motores generativos: acceso a las páginas públicas.
+
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: Claude-SearchBot
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: Googlebot
+User-agent: Google-Extended
+User-agent: Bingbot
+User-agent: Applebot
+User-agent: Applebot-Extended
+User-agent: CCBot
+Allow: /
+
 User-agent: *
 Allow: /
 
 Sitemap: https://finai.leadpilot.es/sitemap.xml
-
-# Build trigger: 2026-08-17 (forzar rebuild de Pages)
