@@ -143,13 +143,98 @@ class ExportRegistryTest {
         }
     }
 
+    @Test
+    fun `un hecho por cliente, trimestre y gestoria, no por envio`() = runTest {
+        val store = FakeExportStore()
+        val registry = ExportRegistry(store) { 1_000L }
+        fun evento(id: String, profile: String, format: String, code: String? = "gestoriavalencia") =
+            RecordExportRequest(
+                eventId = id,
+                installId = INSTALL_ID,
+                period = "2026-4T",
+                format = format,
+                profile = profile,
+                referralCode = code
+            )
+
+        // PDF y luego CSV del mismo trimestre a la misma gestoría: un solo hecho.
+        val pdf = registry.record(evento("3f2504e0-4f89-41d3-9a0c-0305e82c3301", "summary", "pdf"))
+        val csv = registry.record(evento("3f2504e0-4f89-41d3-9a0c-0305e82c3302", "ledger", "csv"))
+        assertEquals(true, pdf.firstFact)
+        assertEquals(false, csv.firstFact)
+        assertEquals(false, csv.duplicate, "son eventos distintos, no un reintento")
+
+        // Otra gestoría es otro hecho, y se factura aparte.
+        val otra = registry.record(
+            evento("3f2504e0-4f89-41d3-9a0c-0305e82c3303", "ledger", "csv", code = "otragestoria")
+        )
+        assertEquals(true, otra.firstFact)
+
+        // Reintento del mismo evento: duplicado y conserva su firstFact.
+        val reintento = registry.record(evento("3f2504e0-4f89-41d3-9a0c-0305e82c3301", "summary", "pdf"))
+        assertEquals(true, reintento.duplicate)
+        assertEquals(true, reintento.firstFact)
+    }
+
+    @Test
+    fun `sin codigo de gestoria es telemetria y no consume el hecho`() = runTest {
+        val store = FakeExportStore()
+        val registry = ExportRegistry(store) { 1_000L }
+
+        val sinCodigo = registry.record(
+            RecordExportRequest(
+                eventId = "3f2504e0-4f89-41d3-9a0c-0305e82c3311",
+                installId = INSTALL_ID,
+                period = "2026-4T",
+                format = "csv",
+                profile = "ledger"
+            )
+        )
+        assertEquals(false, sinCodigo.firstFact)
+
+        // El primer evento CON código del mismo trimestre sigue siendo el hecho que se factura.
+        val conCodigo = registry.record(
+            RecordExportRequest(
+                eventId = "3f2504e0-4f89-41d3-9a0c-0305e82c3312",
+                installId = INSTALL_ID,
+                period = "2026-4T",
+                format = "csv",
+                profile = "ledger",
+                referralCode = "gestoriavalencia"
+            )
+        )
+        assertEquals(true, conCodigo.firstFact)
+    }
+
+    @Test
+    fun `el libro no puede declararse en pdf`() = runTest {
+        val registry = ExportRegistry(FakeExportStore()) { 1_000L }
+        assertFailsWith<ClientInputException> {
+            registry.record(
+                RecordExportRequest(
+                    eventId = "3f2504e0-4f89-41d3-9a0c-0305e82c3321",
+                    installId = INSTALL_ID,
+                    period = "2026-4T",
+                    format = "pdf",
+                    profile = "ledger"
+                )
+            )
+        }
+    }
+
     private class FakeExportStore : ExportStore {
         val saved = mutableMapOf<String, ExportRecord>()
+        val facts = mutableSetOf<String>()
 
-        override suspend fun save(record: ExportRecord): Boolean {
-            val existed = saved.containsKey(record.eventId)
-            if (!existed) saved[record.eventId] = record
-            return existed
+        /** Imita al de Firestore: el hecho es (installId, period, referralCode). */
+        override suspend fun save(record: ExportRecord): ExportStoreResult {
+            val existing = saved[record.eventId]
+            if (existing != null) return ExportStoreResult(existed = true, firstFact = existing.firstFact)
+
+            val key = "${record.installId}|${record.period}|${record.referralCode}"
+            val firstFact = record.referralCode != null && facts.add(key)
+            saved[record.eventId] = record.copy(firstFact = firstFact)
+            return ExportStoreResult(existed = false, firstFact = firstFact)
         }
     }
 

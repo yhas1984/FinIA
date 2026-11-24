@@ -247,11 +247,15 @@ class ApplicationTest {
 
     private class RecordingExportStore : ExportStore {
         val saved = mutableMapOf<String, ExportRecord>()
+        val facts = mutableSetOf<String>()
 
-        override suspend fun save(record: ExportRecord): Boolean {
-            val existed = saved.containsKey(record.eventId)
-            if (!existed) saved[record.eventId] = record
-            return existed
+        override suspend fun save(record: ExportRecord): ExportStoreResult {
+            val existing = saved[record.eventId]
+            if (existing != null) return ExportStoreResult(existed = true, firstFact = existing.firstFact)
+            val key = "${record.installId}|${record.period}|${record.referralCode}"
+            val firstFact = record.referralCode != null && facts.add(key)
+            saved[record.eventId] = record.copy(firstFact = firstFact)
+            return ExportStoreResult(existed = false, firstFact = firstFact)
         }
     }
 

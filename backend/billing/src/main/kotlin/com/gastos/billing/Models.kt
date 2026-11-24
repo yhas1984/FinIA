@@ -95,7 +95,12 @@ data class RecordExportRequest(
 @Serializable
 data class RecordExportResponse(
     val status: String,
-    val duplicate: Boolean
+    val duplicate: Boolean,
+    /**
+     * `true` solo la primera vez que este `installId` exporta este `period` **a esta gestoría**.
+     * Es lo que se puede facturar: la comisión cuenta `referralCode` + `firstFact`.
+     */
+    val firstFact: Boolean = false
 )
 
 data class ExportRecord(
@@ -108,7 +113,13 @@ data class ExportRecord(
     val artifactSha256: String?,
     val deliveredTo: String?,
     val clientCreatedAt: Long?,
-    val receivedAt: Long
+    val receivedAt: Long,
+    /**
+     * Hecho comercial nuevo: primera vez que esta instalación exporta este periodo a esta gestoría.
+     * El cliente no lo calcula; lo decide el servidor sobre `installId + period + referralCode`,
+     * porque PDF y CSV del mismo trimestre, o el reenvío «por si acaso», son el mismo hecho.
+     */
+    val firstFact: Boolean = false
 )
 
 data class InstallRecord(

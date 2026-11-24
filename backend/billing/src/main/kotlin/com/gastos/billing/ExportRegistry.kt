@@ -33,8 +33,12 @@ class ExportRegistry(
             clientCreatedAt = request.createdAt,
             receivedAt = now()
         )
-        val duplicate = store.save(record)
-        return RecordExportResponse(status = "ok", duplicate = duplicate)
+        val result = store.save(record)
+        return RecordExportResponse(
+            status = "ok",
+            duplicate = result.existed,
+            firstFact = result.firstFact
+        )
     }
 
     private fun validate(request: RecordExportRequest) {
@@ -48,6 +52,10 @@ class ExportRegistry(
         if (request.format !in FORMATS) throw ClientInputException("Unsupported format")
         request.profile?.let {
             if (it !in PROFILES) throw ClientInputException("Unsupported profile")
+            // El libro solo existe en CSV; un PDF no puede ser `ledger`.
+            if (it == "ledger" && request.format != "csv") {
+                throw ClientInputException("ledger is only produced as csv")
+            }
         }
         request.referralCode?.let {
             if (!REFERRAL_CODE.matches(it)) throw ClientInputException("Unsupported referralCode")
