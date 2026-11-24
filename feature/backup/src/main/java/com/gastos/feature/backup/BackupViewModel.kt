@@ -53,6 +53,8 @@ data class BackupUiState(
     val appearanceApplying: Boolean = false,
     val appearanceError: String? = null,
     val reportProgress: Float = 0f,
+    /** Contadores del último libro generado, para el aviso de cobertura. */
+    val ledgerStats: LedgerStats? = null,
     val cloudListError: String? = null,
     val sheetsError: String? = null,
     val sheetsSyncError: String? = null,
@@ -640,11 +642,18 @@ class BackupViewModel @Inject constructor(
 
     private fun exportReport(context: Context, destination: Uri?, format: ReportFormat, preview: Boolean = false) {
         if (_uiState.value.isExporting) return
-        _uiState.update { it.copy(isExporting = true, exportResult = null, reportProgress = 0f) }
+        _uiState.update { it.copy(isExporting = true, exportResult = null, reportProgress = 0f, ledgerStats = null) }
         reportJob = viewModelScope.launch {
             var temporary: File? = null
             try {
-                val file = reportWriter.generateReport(format, reportFilter, reportDetail) { progress -> _uiState.update { it.copy(reportProgress = progress) } }
+                val ledger = if (format == ReportFormat.CSV) {
+                    reportWriter.generateLedger(reportFilter) { progress ->
+                        _uiState.update { it.copy(reportProgress = progress) }
+                    }
+                } else null
+                val file = ledger?.file ?: reportWriter.generateReport(format, reportFilter, reportDetail) { progress ->
+                    _uiState.update { it.copy(reportProgress = progress) }
+                }
                 temporary = file
                 if (destination != null) kotlinx.coroutines.withContext(Dispatchers.IO) {
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
@@ -667,7 +676,7 @@ class BackupViewModel @Inject constructor(
                     }
                     context.startActivity((if (preview) intent else Intent.createChooser(intent, context.getString(R.string.share_chooser))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
-                _uiState.update { it.copy(exportResult = BackupResult(true, context.getString(R.string.report_ready))) }
+                _uiState.update { it.copy(exportResult = BackupResult(true, context.getString(R.string.report_ready)), ledgerStats = ledger?.stats) }
             } catch (cancelled: CancellationException) {
                 _uiState.update { it.copy(exportResult = null) }
                 throw cancelled
