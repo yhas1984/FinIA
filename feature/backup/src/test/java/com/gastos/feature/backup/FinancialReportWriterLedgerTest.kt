@@ -95,13 +95,17 @@ class FinancialReportWriterLedgerTest {
             val withoutData = invoice(id = 201, total = 50.0, rate = null)
             val incoherent = invoice(id = 202, total = 50.0, base = 100.0, quota = 21.0)
             val documented = invoice(id = 203, total = 121.0, base = 100.0, quota = 21.0)
+            val incompleteCharge = invoice(
+                id = 205, total = 121.0, rate = 21.0,
+                taxes = listOf(DocumentTax(name = "IVA", rate = 21.0, base = null, amount = 21.0))
+            )
             val income = invoice(id = 204, total = 500.0, type = InvoiceType.INGRESO)
 
             val filter = ReportFilter(
                 startInclusive = LocalDate.of(2026, 10, 1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli(),
                 endExclusive = LocalDate.of(2027, 1, 1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
             )
-            val result = writer(root, listOf(mixed, calculated, withoutData, incoherent, documented, income))
+            val result = writer(root, listOf(mixed, calculated, withoutData, incoherent, documented, incompleteCharge, income))
                 .generateLedger(filter) {}
 
             val lines = result.file.readText().removePrefix("\uFEFF").lines().filter { it.isNotBlank() }
@@ -111,11 +115,12 @@ class FinancialReportWriterLedgerTest {
             assertTrue(lines.first().endsWith("\"dato_fiscal\""))
             assertTrue(lines.all { it.split(';').size == 20 })
 
-            // 3 de la mixta + 1 calculada + 1 documentada; ni producto, ni ingreso, ni resumen.
-            assertEquals(6, lines.size) // cabecera + 5 filas
+            // 3 de la mixta + 1 calculada + 1 documentada + 1 calculada desde una entrada incompleta.
+            assertEquals(7, lines.size) // cabecera + 6 filas
             assertEquals(3, lines.count { it.contains("145") })
             assertEquals(1, lines.count { it.contains("200") })
             assertEquals(1, lines.count { it.contains("203") })
+            assertEquals(1, lines.count { it.contains("205") })
             assertTrue(lines.none { it.contains("204") })
             assertTrue(lines.none { it.contains("Filtros") })
             assertTrue(lines.none { it.contains("Total Gastos") })
@@ -125,17 +130,22 @@ class FinancialReportWriterLedgerTest {
             assertTrue(calculatedLine.contains("\"100,00\""))
             assertTrue(calculatedLine.contains("\"21,00\""))
 
+            val incompleteLine = lines.single { it.contains("205") }
+            assertTrue(incompleteLine.endsWith("\"calculado\""))
+            assertTrue(incompleteLine.contains("\"100,00\""))
+
             val mixedLines = lines.filter { it.contains("145") }
             assertTrue(mixedLines.all { it.endsWith("\"documento\"") })
             assertTrue(mixedLines.any { it.contains("\"21,00\"") })
             assertTrue(mixedLines.any { it.contains("\"10,00\"") })
             assertTrue(mixedLines.any { it.contains("\"4,00\"") })
 
-            assertEquals(3, result.stats.includedInvoices)
+            assertEquals(4, result.stats.includedInvoices)
             assertEquals(2, result.stats.excludedInvoices)
             assertEquals(listOf(201L, 202L), result.stats.excludedIds)
             assertEquals(4, result.stats.documentRows)
-            assertEquals(1, result.stats.calculatedRows)
+            assertEquals(2, result.stats.calculatedRows)
+            assertEquals(2, result.stats.calculatedInvoices)
         } finally {
             root.deleteRecursively()
         }

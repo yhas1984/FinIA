@@ -157,16 +157,16 @@ class FinancialReportWriter @Inject constructor(
             invoices.forEachIndexed { index, invoice ->
                 currentCoroutineContext().ensureActive()
                 val charges = invoice.taxes.filter { it.effect == TaxEffect.CHARGE }
-                if (charges.isNotEmpty()) {
+                if (charges.isNotEmpty() && charges.all { it.base != null && it.amount != null }) {
                     charges.forEach { tax ->
-                        val taxBase = tax.base
-                        val taxAmount = tax.amount
+                        val taxBase = requireNotNull(tax.base)
+                        val taxAmount = requireNotNull(tax.amount)
                         rows += LedgerRow(
                             invoice = invoice,
                             base = taxBase,
                             rate = tax.rate,
                             quota = taxAmount,
-                            amount = if (taxBase != null && taxAmount != null) taxBase + taxAmount else invoice.total,
+                            amount = taxBase + taxAmount,
                             source = SOURCE_DOCUMENT
                         )
                     }
