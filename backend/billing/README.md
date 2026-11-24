@@ -10,6 +10,8 @@ Cloud Run service for server-side Google Play purchase verification.
 - `POST /v1/entitlements:reconcile` with Cloud Scheduler OIDC bearer token and `X-Internal-Reconcile-Secret`
 - `GET /v1/metrics:revenue` with `X-Internal-Reconcile-Secret`: informe agregado de instalaciones
   por canal, compras pagadas (bruto/neto con la comisión de Play) y exports por gestoría. Sin PII.
+- `POST /v1/referrals:issue`: emite el código de 6 caracteres que va impreso en el PDF gratuito.
+  Idempotente por `installId`; lo emite el servidor para que sirva como prueba ante una gestoría.
 
 `/v1/entitlements:verify` checks the package, product and purchase token against
 the Google Play Android Publisher API, acknowledges a valid purchase, stores an
