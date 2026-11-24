@@ -143,6 +143,65 @@ class ExportRegistryTest {
         }
     }
 
+    @Test
+    fun `acepta el nombre viejo quarter y lo normaliza a period`() = runTest {
+        val store = FakeExportStore()
+        val registry = ExportRegistry(store) { 1_000L }
+
+        // El backend desplegado antes del rename solo entiende `quarter`; el cliente no puede
+        // quedarse sin registrar el export porque el nombre del campo cambie de un despliegue a otro.
+        val legacy = registry.record(
+            RecordExportRequest(
+                eventId = EVENT_ID,
+                installId = INSTALL_ID,
+                quarter = "2026-4T",
+                format = "csv"
+            )
+        )
+        assertEquals(false, legacy.duplicate)
+        assertEquals("2026-4T", store.saved.getValue(EVENT_ID).period)
+
+        // Y lo canónico sigue funcionando.
+        val canonical = registry.record(
+            RecordExportRequest(
+                eventId = "3f2504e0-4f89-41d3-9a0c-0305e82c3390",
+                installId = INSTALL_ID,
+                period = "2026-3T",
+                format = "pdf"
+            )
+        )
+        assertEquals(false, canonical.duplicate)
+        assertEquals("2026-3T", store.saved.getValue("3f2504e0-4f89-41d3-9a0c-0305e82c3390").period)
+    }
+
+    @Test
+    fun `rechaza period y quarter contradictorios o ausentes`() = runTest {
+        val store = FakeExportStore()
+        val registry = ExportRegistry(store) { 1_000L }
+
+        assertFailsWith<ClientInputException> {
+            registry.record(
+                RecordExportRequest(
+                    eventId = EVENT_ID,
+                    installId = INSTALL_ID,
+                    period = "2026-4T",
+                    quarter = "2026-3T",
+                    format = "csv"
+                )
+            )
+        }
+        assertFailsWith<ClientInputException> {
+            registry.record(
+                RecordExportRequest(
+                    eventId = EVENT_ID,
+                    installId = INSTALL_ID,
+                    format = "csv"
+                )
+            )
+        }
+        assertTrue(store.saved.isEmpty())
+    }
+
     private class FakeExportStore : ExportStore {
         val saved = mutableMapOf<String, ExportRecord>()
 

@@ -81,7 +81,7 @@ data class RecordExportRequest(
      * puede salir con un filtro que no es un trimestre exacto. Nació llamándose `quarter` y el
      * nombre era una trampa: un rango de fechas no es un trimestre.
      */
-    val period: String,
+    val period: String? = null,
     val format: String,
     /** Qué fichero se exportó: `ledger` (libro), `summary` (resumen por tipo) o `standard`. */
     val profile: String? = null,
@@ -89,7 +89,14 @@ data class RecordExportRequest(
     val artifactSha256: String? = null,
     /** Paquete Android de la app elegida (p. ej. `com.whatsapp`); nulo si se guardó en disco. */
     val deliveredTo: String? = null,
-    val createdAt: Long? = null
+    val createdAt: Long? = null,
+    /**
+     * Alias obsoleto de [period]. Existió antes del rename y hay clientes que lo mandan; se acepta
+     * para siempre y se normaliza a `period` al guardar. Así el despliegue del backend y la
+     * publicación de la app dejan de depender del orden: ninguna versión del cliente se queda sin
+     * poder registrar un export por haber cambiado el nombre de un campo.
+     */
+    val quarter: String? = null
 )
 
 @Serializable
