@@ -223,6 +223,71 @@ class ApplicationTest {
         assertEquals(1, store.saved.size)
     }
 
+    @Test
+    fun `el informe de ingresos exige el secreto interno y devuelve cifras`() = testApplication {
+        val config = testConfig()
+        val installId = "0123456789abcdef0123456789abcdef"
+        val source = object : RevenueSource {
+            override suspend fun snapshot() = RevenueSnapshot(
+                installs = listOf(
+                    InstallRecord(
+                        installId = installId,
+                        stage = InstallRegistry.STAGE_FISCAL_PROFILE,
+                        utmSource = "finkit",
+                        utmMedium = null,
+                        utmCampaign = "cuota-autonomos",
+                        utmContent = null,
+                        utmTerm = null,
+                        appVersionName = "1.9.14",
+                        appVersionCode = 44,
+                        locale = "es-ES",
+                        country = "ES",
+                        firstRunAt = 1L,
+                        referrerClickTs = null,
+                        installBeginTs = null,
+                        seenAt = 2L
+                    )
+                ),
+                entitlements = listOf(
+                    EntitlementRecord(
+                        tokenHash = "hash",
+                        packageName = "com.gastos.ingresos",
+                        productId = "finai_premium",
+                        orderId = "GPA.1",
+                        status = "active",
+                        updatedAt = 3L,
+                        installId = installId
+                    )
+                ),
+                exports = emptyList()
+            )
+        }
+        application {
+            billingModule(
+                config,
+                BillingService(config, FakePlayApi(), FakeStore(), FakeSigner()),
+                revenueSource = source
+            )
+        }
+        client = createClient { install(ContentNegotiation) { json() } }
+
+        // Sin secreto no hay cifras: el informe no es público.
+        val denied = client.get("/v1/metrics:revenue")
+        assertEquals(HttpStatusCode.Unauthorized, denied.status)
+        assertEquals("UNAUTHORIZED", denied.body<ErrorResponse>().code)
+
+        val ok = client.get("/v1/metrics:revenue") {
+            header("X-Internal-Reconcile-Secret", "secret")
+        }
+        assertEquals(HttpStatusCode.OK, ok.status)
+        val report = ok.body<RevenueReport>()
+        assertEquals(1, report.purchases.paid)
+        assertEquals(599L, report.purchases.grossCents)
+        assertEquals(509L, report.price.netCents)
+        assertEquals(mapOf("finkit" to 1), report.purchases.byChannel)
+        assertEquals(1, report.installs.fiscalProfiles)
+    }
+
     private fun testConfig() = BillingConfig(
         projectId = "finai-501616",
         firestoreDatabaseId = "finai",
