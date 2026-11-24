@@ -47,6 +47,7 @@ fun Application.module() {
         service,
         GoogleOidcReconcileAuthenticator(config.reconcileAudience),
         InstallRegistry(FirestoreInstallStore(firestore)),
+        exportRegistry = ExportRegistry(FirestoreExportStore(firestore)),
         healthCheck = {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 firestore.collection("installs").limit(1).get().get()
@@ -61,6 +62,7 @@ fun Application.billingModule(
     service: BillingService,
     reconcileAuthenticator: ReconcileAuthenticator = ReconcileAuthenticator { false },
     installRegistry: InstallRegistry? = null,
+    exportRegistry: ExportRegistry? = null,
     /** Comprueba una dependencia real (Firestore). Si falla, `/health` responde 503. */
     healthCheck: suspend () -> Boolean = { true }
 ) {
@@ -134,6 +136,18 @@ fun Application.billingModule(
                 )
             } else {
                 call.respond(registry.register(call.receive<RegisterInstallRequest>()))
+            }
+        }
+        post("/v1/exports:record") {
+            val registry = exportRegistry
+            if (registry == null) {
+                call.application.log.error("exports:record sin almacén configurado")
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    ErrorResponse("Export registry not configured", "REGISTRY_UNAVAILABLE")
+                )
+            } else {
+                call.respond(registry.record(call.receive<RecordExportRequest>()))
             }
         }
         post("/v1/entitlements:reconcile") {

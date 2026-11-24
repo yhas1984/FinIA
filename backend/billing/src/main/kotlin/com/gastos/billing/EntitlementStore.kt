@@ -57,7 +57,8 @@ class FirestoreEntitlementStore(
         "productId" to productId,
         "orderId" to orderId,
         "status" to status,
-        "updatedAt" to updatedAt
+        "updatedAt" to updatedAt,
+        "installId" to installId
     )
 
     companion object {

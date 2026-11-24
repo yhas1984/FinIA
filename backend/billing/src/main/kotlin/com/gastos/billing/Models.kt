@@ -7,7 +7,13 @@ data class VerifyEntitlementRequest(
     val packageName: String,
     val productId: String,
     val purchaseToken: String,
-    val playIntegrityToken: String? = null
+    val playIntegrityToken: String? = null,
+    /**
+     * Identificador anónimo de la instalación (`InstallAttribution.anonymousInstallId`).
+     * Opcional para no romper clientes ya publicados, pero sin él el servidor sabe que alguien pagó
+     * y no por qué canal llegó: el ingreso activo queda tan ciego como el pasivo.
+     */
+    val installId: String? = null
 )
 
 @Serializable
@@ -56,6 +62,47 @@ data class RegisterInstallResponse(
     val duplicate: Boolean
 )
 
+/**
+ * Petición de `POST /v1/exports:record`: el hecho de que el usuario exportó el trimestre.
+ *
+ * Es la prueba que hoy no existe. No lleva ni un importe: `artifactSha256` identifica el fichero
+ * sin revelar su contenido, y `deliveredTo` dice **a qué aplicación** se entregó (la app sabe que
+ * entregó el fichero a una app elegida, no que el gestor lo abriera; el contrato no promete más).
+ *
+ * `eventId` lo genera el cliente y es la clave de idempotencia: la cola durable puede reintentar
+ * sin que el libro de eventos cuente dos veces el mismo export.
+ */
+@Serializable
+data class RecordExportRequest(
+    val eventId: String,
+    val installId: String,
+    val quarter: String,
+    val format: String,
+    val referralCode: String? = null,
+    val artifactSha256: String? = null,
+    /** Paquete Android de la app elegida (p. ej. `com.whatsapp`); nulo si se guardó en disco. */
+    val deliveredTo: String? = null,
+    val createdAt: Long? = null
+)
+
+@Serializable
+data class RecordExportResponse(
+    val status: String,
+    val duplicate: Boolean
+)
+
+data class ExportRecord(
+    val eventId: String,
+    val installId: String,
+    val quarter: String,
+    val format: String,
+    val referralCode: String?,
+    val artifactSha256: String?,
+    val deliveredTo: String?,
+    val clientCreatedAt: Long?,
+    val receivedAt: Long
+)
+
 data class InstallRecord(
     val installId: String,
     val stage: String,
@@ -92,7 +139,9 @@ data class EntitlementRecord(
     val productId: String,
     val orderId: String?,
     val status: String,
-    val updatedAt: Long
+    val updatedAt: Long,
+    /** Canal de origen de la compra. Nulo en las compras anteriores a este contrato. */
+    val installId: String? = null
 )
 
 data class BillingConfig(

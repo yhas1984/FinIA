@@ -10,6 +10,9 @@ class BillingService(
         if (request.packageName != config.packageName) throw ClientInputException("Unsupported package")
         if (request.productId != config.productId) throw ClientInputException("Unsupported product")
         if (request.purchaseToken.isBlank()) throw ClientInputException("Purchase token is required")
+        request.installId?.let {
+            if (!INSTALL_ID.matches(it)) throw ClientInputException("installId must be 32 lowercase hex characters")
+        }
         val tokenHash = hashPurchaseToken(request.purchaseToken)
         if (store.status(tokenHash) == "revoked") throw PurchaseNotEntitledException()
         if (config.requirePlayIntegrity && request.playIntegrityToken.isNullOrBlank()) {
@@ -29,7 +32,8 @@ class BillingService(
             productId = request.productId,
             orderId = purchase.orderId,
             status = "active",
-            updatedAt = System.currentTimeMillis()
+            updatedAt = System.currentTimeMillis(),
+            installId = request.installId
         )
         if (!store.save(record)) throw PurchaseNotEntitledException()
         return signer.issue(record)
@@ -43,5 +47,6 @@ class BillingService(
 
     private companion object {
         const val ACKNOWLEDGED_STATE = 1
+        val INSTALL_ID = Regex("^[0-9a-f]{32}$")
     }
 }
