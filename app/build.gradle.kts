@@ -15,8 +15,8 @@ android {
         applicationId = "com.gastos.ingresos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 42
-        versionName = "1.9.12"
+        versionCode = 44
+        versionName = "1.9.14"
 
         // La app solo está traducida a español e inglés. Sin esta línea el bundle hereda los
         // idiomas que traen las librerías (pt, fr, ar, de, it, …) y Play intenta traducir
