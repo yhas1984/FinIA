@@ -21,9 +21,10 @@ Cuerpo cerrado (lista cerrada, igual que el resto del backend):
 
 ```json
 {
-  "requestId": "<uuid v4, idempotencia>",
+  "requestId": "<uuid v4, idempotencia de la operación>",
   "mode": "ocr" | "chat",
   "model": "gemini-3.6-flash",       // se valida contra la lista blanca; otro valor -> 400
+  "deviceId": "<ANDROID_ID>",         // solo prueba sin clave; el servidor lo transforma y no lo guarda
   "imageBase64": "…",                 // solo ocr; <= 2000 px por lado
   "history": [ {"role":"user|assistant","text":"…"} ],
   "prompt": "…"
@@ -32,6 +33,12 @@ Cuerpo cerrado (lista cerrada, igual que el resto del backend):
 
 El servidor **no reenvía** el cuerpo: reconstruye la petición a Vertex AI con su propia plantilla,
 modelo fijado y topes. Cualquier campo fuera de esta lista devuelve 400.
+
+**Ningún identificador viaja en la ruta ni en la query.** La ruta es `/v1/ai:consult` y nada más: el
+`ANDROID_ID` va en el cuerpo, que no se registra. Por eso los metadatos de 30 días de Cloud Logging
+(método, ruta y estado) **no contienen ni el ancla ni el identificador**, y la política lo puede
+decir tal cual. Si algún día el ancla se moviera a la ruta, habría que cambiar la política el mismo
+día.
 
 Topes que impone el servidor (no el cliente):
 
@@ -112,6 +119,23 @@ disponible no pueden pasar las dos, porque la reserva es atómica.
 `requestId` repetido con la misma ancla y dentro de 120 s devuelve la misma reserva (no cobra dos
 veces); fuera de esa ventana se trata como nueva.
 
+**`requestId` es de la operación, no de la petición HTTP.** El cliente reintenta internamente
+(`INVALID_OUTPUT`, timeout de lectura, rotación de modelo) y en esos casos ya hubo un 200 que el
+servidor contó: si cada intento estrena `requestId`, una factura ilegible se come tres consultas.
+Se genera **uno por operación lógica** y se reutiliza en todos los intentos internos hasta que uno
+se acepta.
+
+## Tiempos
+
+| Presupuesto del cliente | Valor | Por qué |
+|---|---|---|
+| Escaneo (con imagen) | 90 s | cabe con 8.000/1.500 tokens y deja 30 s de margen sobre la reserva |
+| Chat | 60 s | |
+
+La reserva del servidor dura 120 s y el presupuesto del cliente **nunca** la supera: si el cliente
+sigue vivo cuando el barrido devuelve la reserva, el reintento abriría una segunda y la misma
+factura costaría dos consultas. Con 90 s de techo no ocurre.
+
 ## Ventanas
 
 - **Pago**: periodo de facturación de Play (`lineItems[0].expiryTime` de `subscriptionsv2`), no
@@ -139,3 +163,9 @@ El cliente no puede saber `remaining` hasta que llama. Para que una reinstalaci�
 «10 de 10» cuando quedan 0, `POST /v1/installs:register` (que la app ya llama en el primer
 arranque) devolverá también `trialRemaining` y `trialTotal`. Sin endpoint nuevo y sin consulta de
 IA gastada.
+
+**Aviso de dependencia:** hoy el cliente **no llama** a `installs:register` (0 apariciones en
+`app/`, `core/` y `feature/`). Ese dato no llega a nadie hasta que vc45 añada la llamada; mientras
+tanto el contador local se corrige con el primer `remaining` que devuelve el proxy. El criterio de
+«reinstalar devuelve 0» queda atado a esa línea de cliente, no al servidor.
+
