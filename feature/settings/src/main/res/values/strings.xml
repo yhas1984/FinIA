@@ -34,7 +34,11 @@
     <string name="premium">Premium</string>
     <string name="pro">Pro</string>
     <string name="premium_active">Funciones premium activadas ✓</string>
-    <string name="premium_pitch">Desbloquea la salida de tus datos: Sheets, Drive, backup automático y chat IA con memoria.</string>
+    <string name="premium_pitch">Automatiza lo que hoy haces a mano: CSV para tu gestoría, Google Sheets, copia cifrada en tu Drive y chat con memoria.</string>
+    <string name="premium_purchase_model_badge">PAGO ÚNICO</string>
+    <string name="premium_price_note">una vez · no se renueva</string>
+    <string name="premium_purchase_disclaimer">Se paga una sola vez. Sin suscripción, sin renovación automática y sin anuncios. Incluye las funciones Premium actuales, sin fecha de caducidad.</string>
+    <string name="premium_cta_unlock">Desbloquear Premium</string>
     <string name="see_premium">Ver Premium</string>
     <string name="floating_buttons">Botones flotantes</string>
     <string name="floating_buttons_help">Mantén pulsado un botón flotante para moverlo. Cada pantalla recuerda su posición.</string>
@@ -64,7 +68,7 @@
     <string name="invalid_link">El enlace solicitado no es válido o ya no es seguro abrirlo.</string>
     <string name="could_not_open_link">No se pudo abrir el enlace solicitado.</string>
     <string name="premium_features_vat_title">Resumen de IVA para tu gestor</string>
-    <string name="premium_features_vat_desc">Base, cuota y diferencia por trimestre, en PDF o CSV, listo para enviar a tu gestoría.</string>
+    <string name="premium_features_vat_desc">Base, cuota y diferencia por trimestre. El PDF es gratis; el CSV, Premium.</string>
     <string name="premium_features_sheets_title">Exportación a Google Sheets</string>
     <string name="premium_features_sheets_desc">Exporta y sincroniza tus datos con un Google Sheet organizado por hojas.</string>
     <string name="premium_features_drive_title">Fotos de facturas en Drive</string>
@@ -84,7 +88,7 @@
     <string name="settings_premium_title">Premium</string>
     <string name="settings_premium_chip">Pro</string>
     <string name="settings_premium_enabled">Funciones premium activadas ✓</string>
-    <string name="settings_premium_pitch">Desbloquea la salida de tus datos: Sheets, Drive, backup automático y chat IA con memoria.</string>
+    <string name="settings_premium_pitch">Automatiza lo que hoy haces a mano: CSV para tu gestoría, Google Sheets, copia cifrada en tu Drive y chat con memoria.</string>
     <string name="settings_floating_buttons_title">Botones flotantes</string>
     <string name="settings_data_title">Datos</string>
     <string name="settings_debug_title">Debug</string>

@@ -273,5 +273,6 @@
     <string name="fiscal_disclaimer_generic">Informative summary built from your documents. It is not a tax return and does not replace your own country\'s official filing: it does not apply special regimes. Check the figures with your accountant before filing.</string>
     <string name="fiscal_export_pdf">Share summary (PDF)</string>
     <string name="fiscal_export_csv">Share summary (CSV)</string>
-    <string name="fiscal_premium_required">The VAT summary is a Premium feature.</string>
+    <string name="fiscal_premium_required">CSV is a Premium feature. Your quarterly PDF is free.</string>
+    <string name="premium_feature_locked">Included in Premium</string>
 </resources>

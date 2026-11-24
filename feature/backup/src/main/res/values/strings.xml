@@ -273,5 +273,6 @@
     <string name="fiscal_disclaimer_generic">Resumen informativo a partir de tus documentos. No es una autoliquidación ni sustituye a la declaración oficial de tu país: no aplica regímenes especiales. Comprueba los datos con tu contador antes de presentar.</string>
     <string name="fiscal_export_pdf">Compartir resumen (PDF)</string>
     <string name="fiscal_export_csv">Compartir resumen (CSV)</string>
-    <string name="fiscal_premium_required">El resumen de IVA es una función Premium.</string>
+    <string name="fiscal_premium_required">El CSV es una función Premium. El PDF de tu trimestre es gratis.</string>
+    <string name="premium_feature_locked">Incluido en Premium</string>
 </resources>

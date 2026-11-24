@@ -34,7 +34,11 @@
     <string name="premium">Premium</string>
     <string name="pro">Pro</string>
     <string name="premium_active">Premium features enabled ✓</string>
-    <string name="premium_pitch">Unlock your data out: Sheets, Drive, automatic backup and AI chat with memory.</string>
+    <string name="premium_pitch">Automate what you do by hand today: CSV for your accountant, Google Sheets, an encrypted copy in your own Drive and chat with memory.</string>
+    <string name="premium_purchase_model_badge">ONE-TIME</string>
+    <string name="premium_price_note">one time · does not renew</string>
+    <string name="premium_purchase_disclaimer">Pay once. No subscription, no auto-renewal, no ads. Includes the current Premium features, with no expiry date.</string>
+    <string name="premium_cta_unlock">Unlock Premium</string>
     <string name="see_premium">See Premium</string>
     <string name="floating_buttons">Floating buttons</string>
     <string name="floating_buttons_help">Long-press a floating button to move it. Each screen remembers its position.</string>
@@ -64,7 +68,7 @@
     <string name="invalid_link">The requested link is not valid or is no longer safe to open.</string>
     <string name="could_not_open_link">Could not open the requested link.</string>
     <string name="premium_features_vat_title">VAT summary for your accountant</string>
-    <string name="premium_features_vat_desc">Base, tax and difference per quarter, as PDF or CSV, ready to send to your accountant.</string>
+    <string name="premium_features_vat_desc">Base, tax and difference per quarter. PDF is free; CSV is Premium.</string>
     <string name="premium_features_sheets_title">Google Sheets export</string>
     <string name="premium_features_sheets_desc">Export and sync your data with a Google Sheet organized by tabs.</string>
     <string name="premium_features_drive_title">Invoice photos in Drive</string>
@@ -84,7 +88,7 @@
     <string name="settings_premium_title">Premium</string>
     <string name="settings_premium_chip">Pro</string>
     <string name="settings_premium_enabled">Premium features enabled ✓</string>
-    <string name="settings_premium_pitch">Unlock your data out: Sheets, Drive, automatic backup and AI chat with memory.</string>
+    <string name="settings_premium_pitch">Automate what you do by hand today: CSV for your accountant, Google Sheets, an encrypted copy in your own Drive and chat with memory.</string>
     <string name="settings_floating_buttons_title">Floating buttons</string>
     <string name="settings_data_title">Data</string>
     <string name="settings_debug_title">Debug</string>

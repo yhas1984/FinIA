@@ -689,19 +689,29 @@ fun BackupScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(12.dp))
-                    if (uiState.isPremium) {
-                        Button(
-                            onClick = { viewModel.shareFiscalSummary(ReportFormat.PDF) },
-                            enabled = !uiState.isExporting,
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text(stringResource(R.string.fiscal_export_pdf)) }
+                    val premium = uiState.isPremium
+                    // vc44: el muro estaba al revés. El PDF del trimestre es gratis para
+                    // todos; el CSV del resumen es la función Premium. Y el que no paga
+                    // tiene que VER la función que existe, no solo leer una frase.
+                    Button(
+                        onClick = { viewModel.shareFiscalSummary(ReportFormat.PDF) },
+                        enabled = !uiState.isExporting,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(stringResource(R.string.fiscal_export_pdf)) }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.shareFiscalSummary(ReportFormat.CSV) },
+                        enabled = premium && !uiState.isExporting,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            if (premium) stringResource(R.string.fiscal_export_csv)
+                            else stringResource(R.string.fiscal_export_csv) + " · " +
+                                stringResource(R.string.premium_feature_locked)
+                        )
+                    }
+                    if (!premium) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedButton(
-                            onClick = { viewModel.shareFiscalSummary(ReportFormat.CSV) },
-                            enabled = !uiState.isExporting,
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text(stringResource(R.string.fiscal_export_csv)) }
-                    } else {
                         Text(
                             text = stringResource(R.string.fiscal_premium_required),
                             style = MaterialTheme.typography.bodySmall

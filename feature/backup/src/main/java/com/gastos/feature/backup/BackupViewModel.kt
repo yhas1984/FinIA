@@ -764,7 +764,9 @@ class BackupViewModel @Inject constructor(
 
     fun exportFiscalSummary(uri: Uri?, format: ReportFormat) {
         if (_uiState.value.isExporting) return
-        if (!premiumStatus.isPremium.value) {
+        // vc44: solo el CSV del resumen es Premium. El PDF del trimestre es gratis para
+        // todos: es el anzuelo del canal de gestoría y no puede chocar con un muro.
+        if (format == ReportFormat.CSV && !premiumStatus.isPremium.value) {
             _uiState.update { it.copy(exportResult = BackupResult(false, context.getString(R.string.fiscal_premium_required))) }
             return
         }

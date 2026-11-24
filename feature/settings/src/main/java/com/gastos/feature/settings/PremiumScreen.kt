@@ -97,6 +97,56 @@ fun PremiumScreen(
                     )
                 }
             } else {
+                // vc44: el precio y el modelo de pago van ARRIBA, bajo la frase de venta.
+                // Si viven dentro del botón (como antes) quedan bajo el pliegue y el usuario
+                // no sabe cuánto cuesta ni que no se renueva hasta que ya está desplazando.
+                val validatingPrice = stringResource(R.string.settings_api_key_validating_short)
+                val price = uiState.productDetails?.oneTimePurchaseOfferDetails?.formattedPrice
+                    ?: validatingPrice
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = price,
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            // Sin maxLines: a 2,0× tiene que envolver, no recortarse.
+                            Text(
+                                text = stringResource(R.string.premium_price_note),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ) {
+                            Text(
+                                text = stringResource(R.string.premium_purchase_model_badge),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 // Lista de funciones premium
                 PremiumFeature.entries.forEach { feature ->
                     PremiumFeatureRow(feature)
@@ -123,11 +173,8 @@ fun PremiumScreen(
                     )
                 }
 
-                // Precio y botón de compra
-                val validatingPrice = stringResource(R.string.settings_api_key_validating_short)
-                val price = uiState.productDetails?.oneTimePurchaseOfferDetails?.formattedPrice
-                    ?: validatingPrice
-
+                // CTA sin el precio dentro: el precio ya está arriba y repetirlo en el
+                // botón era lo que lo escondía bajo el pliegue.
                 Button(
                     onClick = {
                         // LocalContext es un Activity en Compose alojado en una Activity
@@ -144,10 +191,19 @@ fun PremiumScreen(
                         when {
                             uiState.hasPendingPurchase -> stringResource(R.string.settings_purchase_pending)
                             price == validatingPrice -> stringResource(R.string.settings_loading)
-                            else -> stringResource(R.string.settings_unlock_premium, price)
+                            else -> stringResource(R.string.premium_cta_unlock)
                         }
                     )
                 }
+
+                // El descargo va DEBAJO del botón (orden de diseño): insignia arriba a la
+                // derecha, precio con la nota al lado, descargo bajo la CTA.
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = stringResource(R.string.premium_purchase_disclaimer),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
                 if (uiState.isBillingConnecting) {
                     Spacer(modifier = Modifier.height(8.dp))
