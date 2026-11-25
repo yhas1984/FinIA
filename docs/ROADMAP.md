@@ -1,7 +1,7 @@
 # Hoja de ruta única — FinAI
 
 **Actualizado:** 25-nov-2026 · sustituye al roadmap de producto de agosto (que queda al final como catálogo de ideas, sin fechas).
-**Fuente de la verdad operativa:** este documento. Los planes parciales (`docs/monetizacion/PLAN-INGRESOS.md`) siguen vigentes en lo que no contradigan esto.
+**Fuente de la verdad operativa:** este documento. El plan de ingresos vive **fuera del repo público**, en `~/Documents/FinAI/monetizacion/PLAN-INGRESOS.md` (se retiró de `docs/` el 24-nov a propósito); sigue vigente en lo que no contradiga esto.
 
 ---
 
@@ -28,7 +28,7 @@
 ### F0 · 25-30 nov — poner el 42 en la calle
 - Subir vc42 a la pista **interna** y promover a **cerrada** (decisión del dueño sobre producción).
 - QA sobre el binario: retención, exentos y «no sujeto» en la app instalada, no en código.
-- Ficha: aplicar el parche de tres textos (frase de pago único, cláusula del libro, frontera gratis/pago) **solo cuando la 42 esté servida**.
+- Ficha: **preparar** el parche de tres textos (frase de pago único, cláusula del libro, frontera gratis/pago) y aplicarlo **solo cuando Play sirva vc44**, nunca con la 42: describen un producto que la 42 no tiene y la ficha mentiría.
 - *Prueba de cierre:* la API devuelve vc42 `completed` en la pista y QA firma la pasada.
 
 ### F1 · 1-14 dic — primer euro
@@ -46,7 +46,7 @@
 
 ### F3 · enero 2027 — decidir con datos
 - Medir D7/D30 y conversión real con ~50 descargas y 22 testers (los números que existen; D7 de cohorte no es legible todavía).
-- Decisión: vc46 = suscripción **solo si** la prueba demuestra demanda. Si no, el pago único sigue siendo el producto.
+- Decisión: vc46 = suscripción **solo si** en 30 días hay ≥15 compras del pago único sobre ≥300 instalaciones (≈5 %). Con ~50 instalaciones la muestra no distingue un 1 % de un 8 %: con menos datos, la decisión se pospone; no se inventa.
 - DSA: decidir antes de feb-2027 si la cuenta se declara operador (publica dirección y teléfono de forma permanente).
 
 ### F4 · producto, sin fecha
@@ -88,4 +88,22 @@ Subcategorías · estadísticas interactivas con drill-down · notificaciones de
 - **@desarrollador-backend** — proxy de IA, cuota, atribución, métricas de ingresos.
 - **@aso-bot** — ficha y textos, con relectura por API tras cada edición.
 - **@qa-engineer** — pasada sobre binario real; sin su firma no se cierra fase.
-- **@product-owner-po-product-manager** — alcance, cortes y la palabra final en cada puerta.
+- **@bot-estratega-product-owner** — alcance, cortes y la palabra final en cada puerta.
+- **@project-manager** — tablero único: una fila por puerta, dueño y prueba; sin informes paralelos.
+- **@bot-investigador-research-ux** — validación con autónomos reales del corte gratis/pago antes de vc46; entrevistas, no encuestas.
+
+---
+
+## 7. Instrumentación mínima antes de vc44
+
+Hoy la única métrica que existe es la venta verificada. Para saber **dónde** se cae la gente hacen falta
+cuatro eventos, enviados al servicio de billing que ya está vivo (`/v1/installs:register`,
+`/v1/exports:record`, `/v1/entitlements:verify`):
+
+1. `paywall_view` — pantalla de origen (CSV, libro, ajustes) y si venía de exportar el PDF gratis.
+2. `purchase_start` — SKU y precio mostrado en el momento del clic.
+3. `purchase_result` — ok / cancelado / error con código; sin esto, un muro roto parece indiferencia.
+4. `activation_first_expense` — primer gasto guardado y minutos desde la instalación.
+
+Con eso el embudo semanal queda: instalación → paywall visto → clic → compra verificada, más activación.
+Sin los cuatro, la conversión se mide a ciegas y ninguna fase de esta hoja se cierra con datos.
