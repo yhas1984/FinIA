@@ -40,7 +40,9 @@ data class TaxFormRow(
     fun withTreatment(treatment: TaxTreatment, locale: Locale): TaxFormRow {
         if (treatment !in NON_TAXABLE_TREATMENTS) return copy(treatment = treatment)
         val zero: String = LocalizedNumbers.format(0.0, locale)
-        return copy(treatment = treatment, rate = zero, amount = zero)
+        // La base también se vacía: conservarla (100 en un documento de 121) publicaba en el
+        // libro una base que ya no corresponde. Vacía, la base se deriva del total.
+        return copy(treatment = treatment, rate = zero, amount = zero, base = "")
     }
 
     companion object {

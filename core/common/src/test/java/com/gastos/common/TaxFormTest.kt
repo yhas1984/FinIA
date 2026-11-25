@@ -32,7 +32,8 @@ class TaxFormTest {
         val exempt = row.withTreatment(TaxTreatment.EXEMPT, locale)
         assertEquals("0", exempt.rate)
         assertEquals("0", exempt.amount)
-        assertEquals(100.0, exempt.parse(locale, "EUR")!!.base!!, 0.0)
+        assertEquals("", exempt.base)
+        assertNull(exempt.parse(locale, "EUR")!!.base)
         val parsed = TaxFormRow.parseAll(listOf(exempt), locale, "EUR")!!
         assertTrue(DocumentTaxes.validate(parsed, "EUR").isEmpty())
         assertEquals(0.0, DocumentTaxes.total(parsed, TaxEffect.CHARGE)!!, 0.0)

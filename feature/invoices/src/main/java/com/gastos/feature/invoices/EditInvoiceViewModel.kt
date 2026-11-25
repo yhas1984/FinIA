@@ -419,6 +419,17 @@ class EditInvoiceViewModel @Inject constructor(
             val enteredCuota = LocalizedNumbers.parse(form.cuotaIva, locale)
             val withholding = if (form.withheldAmountRead != null) fiscal.irpfAmount else 0.0
             val parsedTaxes: List<DocumentTax> = TaxFormRow.parseAll(form.taxes, locale, form.moneda) ?: emptyList()
+            // Una única fila sin cuota con la base vacía (el usuario acaba de cambiar el
+            // tratamiento) se guarda con la base del documento. Con la base vieja —100 en un
+            // total de 121— el libro publicaba una base que no cuadra con la factura; con la
+            // base nula, el documento quedaba sin base. Con una sola fila gravada no se toca.
+            val storedTaxes: List<DocumentTax> = parsedTaxes.singleOrNull()
+                ?.takeIf {
+                    it.effect == TaxEffect.CHARGE && it.base == null &&
+                        it.treatment in TaxFormRow.NON_TAXABLE_TREATMENTS
+                }
+                ?.let { only -> fiscal.baseImponible?.let { base -> listOf(only.copy(base = base)) } }
+                ?: parsedTaxes
             val legacyMixed: Boolean = originalInvoice?.evidence?.document?.lines?.mapNotNull { it.vatPercent }?.distinct()?.size?.let { it > 1 } == true
             val rate: Double? = fiscal.ivaPercent.takeUnless { legacyMixed && form.taxes.isEmpty() }
             val fiscalValuesAreConsistent = when {
@@ -464,7 +475,7 @@ class EditInvoiceViewModel @Inject constructor(
                     sourceMimeType = original?.sourceMimeType, sourceName = original?.sourceName,
                     origin = original?.origin ?: "MANUAL", manualAmountAdjusted = original?.manualAmountAdjusted ?: false,
                     financialRevision = original?.financialRevision ?: 0,
-                    taxes = parsedTaxes,
+                    taxes = storedTaxes,
                     evidence = (original?.evidence ?: DocumentEvidence(ScannedDocument())).copy(
                         distinctFrom = distinctFrom,
                         document = (original?.evidence?.document ?: ScannedDocument()).copy(
@@ -472,7 +483,7 @@ class EditInvoiceViewModel @Inject constructor(
                             number = form.numeroFactura.takeIf(String::isNotBlank), issuer = form.proveedor,
                             issuerTaxId = form.nifEmisor.takeIf(String::isNotBlank), recipientTaxId = form.nifReceptor.takeIf(String::isNotBlank),
                             country = form.paisCodigo, currency = currency, total = if (form.manualAmountAdjusted) original?.evidence?.document?.total else fiscal.total,
-                            taxes = parsedTaxes, taxesComplete = if (parsedTaxes.isNotEmpty()) true else null,
+                            taxes = storedTaxes, taxesComplete = if (storedTaxes.isNotEmpty()) true else null,
                             taxBase = fiscal.baseImponible, vatAmount = fiscal.ivaAmount, vatPercent = fiscal.ivaPercent, withholdingPercent = fiscal.irpfPercent,
                             withholdingAmount = when {
                                 fiscal.irpfAmount > 0.0 && storesBase -> fiscal.irpfAmount
