@@ -251,8 +251,8 @@ class GeminiRestClient internal constructor(
     }
 
     internal companion object {
-        const val PRIMARY_MODEL = "gemini-3.6-flash"
-        const val FALLBACK_MODEL = "gemini-3.8-flash"
+        const val PRIMARY_MODEL = "gemini-3.8-flash"
+        const val FALLBACK_MODEL = "gemini-3.6-flash"
         const val LITE_FALLBACK_MODEL = "gemini-3.5-flash-lite"
         private val ATTEMPT_MODELS = listOf(PRIMARY_MODEL, PRIMARY_MODEL, FALLBACK_MODEL, LITE_FALLBACK_MODEL)
         private val OCR_MODELS = listOf(PRIMARY_MODEL, FALLBACK_MODEL, LITE_FALLBACK_MODEL)

@@ -142,7 +142,8 @@ class GeminiFallbackTest {
         val calls = mutableListOf<String>()
         val client = client(calls, ArrayDeque(listOf(503 to "{}", 503 to "{}", 503 to "{}", 200 to success("lite"))))
         assertEquals("lite", client.generateContent(request))
-        assertEquals(listOf("gemini-3.6-flash", "gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"), calls)
+        assertEquals(listOf(GeminiRestClient.PRIMARY_MODEL, GeminiRestClient.PRIMARY_MODEL,
+            GeminiRestClient.FALLBACK_MODEL, GeminiRestClient.LITE_FALLBACK_MODEL), calls)
     }
     @Test fun `fast reading and detailed rereading preserve schema and image through Lite fallback`() = runTest {
         for (profile in OcrProfile.entries) {
@@ -163,7 +164,8 @@ class GeminiFallbackTest {
                 mediaResolution = "MEDIA_RESOLUTION_HIGH"
             ))
             assertEquals("valid", client.generateContent(operation) { it == "valid" })
-            assertEquals(listOf("gemini-3.6-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite"), calls)
+            assertEquals(listOf(GeminiRestClient.PRIMARY_MODEL, GeminiRestClient.FALLBACK_MODEL,
+                GeminiRestClient.LITE_FALLBACK_MODEL), calls)
             payloads.forEach { payload ->
                 val config = payload.getJSONObject("generationConfig")
                 assertEquals(profile.thinkingLevel, config.getJSONObject("thinkingConfig").getString("thinkingLevel"))
