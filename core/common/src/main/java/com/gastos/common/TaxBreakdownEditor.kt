@@ -28,7 +28,7 @@ fun TaxBreakdownEditor(rows: List<TaxFormRow>, currency: String, locale: Locale,
                 Card {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(row.name, { update(row.copy(name = it)) }, enabled = LocalManualInputEnabled.current, label = { Text(stringResource(R.string.taxes_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                        TaxChoice(row.treatment, TaxTreatment.entries, { update(row.copy(treatment = it)) }) { treatment ->
+                        TaxChoice(row.treatment, TaxTreatment.entries, { update(row.withTreatment(it, locale)) }) { treatment ->
                             stringResource(when (treatment) {
                                 TaxTreatment.TAXABLE -> R.string.taxes_taxable
                                 TaxTreatment.ZERO_RATED -> R.string.taxes_zero

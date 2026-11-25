@@ -25,6 +25,21 @@ class TaxFormTest {
         assertNull(reconcileTaxForm(taxes, 130.0, 100.0, 2.0, "CAD"))
     }
 
+    @Test fun `a non taxable treatment zeroes rate and amount and keeps the breakdown calculable`() {
+        val row = TaxFormRow(name = "IVA", rate = "21", base = "100", amount = "21")
+        // el caso medido en el binario de Play: la fila conservaba el 21 % y los 21 € al pasar a no sujeta
+        assertNull(TaxFormRow.parseAll(listOf(row.copy(treatment = TaxTreatment.OUT_OF_SCOPE)), locale, "EUR"))
+        val exempt = row.withTreatment(TaxTreatment.EXEMPT, locale)
+        assertEquals("0", exempt.rate)
+        assertEquals("0", exempt.amount)
+        assertEquals(100.0, exempt.parse(locale, "EUR")!!.base!!, 0.0)
+        val parsed = TaxFormRow.parseAll(listOf(exempt), locale, "EUR")!!
+        assertTrue(DocumentTaxes.validate(parsed, "EUR").isEmpty())
+        assertEquals(0.0, DocumentTaxes.total(parsed, TaxEffect.CHARGE)!!, 0.0)
+        // volver a gravado no inventa un 21 % que el usuario no ha escrito
+        assertEquals(0.0, exempt.withTreatment(TaxTreatment.TAXABLE, locale).parse(locale, "EUR")!!.rate!!, 0.0)
+    }
+
     @Test fun `editing unrelated fields roundtrips tax meaning and precision`() {
         val tax = DocumentTax("VAT exempt", base = 1234.56, amount = 0.0, treatment = TaxTreatment.EXEMPT)
         assertEquals(tax, TaxFormRow.from(tax, locale).parse(locale, "EUR"))

@@ -30,7 +30,27 @@ data class TaxFormRow(
         return DocumentTax(name.trim().takeIf(String::isNotEmpty), percentage, taxableBase, quota, treatment, effect)
     }
 
+    /**
+     * Cambiar el tratamiento desde el formulario. Al pasar a exento, no sujeto o tipo cero,
+     * el tipo y el importe se ponen a cero: conservar el 21 % y su cuota hace que
+     * [DocumentTaxes.validate] devuelva INCONSISTENT, [parseAll] null y el resumen fiscal
+     * desaparezca sin mensaje —y la fila seguía ofreciendo «Calculado: 25,41 EUR» sobre una
+     * operación no sujeta—. Volver a gravado no reescribe lo que ya hubiera escrito.
+     */
+    fun withTreatment(treatment: TaxTreatment, locale: Locale): TaxFormRow {
+        if (treatment !in NON_TAXABLE_TREATMENTS) return copy(treatment = treatment)
+        val zero: String = LocalizedNumbers.format(0.0, locale)
+        return copy(treatment = treatment, rate = zero, amount = zero)
+    }
+
     companion object {
+        /**
+         * Tratamientos sin cuota. [DocumentTaxes.validate] rechaza cualquier tipo o
+         * importe distinto de cero en estas filas.
+         */
+        val NON_TAXABLE_TREATMENTS: Set<TaxTreatment> =
+            setOf(TaxTreatment.ZERO_RATED, TaxTreatment.EXEMPT, TaxTreatment.OUT_OF_SCOPE)
+
         fun from(tax: DocumentTax, locale: Locale): TaxFormRow = TaxFormRow(
             tax.name.orEmpty(), tax.rate?.let { LocalizedNumbers.format(it, locale) }.orEmpty(),
             tax.base?.let { LocalizedNumbers.format(it, locale) }.orEmpty(),
