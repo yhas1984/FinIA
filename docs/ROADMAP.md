@@ -54,16 +54,35 @@ Subcategorías · estadísticas interactivas con drill-down · notificaciones de
 
 ---
 
-## 4. Reglas de corte
+## 4. A quién se lo vendemos y por dónde entran
+
+**Comprador**: **autónomos y micro-pymes en España** (1-10 personas) que hoy llevan gastos en una hoja o en el móvil y temen el trimestre. Un solo mercado, un solo idioma, una sola moneda — la expansión a LatAm no está en esta hoja de ruta y no se toca hasta que España convierta.
+
+- **Segmento de entrada**: autónomo que presenta IVA trimestral y fotografía tickets. El producto ya le resuelve el trimestre; el pago único de 5,99 € es la puerta.
+- **Segmento de valor**: micro-pyme con gestoría detrás, que necesita entregar el CSV/libro. Es la razón por la que el libro LEDGER y el enlace de gestoría existen.
+
+**El embudo, tal como está hoy**
+
+1. **Finkit** (`finkit.eu`) — calculadoras públicas (cuánto me queda, cuota de autónomos) sobre el sitio Astro `yhas1984/Finkit`. Cada calculadora acaba en un enlace a Play con `referrer` para atribuir la instalación. **Estado real: 11 enlaces a Play en el sitio, 4 instrumentados con `referrer`; 27 de 34 páginas sin `utm_campaign`** — un enlace sin etiquetar es una instalación que no se puede reclamar.
+2. **Ficha de Play** — hoy pide «FinAI: Gastos, facturas e IVA», con capturas reales y sin prometer retenciones visibles.
+3. **Contenido orgánico** — 25 piezas escritas, **0 publicadas**. Es prueba social, no copy: con 0 valoraciones el techo no es el texto.
+4. **Boca a boca de los 22 testers** — la única fuente de valoraciones que existe hoy.
+
+**Puerta de usuarios (nueva, y es tan dura como las otras dos)**: sin al menos **10 valoraciones reales** no se compra publicidad ni se anuncia nada. Y sin instrumentación completa (`referrer` + `utm_campaign` en todas las páginas) no se puede saber qué pieza trae a quien paga. Arreglar esos enlaces es trabajo de una tarde y hoy es el eslabón más barato de toda la cadena.
+
+---
+
+## 5. Reglas de corte
 
 - **WIP cerrado:** la línea de suscripción no recibe commits hasta que el 42 esté en Play y la compra esté verificada.
 - **Nada se construye desde una rama en movimiento.** Se congela cabeza, se declara hash, y se integra en rama aparte.
 - **La retirada del pago único se dispara por métrica, no por fecha**: 10 suscripciones pagadas o 30 días de operación, lo que llegue más tarde — y el anuncio sale el mismo día del SKU, nunca antes.
 - **Instrumentación antes que volumen**: sin `installId` + `utm_source` en el verify no hay canal que se pueda facturar.
+- **Una sola geografía hasta que haya tracción**: España. LatAm y el inglés se deciden con datos de conversión, no con ganas.
 
 ---
 
-## 5. Quién hace qué
+## 6. Quién hace qué
 
 - **@desarrollador-android** — builds, `versionCode`, subida del AAB, prueba de compra.
 - **@desarrollador-backend** — proxy de IA, cuota, atribución, métricas de ingresos.
