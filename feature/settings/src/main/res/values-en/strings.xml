@@ -34,7 +34,7 @@
     <string name="premium">Premium</string>
     <string name="pro">Pro</string>
     <string name="premium_active">Premium features enabled ✓</string>
-    <string name="premium_pitch">Automate what you do by hand today: CSV for your accountant, Google Sheets, an encrypted copy in your own Drive and chat with memory.</string>
+    <string name="premium_pitch">Automate what you do by hand today: your purchase ledger with tax IDs in Google Sheets, your encrypted copy in Drive and chat with memory.</string>
     <string name="premium_purchase_model_badge">ONE-TIME</string>
     <string name="premium_price_note">one time · does not renew</string>
     <string name="premium_purchase_disclaimer">Pay once. No subscription, no auto-renewal, no ads. Includes the current Premium features, with no expiry date.</string>
@@ -88,7 +88,7 @@
     <string name="settings_premium_title">Premium</string>
     <string name="settings_premium_chip">Pro</string>
     <string name="settings_premium_enabled">Premium features enabled ✓</string>
-    <string name="settings_premium_pitch">Automate what you do by hand today: CSV for your accountant, Google Sheets, an encrypted copy in your own Drive and chat with memory.</string>
+    <string name="settings_premium_pitch">Automate what you do by hand today: your purchase ledger with tax IDs in Google Sheets, your encrypted copy in Drive and chat with memory.</string>
     <string name="settings_floating_buttons_title">Floating buttons</string>
     <string name="settings_data_title">Data</string>
     <string name="settings_debug_title">Debug</string>

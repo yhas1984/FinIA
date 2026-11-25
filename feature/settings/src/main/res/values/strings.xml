@@ -34,7 +34,7 @@
     <string name="premium">Premium</string>
     <string name="pro">Pro</string>
     <string name="premium_active">Funciones premium activadas ✓</string>
-    <string name="premium_pitch">Automatiza lo que hoy haces a mano: CSV para tu gestoría, Google Sheets, copia cifrada en tu Drive y chat con memoria.</string>
+    <string name="premium_pitch">Automatiza lo que hoy haces a mano: el libro de facturas recibidas con NIF en Google Sheets, tu copia cifrada en Drive y chat con memoria.</string>
     <string name="premium_purchase_model_badge">PAGO ÚNICO</string>
     <string name="premium_price_note">una vez · no se renueva</string>
     <string name="premium_purchase_disclaimer">Se paga una sola vez. Sin suscripción, sin renovación automática y sin anuncios. Incluye las funciones Premium actuales, sin fecha de caducidad.</string>
@@ -88,7 +88,7 @@
     <string name="settings_premium_title">Premium</string>
     <string name="settings_premium_chip">Pro</string>
     <string name="settings_premium_enabled">Funciones premium activadas ✓</string>
-    <string name="settings_premium_pitch">Automatiza lo que hoy haces a mano: CSV para tu gestoría, Google Sheets, copia cifrada en tu Drive y chat con memoria.</string>
+    <string name="settings_premium_pitch">Automatiza lo que hoy haces a mano: el libro de facturas recibidas con NIF en Google Sheets, tu copia cifrada en Drive y chat con memoria.</string>
     <string name="settings_floating_buttons_title">Botones flotantes</string>
     <string name="settings_data_title">Datos</string>
     <string name="settings_debug_title">Debug</string>
